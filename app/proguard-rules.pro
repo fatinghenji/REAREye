@@ -37,3 +37,5 @@
     <init>();
     *** inflate(android.view.LayoutInflater);
 }
+
+-dontwarn java.lang.reflect.AnnotatedType
