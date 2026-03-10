@@ -12,8 +12,11 @@
     <string name="application_select_title">Select Applications</string>
     <string name="selection_cancel">Cancel</string>
     <string name="selection_save">Save</string>
+    <string name="selection_confirm">Confirm</string>
     <string name="show_system_apps">Show System Apps</string>
     <string name="search_apps">Search Name or Package…</string>
+    <string name="btn_stop_subscreencenter_app">Stop SubscreenCenter App</string>
+    <string name="dialog_stop_app">Click confirm to stop</string>
 
     <string name="category_system">System Framework</string>
     <string name="cfg_activities_whitelist">Activities Whitelist</string>

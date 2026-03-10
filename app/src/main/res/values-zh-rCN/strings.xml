@@ -13,8 +13,11 @@
     <string name="application_select_title">选择应用</string>
     <string name="selection_cancel">取消</string>
     <string name="selection_save">保存</string>
+    <string name="selection_confirm">确认</string>
     <string name="show_system_apps">显示系统应用</string>
     <string name="search_apps">搜索名称或包名…</string>
+    <string name="btn_stop_subscreencenter_app">停止 背屏中心 应用</string>
+    <string name="dialog_stop_app">点击确认以停止</string>
 
     <string name="category_system">系统框架</string>
     <string name="cfg_activities_whitelist">活动白名单</string>

@@ -178,7 +178,12 @@ fun AppSelectorDialog(
                         CircularProgressIndicator()
                     }
                 } else {
-                    val filteredApps = remember(installedApps, showSystemApps, searchQuery, selectedPackages.toList()) {
+                    val filteredApps = remember(
+                        installedApps,
+                        showSystemApps,
+                        searchQuery,
+                        selectedPackages.toList()
+                    ) {
                         val base = installedApps?.filter { app ->
                             val matchesSystemAppPolicy = if (showSystemApps) true else !app.isSystem
                             val query = searchQuery.lowercase()

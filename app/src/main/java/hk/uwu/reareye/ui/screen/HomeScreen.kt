@@ -7,15 +7,18 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -32,12 +35,16 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.highcapable.yukihookapi.YukiHookAPI
 import hk.uwu.reareye.R
+import hk.uwu.reareye.actions.RestartActions
 import hk.uwu.reareye.generated.AppProperties
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.extra.WindowDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
@@ -82,37 +89,81 @@ fun HomeScreen() {
                 visible = visible,
                 enter = fadeIn(tween(600)) + slideInVertically(tween(600)) { it / 4 }
             ) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    insideMargin = PaddingValues(16.dp),
-                    colors = if (isActivated) CardDefaults.defaultColors(
-                        color = MiuixTheme.colorScheme.primaryVariant
-                    ) else CardDefaults.defaultColors(
-                        color = MiuixTheme.colorScheme.error
-                    ),
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Text(
-                        text = stringResource(R.string.status_card),
-                        style = MiuixTheme.textStyles.title3,
-                        color = if (isActivated) MiuixTheme.colorScheme.onPrimaryVariant else MiuixTheme.colorScheme.onError
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = stringResource(
-                            R.string.module_version,
-                            AppProperties.PROJECT_APP_VERSION_NAME
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        insideMargin = PaddingValues(16.dp),
+                        colors = if (isActivated) CardDefaults.defaultColors(
+                            color = MiuixTheme.colorScheme.primaryVariant
+                        ) else CardDefaults.defaultColors(
+                            color = MiuixTheme.colorScheme.error
                         ),
-                        style = MiuixTheme.textStyles.subtitle,
-                        color = if (isActivated) MiuixTheme.colorScheme.onPrimaryVariant else MiuixTheme.colorScheme.onError
+                    ) {
+                        Text(
+                            text = stringResource(R.string.status_card),
+                            style = MiuixTheme.textStyles.title3,
+                            color = if (isActivated) MiuixTheme.colorScheme.onPrimaryVariant else MiuixTheme.colorScheme.onError
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = stringResource(
+                                R.string.module_version,
+                                "${AppProperties.PROJECT_APP_VERSION_NAME}-${AppProperties.GIT_HASH}-r${AppProperties.BUILD_NUMBER}-${AppProperties.BUILD_CHANNEL}"
+                            ),
+                            style = MiuixTheme.textStyles.subtitle,
+                            color = if (isActivated) MiuixTheme.colorScheme.onPrimaryVariant else MiuixTheme.colorScheme.onError
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = if (isActivated) stringResource(R.string.module_is_activated) else stringResource(
+                                R.string.module_not_activated
+                            ),
+                            style = MiuixTheme.textStyles.subtitle,
+                            color = if (isActivated) MiuixTheme.colorScheme.onPrimaryVariant else MiuixTheme.colorScheme.onError
+                        )
+                    }
+
+                    val showDialog = remember { mutableStateOf(false) }
+
+                    TextButton(
+                        text = stringResource(R.string.btn_stop_subscreencenter_app),
+                        onClick = { showDialog.value = true }
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = if (isActivated) stringResource(R.string.module_is_activated) else stringResource(
-                            R.string.module_not_activated
-                        ),
-                        style = MiuixTheme.textStyles.subtitle,
-                        color = if (isActivated) MiuixTheme.colorScheme.onPrimaryVariant else MiuixTheme.colorScheme.onError
-                    )
+
+                    WindowDialog(
+                        title = stringResource(R.string.dialog_stop_app),
+                        show = showDialog,
+                        onDismissRequest = { showDialog.value = false } // Close dialog
+                    ) {
+
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            TextButton(
+                                text = stringResource(R.string.selection_cancel),
+                                onClick = { showDialog.value = false }, // Close dialog
+                                modifier = Modifier.weight(1f)
+                            )
+                            Spacer(Modifier.width(20.dp))
+                            TextButton(
+                                text = stringResource(R.string.selection_confirm),
+                                onClick = {
+                                    showDialog.value = false
+                                    RestartActions.broadcastStopPackage(
+                                        context,
+                                        "com.xiaomi.subscreencenter"
+                                    )
+                                }, // Close dialog
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.textButtonColorsPrimary() // Use theme color
+                            )
+                        }
+                    }
                 }
             }
         }
