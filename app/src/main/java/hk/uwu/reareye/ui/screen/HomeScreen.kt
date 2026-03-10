@@ -11,14 +11,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,16 +33,12 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.highcapable.yukihookapi.YukiHookAPI
 import hk.uwu.reareye.R
-import hk.uwu.reareye.actions.RestartActions
 import hk.uwu.reareye.generated.AppProperties
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
-import top.yukonga.miuix.kmp.extra.WindowDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
@@ -126,43 +120,6 @@ fun HomeScreen() {
                             style = MiuixTheme.textStyles.subtitle,
                             color = if (isActivated) MiuixTheme.colorScheme.onPrimaryVariant else MiuixTheme.colorScheme.onError
                         )
-                    }
-
-                    val showDialog = remember { mutableStateOf(false) }
-
-                    TextButton(
-                        text = stringResource(R.string.btn_stop_subscreencenter_app),
-                        onClick = { showDialog.value = true }
-                    )
-
-                    WindowDialog(
-                        title = stringResource(R.string.dialog_stop_app),
-                        show = showDialog,
-                        onDismissRequest = { showDialog.value = false } // Close dialog
-                    ) {
-
-                        Row(
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            TextButton(
-                                text = stringResource(R.string.selection_cancel),
-                                onClick = { showDialog.value = false }, // Close dialog
-                                modifier = Modifier.weight(1f)
-                            )
-                            Spacer(Modifier.width(20.dp))
-                            TextButton(
-                                text = stringResource(R.string.selection_confirm),
-                                onClick = {
-                                    showDialog.value = false
-                                    RestartActions.broadcastStopPackage(
-                                        context,
-                                        "com.xiaomi.subscreencenter"
-                                    )
-                                }, // Close dialog
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.textButtonColorsPrimary() // Use theme color
-                            )
-                        }
                     }
                 }
             }

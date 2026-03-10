@@ -5,7 +5,6 @@ import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.factory.configs
 import com.highcapable.yukihookapi.hook.factory.encase
 import com.highcapable.yukihookapi.hook.xposed.proxy.IYukiHookXposedInit
-import hk.uwu.reareye.actions.RestartActions
 import hk.uwu.reareye.hook.scopes.Scope
 import hk.uwu.reareye.hook.scopes.subscreencenter.SubscreenCenterScope
 import hk.uwu.reareye.hook.scopes.system.SystemScope
@@ -29,6 +28,6 @@ class HookEntry : IYukiHookXposedInit {
     }
 
     override fun onHook() {
-        encase(RestartActions.RestartHook(), *scopes.toHooks())
+        encase(*scopes.toHooks())
     }
 }
