@@ -1,0 +1,72 @@
+name: Bug Report
+description: 报告一个 Bug 或问题
+title: '[BUG] '
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 注意事项
+
+        > **建议上传以下附件以便更好地定位问题：**
+        > - 背屏 APK 文件 (`com.xiaomi.subscreencenter`)
+        > - LSPosed 日志压缩包
+
+        ---
+
+  - type: input
+    id: subscreen-version
+    attributes:
+      label: 背屏版本
+      description: 请提供背屏应用 (`com.xiaomi.subscreencenter`) 的版本号
+      placeholder: "例如: RELEASE-1.0.2602041627"
+    validations:
+      required: true
+
+  - type: input
+    id: device-model
+    attributes:
+      label: 设备型号
+      description: 请提供您的设备型号
+      placeholder: "例如: Xiaomi 17 Pro Max"
+    validations:
+      required: true
+
+  - type: input
+    id: os-version
+    attributes:
+      label: 系统版本
+      description: 请提供您的 HyperOS 系统版本
+      placeholder: "例如: OS3.0.304.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem-description
+    attributes:
+      label: 问题描述
+      description: 请简要描述遇到的问题
+      placeholder: 描述您遇到的问题...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: 复现步骤
+      description: 请提供详细的复现步骤
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: attachments
+    attributes:
+      label: 附件
+      description: 请上传相关附件（背屏 APK、LSPosed 日志等）
+      placeholder: 在此处描述您上传的附件内容...
+    validations:
+      required: false
