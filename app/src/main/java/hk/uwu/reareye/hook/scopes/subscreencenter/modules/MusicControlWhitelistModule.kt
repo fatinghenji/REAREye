@@ -20,7 +20,7 @@ class MusicControlWhitelistModule : YukiBaseHooker() {
                     put(it, "music")
                 }
             }
-            if (prefs.getBoolean(ConfigKeys.HOOK_MUSIC_CONTROLS_WHITELIST)) {
+            if (prefs.getBoolean(ConfigKeys.HOOK_MUSIC_CONTROLS_WHITELIST, true)) {
                 field.set(map)
                 XposedBridge.log("Hooked SubscreenCenter whitelist ${field.get()}")
             }

@@ -8,6 +8,10 @@ object ConfigKeys {
 
     const val HOOK_MUSIC_CONTROLS_WHITELIST = "enable_music_controls_whitelist_hook"
     const val MUSIC_CONTROLS_WHITELIST_APPS = "music_controls_whitelist_apps"
+
+    const val HOOK_BACKGROUND_WHITELIST = "enable_background_whitelist_hook"
+    const val BACKGROUND_WHITELIST_APPS = "background_whitelist_apps"
+    const val BACKGROUND_LOCK_APPS = "background_lock_apps"
 }
 
 val REAREyeConfig = listOf(
@@ -31,6 +35,31 @@ val REAREyeConfig = listOf(
                         descriptionRes = R.string.custom_activities_whitelist_apps_desc,
                         type = ConfigType.AppList(defaultValues = emptySet())
                     )
+                )
+            ),
+            ConfigCategory(
+                key = "background_whitelist",
+                titleRes = R.string.cfg_background_whitelist,
+                descriptionRes = R.string.cfg_background_whitelist_desc,
+                items = listOf(
+                    ConfigItem(
+                        key = ConfigKeys.HOOK_BACKGROUND_WHITELIST,
+                        titleRes = R.string.enable_background_whitelist,
+                        descriptionRes = R.string.enable_background_whitelist_desc,
+                        type = ConfigType.BooleanVal(defaultValue = true)
+                    ),
+                    ConfigItem(
+                        key = ConfigKeys.BACKGROUND_WHITELIST_APPS,
+                        titleRes = R.string.background_whitelist_apps,
+                        descriptionRes = R.string.background_whitelist_apps_desc,
+                        type = ConfigType.AppList(defaultValues = emptySet())
+                    ),
+                    ConfigItem(
+                        key = ConfigKeys.BACKGROUND_LOCK_APPS,
+                        titleRes = R.string.background_lock_apps,
+                        descriptionRes = R.string.background_lock_apps_desc,
+                        type = ConfigType.AppList(defaultValues = emptySet())
+                    ),
                 )
             )
         )

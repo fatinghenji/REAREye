@@ -32,4 +32,12 @@
     <string name="enable_music_control_whitelist">启用自定义音乐控件白名单</string>
     <string name="music_control_whitelist_apps">白名单应用</string>
     <string name="music_control_whitelist_apps_desc">选择哪些应用的音乐控件可以在背屏中显示</string>
+    <string name="cfg_background_whitelist">后台白名单</string>
+    <string name="cfg_background_whitelist_desc">使选中的应用保持在后台运行</string>
+    <string name="enable_background_whitelist">启用后台白名单</string>
+    <string name="enable_background_whitelist_desc">该选项为全局生效，请谨慎开启</string>
+    <string name="background_whitelist_apps">白名单应用</string>
+    <string name="background_whitelist_apps_desc">选择哪些应用可以在后台不受系统限制运行</string>
+    <string name="background_lock_apps">锁定的应用</string>
+    <string name="background_lock_apps_desc">以系统用户的身份锁定选中应用的进程</string>
 </resources>
