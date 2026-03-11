@@ -4,6 +4,7 @@ import android.content.Context
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
+import de.robv.android.xposed.XposedBridge
 import hk.uwu.reareye.ui.config.ConfigKeys
 
 class BackgroundWhitelistModule : YukiBaseHooker() {
@@ -21,6 +22,7 @@ class BackgroundWhitelistModule : YukiBaseHooker() {
                         r[it] = true
                     }
                     result = r
+                    XposedBridge.log("Injected apps into dynamic whitelist")
                 }
             }
 
@@ -38,6 +40,7 @@ class BackgroundWhitelistModule : YukiBaseHooker() {
                     prefs.getStringSet(ConfigKeys.BACKGROUND_LOCK_APPS).forEach {
                         method.invoke(it, -100, true)
                     }
+                    XposedBridge.log("Injected apps into application locked state")
                 }
             }
         }
