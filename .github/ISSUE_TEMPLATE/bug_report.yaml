@@ -2,6 +2,7 @@ name: Bug Report
 description: 报告一个 Bug 或问题
 title: '[BUG] '
 labels: ['bug']
+assignees: ['killerprojecte']
 body:
   - type: markdown
     attributes:
