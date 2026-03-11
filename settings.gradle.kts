@@ -37,6 +37,13 @@ fun runGitCommand(vararg args: String): String? = runCatching {
         }
 }.getOrNull()
 
+val versionCode = gitVersionCode
+val branch = gitBranch
+val hash = gitHash
+val buildSuffix = providers.gradleProperty("buildSuffix").orNull as? String ?: "dev"
+
+gradle.extra["versionSuffix"] = "-$hash-r$versionCode-$buildSuffix"
+
 gropify {
     rootProject {
         common {
@@ -47,12 +54,11 @@ gropify {
     projects(":app") {
         android {
             isEnabled = true
-            val buildSuffix = providers.gradleProperty("buildSuffix").orNull as? String ?: "dev"
 
             permanentKeyValues(
-                "git.hash" to gitHash,
-                "git.branch" to gitBranch,
-                "build.number" to gitVersionCode,
+                "git.hash" to hash,
+                "git.branch" to branch,
+                "build.number" to versionCode,
                 "build.channel" to buildSuffix
             )
         }

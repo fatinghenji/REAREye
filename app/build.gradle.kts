@@ -75,6 +75,7 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("release")
+            versionNameSuffix = gradle.extra["versionSuffix"].toString()
         }
     }
     compileOptions {
