@@ -39,4 +39,6 @@
     <string name="background_whitelist_apps_desc">Choose which apps can run in the background without system restrictions</string>
     <string name="background_lock_apps">Locked Apps</string>
     <string name="background_lock_apps_desc">Lock the selected application process as a system user</string>
+    <string name="enable_music_control_force_update">Enable Music Controls Forced Update</string>
+    <string name="enable_music_control_force_update_desc">Force update music controls when track changes</string>
 </resources>
