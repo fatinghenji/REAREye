@@ -41,4 +41,7 @@
     <string name="background_lock_apps_desc">Lock the selected application process as a system user</string>
     <string name="enable_music_control_force_update">Enable Music Controls Forced Update</string>
     <string name="enable_music_control_force_update_desc">Force update music controls when track changes</string>
+    <string name="version_card_title">New version available</string>
+    <string name="version_card_current">Current: %1$s</string>
+    <string name="version_card_latest">Latest: %1$s</string>
 </resources>

@@ -42,4 +42,7 @@
     <string name="background_lock_apps_desc">以系统用户的身份锁定选中应用的进程</string>
     <string name="enable_music_control_force_update">启用强制更新音乐控件</string>
     <string name="enable_music_control_force_update_desc">在曲目发生变化时强制更新音乐控件</string>
+    <string name="version_card_title">有新版本可用</string>
+    <string name="version_card_current">当前: %1$s</string>
+    <string name="version_card_latest">最新: %1$s</string>
 </resources>

@@ -122,4 +122,5 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.miuix)
     implementation(libs.miuix.icons)
+    implementation(libs.okhttp)
 }

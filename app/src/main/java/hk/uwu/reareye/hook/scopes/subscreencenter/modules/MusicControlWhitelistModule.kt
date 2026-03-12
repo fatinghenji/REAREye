@@ -5,11 +5,9 @@ import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import de.robv.android.xposed.XposedBridge
-import de.robv.android.xposed.XposedHelpers
 import hk.uwu.reareye.ui.config.ConfigKeys
 
 class MusicControlWhitelistModule : YukiBaseHooker() {
-    val mediaIdCacheKey = "REAREYE_MUSIC_CONTROL_MEDIA_ID"
     override fun onHook() {
         loadApp("com.xiaomi.subscreencenter") {
             val clz = "p2.a".toClass().resolve()
@@ -41,15 +39,6 @@ class MusicControlWhitelistModule : YukiBaseHooker() {
                         false
                     )
                 ) return@after
-                val oldMediaId = XposedHelpers.getAdditionalInstanceField(instance, mediaIdCacheKey)
-                val metadata = args(0).cast<MediaMetadata>()
-                val mediaId = metadata?.getString(MediaMetadata.METADATA_KEY_MEDIA_ID)
-                if (oldMediaId != mediaId) {
-                    XposedHelpers.setAdditionalInstanceField(instance, mediaIdCacheKey, mediaId)
-                    if (oldMediaId == null) return@after
-                } else {
-                    return@after
-                }
                 val i = instance.asResolver().firstField {
                     name = "this$0"
                 }.get() ?: return@after
