@@ -15,7 +15,7 @@ class RearScreenActivityWhitelistModule : YukiBaseHooker() {
                 name = "isShouldShowOnRearDisplay"
                 returnType = Boolean::class.java
             }.hook().before {
-                if (prefs.getBoolean(ConfigKeys.HOOK_ACTIVITIES_WHITELIST, true)) return@before
+                if (!prefs.getBoolean(ConfigKeys.HOOK_ACTIVITIES_WHITELIST, true)) return@before
                 val whitelist = prefs.getStringSet(ConfigKeys.ACTIVITIES_WHITELIST_APPS)
                 val field = asiRef.firstField {
                     name = "REAR_SCREEN_METADATA_WHITE_LIST"
@@ -32,7 +32,7 @@ class RearScreenActivityWhitelistModule : YukiBaseHooker() {
                 name = "isAllowedToStartOnRearDisplay"
                 returnType = Boolean::class.java
             }.hook().after {
-                if (prefs.getBoolean(ConfigKeys.HOOK_ACTIVITIES_WHITELIST, true)) return@after
+                if (!prefs.getBoolean(ConfigKeys.HOOK_ACTIVITIES_WHITELIST, true)) return@after
                 val whitelist = prefs.getStringSet(ConfigKeys.ACTIVITIES_WHITELIST_APPS)
                 val inWhitelist = result<Boolean>()
                 if (inWhitelist == false) {
