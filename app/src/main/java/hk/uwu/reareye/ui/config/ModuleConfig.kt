@@ -13,6 +13,8 @@ object ConfigKeys {
     const val HOOK_BACKGROUND_WHITELIST = "enable_background_whitelist_hook"
     const val BACKGROUND_WHITELIST_APPS = "background_whitelist_apps"
     const val BACKGROUND_LOCK_APPS = "background_lock_apps"
+
+    const val MISC_HOOK_GMS_UNLOCK = "enable_misc_gms_unlock"
 }
 
 val REAREyeConfig = listOf(
@@ -61,6 +63,18 @@ val REAREyeConfig = listOf(
                         descriptionRes = R.string.background_lock_apps_desc,
                         type = ConfigType.AppList(defaultValues = emptySet())
                     ),
+                )
+            ),
+            ConfigCategory(
+                key = "system_misc",
+                titleRes = R.string.subcategory_misc,
+                descriptionRes = R.string.subcategory_misc_desc,
+                items = listOf(
+                    ConfigItem(
+                        key = ConfigKeys.MISC_HOOK_GMS_UNLOCK,
+                        titleRes = R.string.enable_misc_unlock_gms,
+                        type = ConfigType.BooleanVal(defaultValue = false)
+                    )
                 )
             )
         )

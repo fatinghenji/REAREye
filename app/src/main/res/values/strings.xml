@@ -44,4 +44,7 @@
     <string name="version_card_title">New version available</string>
     <string name="version_card_current">Current: %1$s</string>
     <string name="version_card_latest">Latest: %1$s</string>
+    <string name="enable_misc_unlock_gms">Remove CN Google Play Services restrictions</string>
+    <string name="subcategory_misc">Misc</string>
+    <string name="subcategory_misc_desc">Options unrelated to the rear screen</string>
 </resources>

@@ -45,4 +45,7 @@
     <string name="version_card_title">有新版本可用</string>
     <string name="version_card_current">当前: %1$s</string>
     <string name="version_card_latest">最新: %1$s</string>
+    <string name="subcategory_misc">杂项</string>
+    <string name="enable_misc_unlock_gms">移除国行GMS服务的限制</string>
+    <string name="subcategory_misc_desc">与背屏无关的选项</string>
 </resources>
