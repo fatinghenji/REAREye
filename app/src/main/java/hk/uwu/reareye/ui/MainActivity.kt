@@ -1,5 +1,6 @@
 package hk.uwu.reareye.ui
 
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -23,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import hk.uwu.reareye.R
 import hk.uwu.reareye.ui.screen.ConfigScreen
 import hk.uwu.reareye.ui.screen.HomeScreen
@@ -31,6 +33,7 @@ import top.yukonga.miuix.kmp.basic.FloatingNavigationBarItem
 import top.yukonga.miuix.kmp.basic.NavigationDisplayMode
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Favorites
 import top.yukonga.miuix.kmp.icon.extended.GridView
 import top.yukonga.miuix.kmp.icon.extended.Settings
 
@@ -90,6 +93,20 @@ class MainActivity : ComponentActivity() {
                                     onClick = { currentScreen = "config" },
                                     icon = MiuixIcons.Settings,
                                     label = stringResource(R.string.configuration_navigation)
+                                )
+                                FloatingNavigationBarItem(
+                                    selected = false,
+                                    onClick = {
+                                        val intent = Intent(
+                                            Intent.ACTION_VIEW,
+                                            "https://afdian.com/a/rgbmc".toUri()
+                                        ).apply {
+                                            addCategory(Intent.CATEGORY_BROWSABLE)
+                                        }
+                                        startActivity(intent)
+                                    },
+                                    icon = MiuixIcons.Favorites,
+                                    label = stringResource(R.string.sponsor_navigation)
                                 )
                             }
                         }

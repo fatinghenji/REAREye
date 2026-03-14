@@ -48,4 +48,21 @@
     <string name="subcategory_misc">杂项</string>
     <string name="enable_misc_unlock_gms">移除国行GMS服务的限制</string>
     <string name="subcategory_misc_desc">与背屏无关的选项</string>
+    <string name="tile_switch_to_rear">切换到背屏</string>
+    <string name="tile_switch_to_main">切换回主屏</string>
+    <string name="toast_cast_to_rear">已切换到背屏</string>
+    <string name="toast_cast_to_main">已切换到主屏</string>
+    <string name="toast_switch_failed">切换失败</string>
+    <string name="toast_please_switch_back">请先将 %1$s 切换回主屏</string>
+    <string name="tile_operation_failed">✗ 操作失败</string>
+    <string name="toast_need_root_permission">需要Root权限</string>
+    <string name="toast_grant_root_permission">请授予Root权限</string>
+    <string name="tile_switching">切换中...</string>
+    <string name="tile_no_app_found">✗ 未找到应用</string>
+    <string name="tile_rear_display_occupied">✗ 背屏已占用</string>
+    <string name="tile_main_display_occupied">✗ 主屏已占用</string>
+    <string name="tile_switched">✓ 已切换</string>
+    <string name="tile_failed">✗ 失败</string>
+    <string name="tile_not_previously_moved">✗ 不是先前切换的APP</string>
+    <string name="sponsor_navigation">赞助开发者</string>
 </resources>

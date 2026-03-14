@@ -57,8 +57,11 @@ fun HomeScreen() {
     val coroutineScope = rememberCoroutineScope()
 
     var latestCommitHash by remember { mutableStateOf<String?>(null) }
+
+    @Suppress("VariableNeverRead")
     var isCheckingUpdate by remember { mutableStateOf(false) }
 
+    @Suppress("AssignedValueIsNeverRead")
     LaunchedEffect(Unit) {
         isCheckingUpdate = true
         coroutineScope.launch(Dispatchers.IO) {
@@ -71,7 +74,7 @@ fun HomeScreen() {
                 val response = client.newCall(request).execute()
                 if (response.isSuccessful) {
                     val body = response.body.string()
-                    val json = JSONObject(body ?: "")
+                    val json = JSONObject(body)
                     val sha = json.optString("sha", "")
                     val shortHash = sha.take(7)
                     if (shortHash != AppProperties.GIT_HASH) {
@@ -80,7 +83,7 @@ fun HomeScreen() {
                         }
                     }
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 // Ignore network errors
             } finally {
                 withContext(Dispatchers.Main) {

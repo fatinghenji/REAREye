@@ -47,4 +47,23 @@
     <string name="enable_misc_unlock_gms">Remove CN Google Play Services restrictions</string>
     <string name="subcategory_misc">Misc</string>
     <string name="subcategory_misc_desc">Options unrelated to the rear screen</string>
+
+    <!-- Tile Service -->
+    <string name="tile_switch_to_rear">Switch to Rear</string>
+    <string name="tile_switch_to_main">Switch to Main</string>
+    <string name="toast_cast_to_rear">Switched to rear screen</string>
+    <string name="toast_cast_to_main">Switched to main screen</string>
+    <string name="toast_switch_failed">Failed to switch</string>
+    <string name="toast_please_switch_back">Please switch %1$s back to main screen first</string>
+    <string name="tile_rear_display_occupied">✗ Rear screen is already in use</string>
+    <string name="tile_main_display_occupied">✗ Main screen is already in use</string>
+    <string name="tile_switched">✓ Switched</string>
+    <string name="tile_failed">✗ Failed</string>
+    <string name="tile_operation_failed">✗ Failed to operation</string>
+    <string name="toast_need_root_permission">Require Root Permission</string>
+    <string name="toast_grant_root_permission">Please grant root privileges</string>
+    <string name="tile_switching">Switching...</string>
+    <string name="tile_no_app_found">✗ Application not found</string>
+    <string name="tile_not_previously_moved">✗ Not a previously moved app</string>
+    <string name="sponsor_navigation">Sponsor developers</string>
 </resources>
