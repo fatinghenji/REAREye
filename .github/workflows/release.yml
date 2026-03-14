@@ -1,5 +1,8 @@
 name: Release Build
 
+permissions:
+  contents: write
+
 on:
   push:
     tags:
@@ -49,9 +52,27 @@ jobs:
           name: app-release
           path: app/build/outputs/apk/release/*.apk
 
+      - name: Generate Changelog
+        id: changelog
+        run: |
+          # Get the previous tag
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          # Generate changelog
+          if [ -z "$PREVIOUS_TAG" ]; then
+            echo "### 🎉 Initial Release" > changelog.md
+          else
+            echo "### 📝 Changes since $PREVIOUS_TAG" > changelog.md
+            echo "" >> changelog.md
+            git log --pretty=format:"- %s" $PREVIOUS_TAG..HEAD >> changelog.md
+          fi
+
+          echo "" >> changelog.md
+
       - name: Create Release and Upload Asset
         uses: softprops/action-gh-release@v2
         with:
           files: app/build/outputs/apk/release/*.apk
+          body_path: changelog.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
