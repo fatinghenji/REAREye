@@ -57,7 +57,7 @@
     <string name="tile_operation_failed">✗ 操作失败</string>
     <string name="toast_need_root_permission">需要Root权限</string>
     <string name="toast_grant_root_permission">请授予Root权限</string>
-    <string name="tile_switching">切换中...</string>
+    <string name="tile_switching">切换中…</string>
     <string name="tile_no_app_found">✗ 未找到应用</string>
     <string name="tile_rear_display_occupied">✗ 背屏已占用</string>
     <string name="tile_main_display_occupied">✗ 主屏已占用</string>
@@ -65,4 +65,8 @@
     <string name="tile_failed">✗ 失败</string>
     <string name="tile_not_previously_moved">✗ 不是先前切换的APP</string>
     <string name="sponsor_navigation">赞助开发者</string>
+    <string name="category_thememanager">主题管理</string>
+    <string name="cfg_unlock_video_restrictions">解锁视频壁纸限制</string>
+    <string name="cfg_unlock_video_restrictions_desc">允许您解除视频壁纸的时长限制和最高帧率限制</string>
+    <string name="common_cfg_enable">启用</string>
 </resources>

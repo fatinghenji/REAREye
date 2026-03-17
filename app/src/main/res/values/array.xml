@@ -3,5 +3,6 @@
     <string-array name="module_scope">
         <item>android</item>
         <item>com.xiaomi.subscreencenter</item>
+        <item>com.android.thememanager</item>
     </string-array>
 </resources>

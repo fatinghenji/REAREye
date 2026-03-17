@@ -8,13 +8,15 @@ import com.highcapable.yukihookapi.hook.xposed.proxy.IYukiHookXposedInit
 import hk.uwu.reareye.hook.scopes.Scope
 import hk.uwu.reareye.hook.scopes.subscreencenter.SubscreenCenterScope
 import hk.uwu.reareye.hook.scopes.system.SystemScope
+import hk.uwu.reareye.hook.scopes.thememanager.ThemeManagerScope
 
 @InjectYukiHookWithXposed(entryClassName = "HookEntrance")
 class HookEntry : IYukiHookXposedInit {
 
     private val scopes = listOf(
         SystemScope(),
-        SubscreenCenterScope()
+        SubscreenCenterScope(),
+        ThemeManagerScope()
     )
 
     private fun List<Scope>.toHooks(): Array<YukiBaseHooker> {

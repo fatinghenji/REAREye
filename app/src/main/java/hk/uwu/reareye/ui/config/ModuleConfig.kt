@@ -15,6 +15,8 @@ object ConfigKeys {
     const val BACKGROUND_LOCK_APPS = "background_lock_apps"
 
     const val MISC_HOOK_GMS_UNLOCK = "enable_misc_gms_unlock"
+
+    const val HOOK_UNLOCK_VIDEO_RESTRICTIONS = "enable_unlock_video_restrictions"
 }
 
 val REAREyeConfig = listOf(
@@ -104,6 +106,24 @@ val REAREyeConfig = listOf(
                         titleRes = R.string.enable_music_control_force_update,
                         descriptionRes = R.string.enable_music_control_force_update_desc,
                         type = ConfigType.BooleanVal(defaultValue = false)
+                    )
+                )
+            )
+        )
+    ),
+    ConfigCategory(
+        key = "theme_manager",
+        titleRes = R.string.category_thememanager,
+        subCategories = listOf(
+            ConfigCategory(
+                key = "video_restrictions",
+                titleRes = R.string.cfg_unlock_video_restrictions,
+                descriptionRes = R.string.cfg_unlock_video_restrictions_desc,
+                items = listOf(
+                    ConfigItem(
+                        ConfigKeys.HOOK_UNLOCK_VIDEO_RESTRICTIONS,
+                        titleRes = R.string.common_cfg_enable,
+                        type = ConfigType.BooleanVal(defaultValue = true)
                     )
                 )
             )

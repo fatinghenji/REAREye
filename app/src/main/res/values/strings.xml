@@ -62,8 +62,12 @@
     <string name="tile_operation_failed">✗ Failed to operation</string>
     <string name="toast_need_root_permission">Require Root Permission</string>
     <string name="toast_grant_root_permission">Please grant root privileges</string>
-    <string name="tile_switching">Switching...</string>
+    <string name="tile_switching">Switching…</string>
     <string name="tile_no_app_found">✗ Application not found</string>
     <string name="tile_not_previously_moved">✗ Not a previously moved app</string>
     <string name="sponsor_navigation">Sponsor developers</string>
+    <string name="category_thememanager">Theme Manager</string>
+    <string name="cfg_unlock_video_restrictions">Unlock Video Wallpaper Restrictions</string>
+    <string name="cfg_unlock_video_restrictions_desc">Allows you to remove the duration and maximum frame rate limits for video wallpapers.</string>
+    <string name="common_cfg_enable">Enable</string>
 </resources>
