@@ -21,8 +21,9 @@ plugins {
 
 val gitHash: String by lazy { runGitCommand("rev-parse", "--short", "HEAD") ?: "unknown" }
 val gitBranch: String by lazy {
-    val url = runGitCommand("remote", "get-url", "origin") ?: "unknown"
-    val branch = runGitCommand("branch", "--show-current") ?: "unknown"
+    val url = runGitCommand("remote", "get-url", "origin")
+        ?: "https://github.com/killerprojecte/REAREye.git"
+    val branch = runGitCommand("branch", "--show-current") ?: "master"
     """github\.com[:/](.+?)(\.git)?$""".toRegex().find(url)?.groupValues?.get(1).orEmpty() + "/" + branch
 }
 val gitCommitCount: Int by lazy { runGitCommand("rev-list", "--count", "HEAD")?.toIntOrNull() ?: 0 }

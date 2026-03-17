@@ -9,7 +9,7 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
     override fun onHook() {
         loadApp("com.android.thememanager") {
             val editorCfgClz =
-                "com.android.thememanager.videoedit.VideoEditorConfig".toClass().resolve()
+                "com.android.thememanager.videoedit.VideoEditorConfig".toClass()
             val editorCfgBuilderClz =
                 $$"com.android.thememanager.videoedit.VideoEditorConfig$k".toClass().resolve()
             editorCfgBuilderClz.firstMethod {
