@@ -68,8 +68,9 @@ fun HomeScreen() {
             try {
                 val client = OkHttpClient()
                 val branch = AppProperties.GIT_BRANCH.split("/")
+                val commitBranch = if (branch[2] == "unknown") "master" else branch[2]
                 val request = Request.Builder()
-                    .url("https://api.github.com/repos/${branch[0]}/${branch[1]}/commits/${branch[2]}")
+                    .url("https://api.github.com/repos/${branch[0]}/${branch[1]}/commits/$commitBranch")
                     .build()
                 val response = client.newCall(request).execute()
                 if (response.isSuccessful) {
