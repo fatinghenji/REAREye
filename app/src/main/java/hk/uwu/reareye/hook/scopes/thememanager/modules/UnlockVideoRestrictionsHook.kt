@@ -21,17 +21,18 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                         true
                     )
                 ) return@before
-                val isCallFromRearScreen = instance.asResolver().field {
+                val ref = instance.asResolver()
+                val isCallFromRearScreen = ref.field {
                     type = Boolean::class.java
                 }.all { it.get() == true }
                 if (isCallFromRearScreen) {
                     XposedBridge.log("Overwriting video editor max duration & frame-rate limitations")
                     // 视频长度
-                    editorCfgBuilderClz.firstField {
+                    ref.firstField {
                         type = Long::class.java
                     }.set(Long.MAX_VALUE)
                     // 帧率限制 120帧给背屏够了
-                    editorCfgBuilderClz.firstField {
+                    ref.firstField {
                         type = Int::class.java
                     }.set(120)
                 }
