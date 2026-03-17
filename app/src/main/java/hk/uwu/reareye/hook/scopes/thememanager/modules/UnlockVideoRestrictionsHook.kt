@@ -1,5 +1,6 @@
 package hk.uwu.reareye.hook.scopes.thememanager.modules
 
+import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import de.robv.android.xposed.XposedBridge
@@ -20,7 +21,7 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                         true
                     )
                 ) return@before
-                val isCallFromRearScreen = editorCfgBuilderClz.field {
+                val isCallFromRearScreen = instance.asResolver().field {
                     type = Boolean::class.java
                 }.all { it.get() == true }
                 if (isCallFromRearScreen) {
