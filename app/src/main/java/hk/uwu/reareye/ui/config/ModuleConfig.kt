@@ -17,6 +17,7 @@ object ConfigKeys {
     const val MISC_HOOK_GMS_UNLOCK = "enable_misc_gms_unlock"
 
     const val HOOK_UNLOCK_VIDEO_RESTRICTIONS = "enable_unlock_video_restrictions"
+    const val HOOK_UNLOCK_TEMPLATE_MAXIMUM_LIMIT = "enable_unlock_template_maximum_limit"
 }
 
 val REAREyeConfig = listOf(
@@ -114,18 +115,18 @@ val REAREyeConfig = listOf(
     ConfigCategory(
         key = "theme_manager",
         titleRes = R.string.category_thememanager,
-        subCategories = listOf(
-            ConfigCategory(
-                key = "video_restrictions",
+        items = listOf(
+            ConfigItem(
+                key = ConfigKeys.HOOK_UNLOCK_VIDEO_RESTRICTIONS,
                 titleRes = R.string.cfg_unlock_video_restrictions,
                 descriptionRes = R.string.cfg_unlock_video_restrictions_desc,
-                items = listOf(
-                    ConfigItem(
-                        ConfigKeys.HOOK_UNLOCK_VIDEO_RESTRICTIONS,
-                        titleRes = R.string.common_cfg_enable,
-                        type = ConfigType.BooleanVal(defaultValue = true)
-                    )
-                )
+                type = ConfigType.BooleanVal(defaultValue = true)
+            ),
+            ConfigItem(
+                key = ConfigKeys.HOOK_UNLOCK_TEMPLATE_MAXIMUM_LIMIT,
+                titleRes = R.string.cfg_unlock_template_maximum_limit,
+                descriptionRes = R.string.cfg_unlock_template_maximum_limit_desc,
+                type = ConfigType.BooleanVal(defaultValue = true)
             )
         )
     )

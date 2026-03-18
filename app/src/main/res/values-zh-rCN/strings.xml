@@ -69,4 +69,6 @@
     <string name="cfg_unlock_video_restrictions">解锁视频壁纸限制</string>
     <string name="cfg_unlock_video_restrictions_desc">允许您解除视频壁纸的时长限制和最高帧率限制</string>
     <string name="common_cfg_enable">启用</string>
+    <string name="cfg_unlock_template_maximum_limit">解锁背屏模板最大数量限制</string>
+    <string name="cfg_unlock_template_maximum_limit_desc">启用该选项将允许你创建超过15个限制的背屏模板</string>
 </resources>

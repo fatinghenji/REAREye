@@ -67,7 +67,9 @@
     <string name="tile_not_previously_moved">✗ Not a previously moved app</string>
     <string name="sponsor_navigation">Sponsor developers</string>
     <string name="category_thememanager">Theme Manager</string>
-    <string name="cfg_unlock_video_restrictions">Unlock Video Wallpaper Restrictions</string>
+    <string name="cfg_unlock_video_restrictions">Unlock Video Wwallpaper Restrictions</string>
     <string name="cfg_unlock_video_restrictions_desc">Allows you to remove the duration and maximum frame rate limits for video wallpapers.</string>
     <string name="common_cfg_enable">Enable</string>
+    <string name="cfg_unlock_template_maximum_limit">Unlock Maximum Template Limit</string>
+    <string name="cfg_unlock_template_maximum_limit_desc">Enabling this option will allow you to create more than 15 rear screen templates</string>
 </resources>
