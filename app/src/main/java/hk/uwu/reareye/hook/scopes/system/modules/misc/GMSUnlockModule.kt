@@ -36,7 +36,10 @@ class GMSUnlockModule : YukiBaseHooker() {
                     }
                 }
             }
-            clz.constructor().build().hookAll().after {
+            clz.firstConstructor {
+                parameterCount = 0
+            }.hook().after {
+                XposedBridge.log("Hooking SystemConfig constructor")
                 if (prefs.getBoolean(ConfigKeys.MISC_HOOK_GMS_UNLOCK, false)) {
                     remove(instance, true)
                 }
@@ -44,9 +47,13 @@ class GMSUnlockModule : YukiBaseHooker() {
 
             clz.firstMethod {
                 name = "getAvailableFeatures"
-            }.hook().before {
-                if (prefs.getBoolean(ConfigKeys.MISC_HOOK_GMS_UNLOCK, false)) {
-                    remove(instance, false)
+            }.hook {
+                before {
+                    if (prefs.getBoolean(ConfigKeys.MISC_HOOK_GMS_UNLOCK, false)) {
+                        remove(instance, false)
+                        XposedBridge.log("Features has been patched, remove this hook")
+                        removeSelf()
+                    }
                 }
             }
         }
