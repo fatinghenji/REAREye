@@ -1,205 +1,211 @@
-@file:Suppress("AssignedValueIsNeverRead")
-
 package hk.uwu.reareye.ui.screen
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import hk.uwu.reareye.R
-import hk.uwu.reareye.ui.components.AppSelectorDialog
+import hk.uwu.reareye.ui.components.config.AppListSelectorScreen
+import hk.uwu.reareye.ui.components.config.ConfigNodeRow
 import hk.uwu.reareye.ui.config.ConfigCategory
+import hk.uwu.reareye.ui.config.ConfigGroup
 import hk.uwu.reareye.ui.config.ConfigItem
-import hk.uwu.reareye.ui.config.ConfigType
+import hk.uwu.reareye.ui.config.ConfigNode
 import hk.uwu.reareye.ui.config.PrefsManager
 import hk.uwu.reareye.ui.config.REAREyeConfig
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.TopAppBar
-import top.yukonga.miuix.kmp.extra.SuperArrow
-import top.yukonga.miuix.kmp.extra.SuperSwitch
+import top.yukonga.miuix.kmp.utils.overScrollVertical
+import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+
+private sealed interface ConfigRoute {
+    data object Root : ConfigRoute
+    data class Category(val category: ConfigCategory) : ConfigRoute
+    data class AppList(val item: ConfigItem) : ConfigRoute
+}
 
 @Composable
-fun ConfigScreen() {
+fun ConfigScreen(onAppListModeChange: (Boolean) -> Unit = {}) {
     val context = LocalContext.current
     val prefsManager = remember { PrefsManager(context) }
 
-    var showAppSelector by remember { mutableStateOf<String?>(null) }
-    var categoryStack by remember { mutableStateOf(emptyList<ConfigCategory>()) }
+    var routeStack by remember { mutableStateOf(listOf<ConfigRoute>(ConfigRoute.Root)) }
+    val currentRoute = routeStack.last()
+    val isAppListMode = currentRoute is ConfigRoute.AppList
+    val scrollBehavior = MiuixScrollBehavior()
 
-    val currentCategory = categoryStack.lastOrNull()
+    LaunchedEffect(isAppListMode) {
+        onAppListModeChange(isAppListMode)
+    }
+
+    BackHandler(enabled = routeStack.size > 1) {
+        routeStack = routeStack.dropLast(1)
+    }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = currentCategory?.let { stringResource(it.titleRes) }
-                    ?: stringResource(R.string.configuration_title)
-            )
+            if (!isAppListMode) {
+                TopAppBar(
+                    title = when (currentRoute) {
+                        ConfigRoute.Root -> stringResource(R.string.configuration_title)
+                        is ConfigRoute.Category -> stringResource(currentRoute.category.titleRes)
+                    },
+                    scrollBehavior = scrollBehavior
+                )
+            }
         }
     ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            BackHandler(enabled = categoryStack.isNotEmpty()) {
-                categoryStack = categoryStack.dropLast(1)
-            }
+        AnimatedContent(
+            targetState = routeStack,
+            transitionSpec = {
+                val forward = targetState.size >= initialState.size
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            AnimatedContent(
-                targetState = currentCategory,
-                transitionSpec = {
-                    fadeIn(animationSpec = tween(300)) togetherWith fadeOut(
-                        animationSpec = tween(
-                            300
-                        )
+                (fadeIn(
+                    animationSpec = tween(
+                        durationMillis = 260,
+                        delayMillis = 40,
+                        easing = LinearOutSlowInEasing,
                     )
-                },
-                label = "CategoryTransition"
-            ) { targetCategory ->
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    if (targetCategory == null) {
-                        item {
-                            Card(modifier = Modifier.fillMaxWidth()) {
-                                Column(modifier = Modifier.padding(16.dp)) {
-                                    REAREyeConfig.forEachIndexed { index, category ->
-                                        CategoryRow(category = category, onClick = {
-                                            categoryStack = categoryStack + category
-                                        })
-                                        if (index < REAREyeConfig.size - 1) {
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                        }
-                                    }
-                                }
-                            }
+                ) + slideInHorizontally(
+                    animationSpec = tween(
+                        durationMillis = 320,
+                        easing = FastOutSlowInEasing,
+                    )
+                ) { fullWidth ->
+                    if (forward) fullWidth / 5 else -fullWidth / 5
+                }) togetherWith (
+                        fadeOut(
+                            animationSpec = tween(
+                                durationMillis = 180,
+                                easing = FastOutLinearInEasing,
+                            )
+                        ) + slideOutHorizontally(
+                            animationSpec = tween(
+                                durationMillis = 240,
+                                easing = FastOutLinearInEasing,
+                            )
+                        ) { fullWidth ->
+                            if (forward) -fullWidth / 6 else fullWidth / 6
                         }
-                    } else {
-                        if (targetCategory.items.isNotEmpty()) {
-                            item {
-                                Card(modifier = Modifier.fillMaxWidth()) {
-                                    Column(modifier = Modifier.padding(16.dp)) {
-                                        targetCategory.items.forEachIndexed { index, item ->
-                                            ConfigItemView(
-                                                item = item,
-                                                prefsManager = prefsManager,
-                                                onOpenAppSelector = {
-                                                    showAppSelector = it
-                                                }
-                                            )
-                                            if (index < targetCategory.items.size - 1) {
-                                                Spacer(modifier = Modifier.height(8.dp))
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                    )
+            },
+            label = "ConfigRouteTransition"
+        ) { stack ->
+            val route = stack.last()
+            when (route) {
+                ConfigRoute.Root -> ConfigNodeList(
+                    nodes = REAREyeConfig,
+                    prefsManager = prefsManager,
+                    contentPadding = paddingValues,
+                    scrollBehavior = scrollBehavior,
+                    onOpenCategory = { category ->
+                        routeStack = routeStack + ConfigRoute.Category(category)
+                    },
+                    onOpenAppList = { item ->
+                        routeStack = routeStack + ConfigRoute.AppList(item)
+                    }
+                )
 
-                        if (targetCategory.subCategories.isNotEmpty()) {
-                            item {
-                                Card(modifier = Modifier.fillMaxWidth()) {
-                                    Column(modifier = Modifier.padding(16.dp)) {
-                                        targetCategory.subCategories.forEachIndexed { index, subCat ->
-                                            CategoryRow(category = subCat, onClick = {
-                                                categoryStack = categoryStack + subCat
-                                            })
-                                            if (index < targetCategory.subCategories.size - 1) {
-                                                Spacer(modifier = Modifier.height(8.dp))
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                is ConfigRoute.Category -> ConfigNodeList(
+                    nodes = route.category.children,
+                    prefsManager = prefsManager,
+                    contentPadding = paddingValues,
+                    scrollBehavior = scrollBehavior,
+                    onOpenCategory = { category ->
+                        routeStack = routeStack + ConfigRoute.Category(category)
+                    },
+                    onOpenAppList = { item ->
+                        routeStack = routeStack + ConfigRoute.AppList(item)
+                    }
+                )
+
+                is ConfigRoute.AppList -> AppListSelectorScreen(
+                    configItem = route.item,
+                    prefsManager = prefsManager,
+                    onCancel = { routeStack = routeStack.dropLast(1) },
+                    onSave = { routeStack = routeStack.dropLast(1) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConfigNodeList(
+    nodes: List<ConfigNode>,
+    prefsManager: PrefsManager,
+    contentPadding: PaddingValues,
+    scrollBehavior: ScrollBehavior,
+    onOpenCategory: (ConfigCategory) -> Unit,
+    onOpenAppList: (ConfigItem) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxHeight()
+            .scrollEndHaptic()
+            .overScrollVertical()
+            .nestedScroll(scrollBehavior.nestedScrollConnection)
+            .padding(horizontal = 12.dp),
+        contentPadding = contentPadding,
+        overscrollEffect = null
+    ) {
+        itemsIndexed(nodes, key = { index, node -> node.key ?: "node_$index" }) { index, node ->
+            if (node is ConfigGroup) {
+                Card(
+                    modifier = Modifier
+                        .padding(top = if (index == 0) 12.dp else 8.dp)
+                        .fillMaxWidth()
+                ) {
+                    node.children.forEach { child ->
+                        ConfigNodeRow(
+                            node = child,
+                            prefsManager = prefsManager,
+                            onOpenCategory = onOpenCategory,
+                            onOpenAppList = onOpenAppList
+                        )
                     }
                 }
-            }
-        }
-    }
-
-    showAppSelector?.let {
-        AppSelectorDialog(
-            configKey = it,
-            prefsManager = prefsManager,
-            onDismiss = {
-                @Suppress("AssignedValueIsNeverRead")
-                showAppSelector = null
-            }
-        )
-    }
-}
-
-@Composable
-fun CategoryRow(category: ConfigCategory, onClick: () -> Unit) {
-    SuperArrow(
-        title = stringResource(category.titleRes),
-        summary = category.descriptionRes?.let {
-            stringResource(it)
-        },
-        onClick = onClick
-    )
-}
-
-@Composable
-fun ConfigItemView(
-    item: ConfigItem,
-    prefsManager: PrefsManager,
-    onOpenAppSelector: (String) -> Unit
-) {
-    when (val type = item.type) {
-        is ConfigType.BooleanVal -> {
-            var checked by remember {
-                mutableStateOf(prefsManager.getBoolean(item.key, type.defaultValue))
-            }
-            SuperSwitch(
-                title = stringResource(item.titleRes),
-                summary = item.descriptionRes?.let {
-                    stringResource(it)
-                },
-                checked = checked,
-                onCheckedChange = {
-                    checked = it
-                    prefsManager.putBoolean(item.key, it)
+            } else {
+                Card(
+                    modifier = Modifier
+                        .padding(top = if (index == 0) 12.dp else 8.dp)
+                        .fillMaxWidth()
+                ) {
+                    ConfigNodeRow(
+                        node = node,
+                        prefsManager = prefsManager,
+                        onOpenCategory = onOpenCategory,
+                        onOpenAppList = onOpenAppList
+                    )
                 }
-            )
-        }
-
-        is ConfigType.AppList -> {
-            SuperArrow(
-                title = stringResource(item.titleRes),
-                summary = item.descriptionRes?.let {
-                    stringResource(it)
-                },
-                onClick = {
-                    onOpenAppSelector(item.key)
-                }
-            )
+            }
         }
     }
 }

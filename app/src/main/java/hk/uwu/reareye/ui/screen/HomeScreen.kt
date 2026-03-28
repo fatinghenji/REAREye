@@ -1,226 +1,356 @@
 package hk.uwu.reareye.ui.screen
 
-import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
+import androidx.compose.ui.unit.sp
 import com.highcapable.yukihookapi.YukiHookAPI
 import hk.uwu.reareye.R
 import hk.uwu.reareye.generated.AppProperties
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.ListPopupColumn
+import top.yukonga.miuix.kmp.basic.ListPopupDefaults
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import top.yukonga.miuix.kmp.basic.PopupPositionProvider
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SpinnerDefaults
+import top.yukonga.miuix.kmp.basic.SpinnerEntry
+import top.yukonga.miuix.kmp.basic.SpinnerItemImpl
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.extra.SuperListPopup
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.MoreCircle
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.PressFeedbackType
+import top.yukonga.miuix.kmp.utils.overScrollVertical
+import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+
+private object UpdateInfoCache {
+    val lock = Mutex()
+    var loaded = false
+    var latestCommitHash: String? = null
+}
+
+private suspend fun fetchLatestCommitHashFromNetwork(): String? {
+    return withContext(Dispatchers.IO) {
+        runCatching {
+            val branchParts = AppProperties.GIT_BRANCH.split("/")
+            val owner = branchParts.getOrNull(0) ?: "killerprojecte"
+            val repo = branchParts.getOrNull(1) ?: "REAREye"
+            val branch = branchParts.getOrNull(2)?.takeIf { it.isNotBlank() && it != "unknown" }
+                ?: "master"
+            val request = Request.Builder()
+                .url("https://api.github.com/repos/$owner/$repo/commits/$branch")
+                .build()
+            val response = OkHttpClient().newCall(request).execute()
+            if (response.isSuccessful) {
+                JSONObject(response.body.string()).optString("sha", "").take(7).ifBlank { null }
+            } else {
+                null
+            }
+        }.getOrNull()
+    }
+}
 
 @Composable
 fun HomeScreen() {
     val isActivated = YukiHookAPI.Status.isModuleActive
-
-    val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
+    val showTopMenu = remember { mutableStateOf(false) }
+    val scrollBehavior = MiuixScrollBehavior()
 
     var latestCommitHash by remember { mutableStateOf<String?>(null) }
-
-    @Suppress("VariableNeverRead")
     var isCheckingUpdate by remember { mutableStateOf(false) }
 
-    @Suppress("AssignedValueIsNeverRead")
     LaunchedEffect(Unit) {
-        isCheckingUpdate = true
-        coroutineScope.launch(Dispatchers.IO) {
-            try {
-                val client = OkHttpClient()
-                val branch = AppProperties.GIT_BRANCH.split("/")
-                val commitBranch = if (branch[2] == "unknown") "master" else branch[2]
-                val request = Request.Builder()
-                    .url("https://api.github.com/repos/${branch[0]}/${branch[1]}/commits/$commitBranch")
-                    .build()
-                val response = client.newCall(request).execute()
-                if (response.isSuccessful) {
-                    val body = response.body.string()
-                    val json = JSONObject(body)
-                    val sha = json.optString("sha", "")
-                    val shortHash = sha.take(7)
-                    if (shortHash != AppProperties.GIT_HASH) {
-                        withContext(Dispatchers.Main) {
-                            latestCommitHash = shortHash
-                        }
-                    }
-                }
-            } catch (_: Exception) {
-                // Ignore network errors
-            } finally {
-                withContext(Dispatchers.Main) {
-                    isCheckingUpdate = false
-                }
-            }
+        if (UpdateInfoCache.loaded) {
+            latestCommitHash = UpdateInfoCache.latestCommitHash
+            isCheckingUpdate = false
+            return@LaunchedEffect
         }
+
+        isCheckingUpdate = true
+        latestCommitHash = UpdateInfoCache.lock.withLock {
+            if (!UpdateInfoCache.loaded) {
+                UpdateInfoCache.latestCommitHash = fetchLatestCommitHashFromNetwork()
+                UpdateInfoCache.loaded = true
+            }
+            UpdateInfoCache.latestCommitHash
+        }
+        isCheckingUpdate = false
+    }
+
+    val statusTitle = if (isActivated) {
+        androidx.compose.ui.res.stringResource(R.string.home_status_working)
+    } else {
+        androidx.compose.ui.res.stringResource(R.string.home_status_inactive)
     }
 
     Scaffold(
         topBar = {
-            Box(contentAlignment = Alignment.CenterEnd) {
-                TopAppBar(title = stringResource(R.string.app_name))
-                Image(
-                    painter = painterResource(id = R.drawable.ic_github),
-                    contentDescription = "GitHub",
-                    colorFilter = ColorFilter.tint(MiuixTheme.colorScheme.onBackground),
-                    modifier = Modifier
-                        .padding(end = 16.dp)
-                        .size(24.dp)
-                        .clickable {
-                            val intent =
-                                Intent(
-                                    Intent.ACTION_VIEW,
-                                    "https://github.com/killerprojecte/REAREye".toUri()
-                                )
-                            context.startActivity(intent)
-                        }
-                )
-            }
-        }
+            TopAppBar(
+                title = "REAREye",
+                actions = {
+                    IconButton(
+                        modifier = Modifier.padding(end = 16.dp),
+                        onClick = { showTopMenu.value = true },
+                        holdDownState = showTopMenu.value,
+                    ) {
+                        Icon(
+                            imageVector = MiuixIcons.Regular.MoreCircle,
+                            contentDescription = null,
+                            tint = MiuixTheme.colorScheme.onBackground,
+                        )
+                    }
+                },
+                scrollBehavior = scrollBehavior,
+            )
+        },
+        contentWindowInsets = WindowInsets.systemBars,
     ) { paddingValues ->
         var visible by remember { mutableStateOf(false) }
         LaunchedEffect(Unit) { visible = true }
 
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
-                .padding(16.dp)
+                .scrollEndHaptic()
+                .overScrollVertical()
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
+                .padding(horizontal = 12.dp),
+            contentPadding = PaddingValues(
+                top = paddingValues.calculateTopPadding() + 12.dp,
+                bottom = paddingValues.calculateBottomPadding() + 12.dp,
+            ),
+            overscrollEffect = null,
         ) {
-            AnimatedVisibility(
-                visible = visible,
-                enter = fadeIn(tween(600)) + slideInVertically(tween(600)) { it / 4 }
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    // Update reminder card
-                    AnimatedVisibility(
-                        visible = latestCommitHash != null,
-                        enter = fadeIn(tween(600)) + slideInVertically(tween(600)) { it / 4 }
-                    ) {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            insideMargin = PaddingValues(2.dp),
-                            colors = CardDefaults.defaultColors(
-                                MiuixTheme.colorScheme.error,
-                                MiuixTheme.colorScheme.errorContainer
-                            ),
-                            showIndication = true,
-                            pressFeedbackType = PressFeedbackType.Sink
-                        ) {
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                insideMargin = PaddingValues(16.dp),
-                                cornerRadius = 15.dp,
-                                colors = CardDefaults.defaultColors(
-                                    MiuixTheme.colorScheme.errorContainer,
-                                    MiuixTheme.colorScheme.onErrorContainer
-                                ),
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.version_card_title),
-                                    style = MiuixTheme.textStyles.title3,
-                                    color = MiuixTheme.colorScheme.onBackground
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Text(
-                                    text = stringResource(
-                                        R.string.version_card_current,
-                                        AppProperties.GIT_HASH
-                                    ),
-                                    style = MiuixTheme.textStyles.subtitle,
-                                    color = MiuixTheme.colorScheme.onBackground
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = stringResource(
-                                        R.string.version_card_latest,
-                                        latestCommitHash ?: "ERROR"
-                                    ),
-                                    style = MiuixTheme.textStyles.subtitle,
-                                    color = MiuixTheme.colorScheme.onBackground
-                                )
-                            }
-                        }
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    RevealItem(visible = visible, delayMillis = 0) {
+                        WorkingStatusCard(
+                            statusTitle = statusTitle,
+                            statusVersion = AppProperties.BUILD_NUMBER.toString(),
+                            activated = isActivated,
+                        )
                     }
 
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        insideMargin = PaddingValues(16.dp),
-                        colors = if (isActivated) CardDefaults.defaultColors(
-                            color = MiuixTheme.colorScheme.primaryVariant
-                        ) else CardDefaults.defaultColors(
-                            color = MiuixTheme.colorScheme.error
-                        ),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.status_card),
-                            style = MiuixTheme.textStyles.title3,
-                            color = if (isActivated) MiuixTheme.colorScheme.onPrimaryVariant else MiuixTheme.colorScheme.onError
+                    RevealItem(visible = visible, delayMillis = 50) {
+                        ModuleInfoCard(
+                            activated = isActivated,
+                            moduleVersion =
+                                "${AppProperties.PROJECT_APP_VERSION_NAME}-${AppProperties.GIT_HASH}-r${AppProperties.BUILD_NUMBER}-${AppProperties.BUILD_CHANNEL}",
+                            releaseChannel = AppProperties.BUILD_CHANNEL,
                         )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = stringResource(
-                                R.string.module_version,
-                                "${AppProperties.PROJECT_APP_VERSION_NAME}-${AppProperties.GIT_HASH}-r${AppProperties.BUILD_NUMBER}-${AppProperties.BUILD_CHANNEL}"
-                            ),
-                            style = MiuixTheme.textStyles.subtitle,
-                            color = if (isActivated) MiuixTheme.colorScheme.onPrimaryVariant else MiuixTheme.colorScheme.onError
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = if (isActivated) stringResource(R.string.module_is_activated) else stringResource(
-                                R.string.module_not_activated
-                            ),
-                            style = MiuixTheme.textStyles.subtitle,
-                            color = if (isActivated) MiuixTheme.colorScheme.onPrimaryVariant else MiuixTheme.colorScheme.onError
+                    }
+
+                    RevealItem(visible = visible, delayMillis = 100) {
+                        UpdateInfoCard(
+                            currentHash = AppProperties.GIT_HASH,
+                            latestHash = latestCommitHash,
+                            checking = isCheckingUpdate,
                         )
                     }
                 }
             }
         }
+
+        SuperListPopup(
+            show = showTopMenu.value,
+            popupModifier = Modifier,
+            popupPositionProvider = ListPopupDefaults.ContextMenuPositionProvider,
+            alignment = PopupPositionProvider.Align.TopEnd,
+            enableWindowDim = true,
+            onDismissRequest = { showTopMenu.value = false },
+            maxHeight = null,
+            minWidth = 200.dp,
+            renderInRootScaffold = true,
+            content = {
+                ListPopupColumn {
+                    SpinnerItemImpl(
+                        entry = SpinnerEntry(title = androidx.compose.ui.res.stringResource(R.string.home_menu_placeholder)),
+                        entryCount = 1,
+                        isSelected = false,
+                        index = 0,
+                        spinnerColors = SpinnerDefaults.spinnerColors(),
+                        onSelectedIndexChange = { showTopMenu.value = false },
+                    )
+                }
+            })
     }
+}
+
+@Composable
+private fun RevealItem(
+    visible: Boolean,
+    delayMillis: Int,
+    content: @Composable () -> Unit,
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(
+            animationSpec = tween(
+                durationMillis = 320,
+                delayMillis = delayMillis,
+                easing = LinearOutSlowInEasing,
+            )
+        ) + slideInVertically(
+            animationSpec = tween(
+                durationMillis = 420,
+                delayMillis = delayMillis,
+                easing = FastOutSlowInEasing,
+            )
+        ) { it / 8 },
+        exit = fadeOut(
+            animationSpec = tween(
+                durationMillis = 120,
+                easing = FastOutLinearInEasing,
+            )
+        ),
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun WorkingStatusCard(statusTitle: String, statusVersion: String, activated: Boolean) {
+    val cardColor = if (activated) Color(0xFFDFFAE4) else Color(0xFFF8E2E2)
+    val iconColor = if (activated) Color(0xFF36D167) else Color(0xFFE06767)
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(190.dp),
+        colors = CardDefaults.defaultColors(color = cardColor),
+        insideMargin = PaddingValues(14.dp),
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Icon(
+                imageVector = Icons.Outlined.CheckCircle,
+                contentDescription = null,
+                tint = iconColor,
+                modifier = Modifier
+                    .size(198.dp)
+                    .align(Alignment.BottomEnd)
+                    .offset(x = 72.dp, y = 56.dp),
+            )
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(text = statusTitle, fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = androidx.compose.ui.res.stringResource(
+                        R.string.home_working_version,
+                        statusVersion
+                    ),
+                    style = MiuixTheme.textStyles.body2,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModuleInfoCard(activated: Boolean, moduleVersion: String, releaseChannel: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        insideMargin = PaddingValues(16.dp),
+    ) {
+        InfoLine(
+            title = androidx.compose.ui.res.stringResource(R.string.status_card),
+            value = if (activated) {
+                androidx.compose.ui.res.stringResource(R.string.module_is_activated)
+            } else {
+                androidx.compose.ui.res.stringResource(R.string.module_not_activated)
+            },
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        InfoLine(
+            title = androidx.compose.ui.res.stringResource(R.string.module_version_label),
+            value = moduleVersion,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        InfoLine(
+            title = androidx.compose.ui.res.stringResource(R.string.home_status_channel),
+            value = releaseChannel,
+        )
+    }
+}
+
+@Composable
+private fun UpdateInfoCard(currentHash: String, latestHash: String?, checking: Boolean) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        insideMargin = PaddingValues(16.dp),
+    ) {
+        Text(
+            text = androidx.compose.ui.res.stringResource(R.string.home_update_title),
+            style = MiuixTheme.textStyles.title3,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        InfoLine(
+            title = androidx.compose.ui.res.stringResource(R.string.home_update_current),
+            value = currentHash,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        InfoLine(
+            title = androidx.compose.ui.res.stringResource(R.string.home_update_latest),
+            value = when {
+                checking -> androidx.compose.ui.res.stringResource(R.string.home_update_checking)
+                latestHash.isNullOrBlank() -> androidx.compose.ui.res.stringResource(R.string.home_update_unknown)
+                else -> latestHash
+            },
+        )
+    }
+}
+
+@Composable
+private fun InfoLine(title: String, value: String) {
+    Text(text = title, style = MiuixTheme.textStyles.headline1)
+    Spacer(modifier = Modifier.height(2.dp))
+    Text(
+        text = value,
+        style = MiuixTheme.textStyles.body2,
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+    )
 }

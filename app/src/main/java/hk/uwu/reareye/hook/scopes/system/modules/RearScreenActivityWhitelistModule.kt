@@ -14,24 +14,36 @@ class RearScreenActivityWhitelistModule : YukiBaseHooker() {
             asiRef.firstMethod {
                 name = "isShouldShowOnRearDisplay"
                 returnType = Boolean::class.java
-            }.hook().before {
-                if (!prefs.getBoolean(ConfigKeys.HOOK_ACTIVITIES_WHITELIST, true)) return@before
-                val whitelist = prefs.getStringSet(ConfigKeys.ACTIVITIES_WHITELIST_APPS)
-                val field = asiRef.firstField {
-                    name = "REAR_SCREEN_METADATA_WHITE_LIST"
-                    type = Set::class.java
+            }.hook {
+                before {
+                    if (!prefs.getBoolean(ConfigKeys.HOOK_ACTIVITIES_WHITELIST, true)) return@before
+                    val whitelist = prefs.getStringSet(ConfigKeys.ACTIVITIES_WHITELIST_APPS)
+                    val field = asiRef.firstField {
+                        name = "REAR_SCREEN_METADATA_WHITE_LIST"
+                        type = Set::class.java
+                    }
+                    val set = field.get<HashSet<String>>() ?: return@before
+                    set.clear()
+                    set.add("com.retroarch")
+                    set.addAll(whitelist)
+                    XposedBridge.log("Injected Activities Whitelist")
                 }
-                val set = field.get<HashSet<String>>() ?: return@before
-                set.clear()
-                set.add("com.retroarch")
-                set.addAll(whitelist)
-                XposedBridge.log("Injected Activities Whitelist")
+
+                after {
+                    if (prefs.getBoolean(ConfigKeys.ALLOW_ALL_ACTIVITIES, false)) {
+                        resultTrue()
+                    }
+                }
             }
 
             asiRef.firstMethod {
                 name = "isAllowedToStartOnRearDisplay"
                 returnType = Boolean::class.java
             }.hook().after {
+                if (prefs.getBoolean(ConfigKeys.ALLOW_ALL_ACTIVITIES, false)) {
+                    resultTrue()
+                    return@after
+                }
                 if (!prefs.getBoolean(ConfigKeys.HOOK_ACTIVITIES_WHITELIST, true)) return@after
                 val whitelist = prefs.getStringSet(ConfigKeys.ACTIVITIES_WHITELIST_APPS)
                 val inWhitelist = result<Boolean>()
@@ -45,6 +57,15 @@ class RearScreenActivityWhitelistModule : YukiBaseHooker() {
                         resultTrue()
                         XposedBridge.log("Allow starting $packageName while rear screen is locked")
                     }
+                }
+            }
+
+            asiRef.firstMethod {
+                name = "handlerTransitionFinished"
+            }.hook().before {
+                if (prefs.getBoolean(ConfigKeys.HOOK_SKIP_LOCK_BACK_HOME, false)) {
+                    val arg = args(3)
+                    arg.setFalse()
                 }
             }
         }

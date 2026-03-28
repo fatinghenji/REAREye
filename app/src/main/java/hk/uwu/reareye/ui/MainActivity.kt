@@ -1,20 +1,28 @@
 package hk.uwu.reareye.ui
 
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Cottage
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,18 +32,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.core.net.toUri
 import hk.uwu.reareye.R
+import hk.uwu.reareye.ui.screen.AboutScreen
 import hk.uwu.reareye.ui.screen.ConfigScreen
 import hk.uwu.reareye.ui.screen.HomeScreen
-import top.yukonga.miuix.kmp.basic.FloatingNavigationBar
-import top.yukonga.miuix.kmp.basic.FloatingNavigationBarItem
-import top.yukonga.miuix.kmp.basic.NavigationDisplayMode
+import top.yukonga.miuix.kmp.basic.NavigationBar
+import top.yukonga.miuix.kmp.basic.NavigationBarDisplayMode
+import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.Favorites
-import top.yukonga.miuix.kmp.icon.extended.GridView
-import top.yukonga.miuix.kmp.icon.extended.Settings
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -66,6 +70,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             var currentScreen by remember { mutableStateOf("home") }
             var navBarVisible by remember { mutableStateOf(false) }
+            var configInAppListMode by remember { mutableStateOf(false) }
+            val screenOrder = remember { listOf("home", "config", "about") }
 
             LaunchedEffect(Unit) {
                 navBarVisible = true
@@ -74,39 +80,54 @@ class MainActivity : ComponentActivity() {
             hk.uwu.reareye.ui.theme.AppTheme {
                 Scaffold(
                     bottomBar = {
+                        val showNavigation =
+                            navBarVisible && !(currentScreen == "config" && configInAppListMode)
+
                         AnimatedVisibility(
-                            visible = navBarVisible,
-                            enter = fadeIn(tween(500)) + slideInVertically(tween(500)) { it / 2 },
-                            exit = fadeOut(tween(500)) + slideOutVertically(tween(500)) { it / 2 }
+                            visible = showNavigation,
+                            enter = fadeIn(
+                                animationSpec = tween(
+                                    durationMillis = 260,
+                                    easing = LinearOutSlowInEasing,
+                                )
+                            ) + slideInVertically(
+                                animationSpec = tween(
+                                    durationMillis = 380,
+                                    easing = FastOutSlowInEasing,
+                                )
+                            ) { it / 3 },
+                            exit = fadeOut(
+                                animationSpec = tween(
+                                    durationMillis = 180,
+                                    easing = FastOutLinearInEasing,
+                                )
+                            ) + slideOutVertically(
+                                animationSpec = tween(
+                                    durationMillis = 240,
+                                    easing = FastOutLinearInEasing,
+                                )
+                            ) { it / 3 }
                         ) {
-                            FloatingNavigationBar(
-                                mode = NavigationDisplayMode.IconOnly
+                            NavigationBar(
+                                mode = NavigationBarDisplayMode.IconAndText
                             ) {
-                                FloatingNavigationBarItem(
+                                NavigationBarItem(
                                     selected = currentScreen == "home",
                                     onClick = { currentScreen = "home" },
-                                    icon = MiuixIcons.GridView,
+                                    icon = Icons.Filled.Cottage,
                                     label = stringResource(R.string.home_navigation)
                                 )
-                                FloatingNavigationBarItem(
+                                NavigationBarItem(
                                     selected = currentScreen == "config",
                                     onClick = { currentScreen = "config" },
-                                    icon = MiuixIcons.Settings,
+                                    icon = Icons.Filled.Settings,
                                     label = stringResource(R.string.configuration_navigation)
                                 )
-                                FloatingNavigationBarItem(
-                                    selected = false,
-                                    onClick = {
-                                        val intent = Intent(
-                                            Intent.ACTION_VIEW,
-                                            "https://afdian.com/a/rgbmc".toUri()
-                                        ).apply {
-                                            addCategory(Intent.CATEGORY_BROWSABLE)
-                                        }
-                                        startActivity(intent)
-                                    },
-                                    icon = MiuixIcons.Favorites,
-                                    label = stringResource(R.string.sponsor_navigation)
+                                NavigationBarItem(
+                                    selected = currentScreen == "about",
+                                    onClick = { currentScreen = "about" },
+                                    icon = Icons.Filled.Info,
+                                    label = stringResource(R.string.about_navigation)
                                 )
                             }
                         }
@@ -116,15 +137,52 @@ class MainActivity : ComponentActivity() {
                         AnimatedContent(
                             targetState = currentScreen,
                             transitionSpec = {
-                                fadeIn(animationSpec = tween(300)) togetherWith fadeOut(
-                                    animationSpec = tween(300)
-                                )
+                                val initialIndex =
+                                    screenOrder.indexOf(initialState).coerceAtLeast(0)
+                                val targetIndex = screenOrder.indexOf(targetState).coerceAtLeast(0)
+                                val forward = targetIndex >= initialIndex
+
+                                (fadeIn(
+                                    animationSpec = tween(
+                                        durationMillis = 260,
+                                        delayMillis = 40,
+                                        easing = LinearOutSlowInEasing,
+                                    )
+                                ) + slideInHorizontally(
+                                    animationSpec = tween(
+                                        durationMillis = 320,
+                                        easing = FastOutSlowInEasing,
+                                    )
+                                ) { fullWidth ->
+                                    if (forward) fullWidth / 5 else -fullWidth / 5
+                                }) togetherWith (
+                                        fadeOut(
+                                            animationSpec = tween(
+                                                durationMillis = 180,
+                                                easing = FastOutLinearInEasing,
+                                            )
+                                        ) + slideOutHorizontally(
+                                            animationSpec = tween(
+                                                durationMillis = 240,
+                                                easing = FastOutLinearInEasing,
+                                            )
+                                        ) { fullWidth ->
+                                            if (forward) -fullWidth / 6 else fullWidth / 6
+                                        }
+                                        )
                             },
                             label = "ScreenTransition"
                         ) { screen ->
                             when (screen) {
                                 "home" -> HomeScreen()
-                                "config" -> ConfigScreen()
+
+                                "config" -> ConfigScreen(
+                                    onAppListModeChange = {
+                                        configInAppListMode = it
+                                    }
+                                )
+
+                                "about" -> AboutScreen()
                             }
                         }
                     }

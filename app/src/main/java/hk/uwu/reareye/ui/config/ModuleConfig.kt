@@ -1,14 +1,19 @@
 package hk.uwu.reareye.ui.config
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Tune
 import hk.uwu.reareye.R
 
 object ConfigKeys {
     const val HOOK_ACTIVITIES_WHITELIST = "enable_activities_whitelist_hook"
     const val ACTIVITIES_WHITELIST_APPS = "activities_whitelist_apps"
+    const val ALLOW_ALL_ACTIVITIES = "allow_all_activities"
+    const val HOOK_SKIP_LOCK_BACK_HOME = "enable_skip_lock_back_home"
 
     const val HOOK_MUSIC_CONTROLS_WHITELIST = "enable_music_controls_whitelist_hook"
     const val MUSIC_CONTROLS_WHITELIST_APPS = "music_controls_whitelist_apps"
     const val HOOK_MUSIC_CONTROLS_FORCE_UPDATE = "enable_music_controls_force_update"
+    const val HOOK_VIDEO_LOOPING = "enable_video_looping"
 
     const val HOOK_BACKGROUND_WHITELIST = "enable_background_whitelist_hook"
     const val BACKGROUND_WHITELIST_APPS = "background_whitelist_apps"
@@ -22,18 +27,22 @@ object ConfigKeys {
 
 val REAREyeConfig = listOf(
     ConfigCategory(
-        key = "system_framework",
+        icon = ConfigCategoryIcon.Package("com.android.systemui"),
         titleRes = R.string.category_system,
-        subCategories = listOf(
+        children = listOf(
             ConfigCategory(
-                key = "activities_whitelist",
                 titleRes = R.string.cfg_activities_whitelist,
                 descriptionRes = R.string.cfg_activities_whitelist_desc,
-                items = listOf(
+                children = listOf(
                     ConfigItem(
                         key = ConfigKeys.HOOK_ACTIVITIES_WHITELIST,
                         titleRes = R.string.enable_custom_activities_whitelist,
                         type = ConfigType.BooleanVal(defaultValue = true)
+                    ),
+                    ConfigItem(
+                        key = ConfigKeys.ALLOW_ALL_ACTIVITIES,
+                        titleRes = R.string.allow_all_activities,
+                        type = ConfigType.BooleanVal(defaultValue = false)
                     ),
                     ConfigItem(
                         key = ConfigKeys.ACTIVITIES_WHITELIST_APPS,
@@ -44,21 +53,24 @@ val REAREyeConfig = listOf(
                 )
             ),
             ConfigCategory(
-                key = "background_whitelist",
                 titleRes = R.string.cfg_background_whitelist,
                 descriptionRes = R.string.cfg_background_whitelist_desc,
-                items = listOf(
-                    ConfigItem(
-                        key = ConfigKeys.HOOK_BACKGROUND_WHITELIST,
-                        titleRes = R.string.enable_background_whitelist,
-                        descriptionRes = R.string.enable_background_whitelist_desc,
-                        type = ConfigType.BooleanVal(defaultValue = true)
-                    ),
-                    ConfigItem(
-                        key = ConfigKeys.BACKGROUND_WHITELIST_APPS,
-                        titleRes = R.string.background_whitelist_apps,
-                        descriptionRes = R.string.background_whitelist_apps_desc,
-                        type = ConfigType.AppList(defaultValues = emptySet())
+                children = listOf(
+                    ConfigGroup(
+                        children = listOf(
+                            ConfigItem(
+                                key = ConfigKeys.HOOK_BACKGROUND_WHITELIST,
+                                titleRes = R.string.enable_background_whitelist,
+                                descriptionRes = R.string.enable_background_whitelist_desc,
+                                type = ConfigType.BooleanVal(defaultValue = true)
+                            ),
+                            ConfigItem(
+                                key = ConfigKeys.BACKGROUND_WHITELIST_APPS,
+                                titleRes = R.string.background_whitelist_apps,
+                                descriptionRes = R.string.background_whitelist_apps_desc,
+                                type = ConfigType.AppList(defaultValues = emptySet())
+                            )
+                        )
                     ),
                     ConfigItem(
                         key = ConfigKeys.BACKGROUND_LOCK_APPS,
@@ -68,39 +80,35 @@ val REAREyeConfig = listOf(
                     ),
                 )
             ),
-            ConfigCategory(
-                key = "system_misc",
-                titleRes = R.string.subcategory_misc,
-                descriptionRes = R.string.subcategory_misc_desc,
-                items = listOf(
-                    ConfigItem(
-                        key = ConfigKeys.MISC_HOOK_GMS_UNLOCK,
-                        titleRes = R.string.enable_misc_unlock_gms,
-                        type = ConfigType.BooleanVal(defaultValue = false)
-                    )
-                )
+            ConfigItem(
+                key = ConfigKeys.HOOK_SKIP_LOCK_BACK_HOME,
+                titleRes = R.string.skip_lock_back_home,
+                type = ConfigType.BooleanVal(defaultValue = false)
             )
         )
     ),
     ConfigCategory(
-        key = "subscreen_center",
+        icon = ConfigCategoryIcon.Package("com.xiaomi.subscreencenter"),
         titleRes = R.string.category_subscreencenter,
-        subCategories = listOf(
+        children = listOf(
             ConfigCategory(
-                key = "music_controls_whitelist",
                 titleRes = R.string.cfg_music_control_whitelist,
                 descriptionRes = R.string.cfg_music_control_whitelist_desc,
-                items = listOf(
-                    ConfigItem(
-                        key = ConfigKeys.HOOK_MUSIC_CONTROLS_WHITELIST,
-                        titleRes = R.string.enable_music_control_whitelist,
-                        type = ConfigType.BooleanVal(defaultValue = true)
-                    ),
-                    ConfigItem(
-                        key = ConfigKeys.MUSIC_CONTROLS_WHITELIST_APPS,
-                        titleRes = R.string.music_control_whitelist_apps,
-                        descriptionRes = R.string.music_control_whitelist_apps_desc,
-                        type = ConfigType.AppList(defaultValues = emptySet())
+                children = listOf(
+                    ConfigGroup(
+                        children = listOf(
+                            ConfigItem(
+                                key = ConfigKeys.HOOK_MUSIC_CONTROLS_WHITELIST,
+                                titleRes = R.string.enable_music_control_whitelist,
+                                type = ConfigType.BooleanVal(defaultValue = true)
+                            ),
+                            ConfigItem(
+                                key = ConfigKeys.MUSIC_CONTROLS_WHITELIST_APPS,
+                                titleRes = R.string.music_control_whitelist_apps,
+                                descriptionRes = R.string.music_control_whitelist_apps_desc,
+                                type = ConfigType.AppList(defaultValues = emptySet())
+                            )
+                        )
                     ),
                     ConfigItem(
                         key = ConfigKeys.HOOK_MUSIC_CONTROLS_FORCE_UPDATE,
@@ -109,24 +117,46 @@ val REAREyeConfig = listOf(
                         type = ConfigType.BooleanVal(defaultValue = false)
                     )
                 )
+            ),
+            ConfigItem(
+                key = ConfigKeys.HOOK_VIDEO_LOOPING,
+                titleRes = R.string.enable_video_looping,
+                type = ConfigType.BooleanVal(defaultValue = false)
             )
         )
     ),
     ConfigCategory(
-        key = "theme_manager",
+        icon = ConfigCategoryIcon.Package("com.android.thememanager"),
         titleRes = R.string.category_thememanager,
-        items = listOf(
+        children = listOf(
+            ConfigGroup(
+                children = listOf(
+                    ConfigItem(
+                        key = ConfigKeys.HOOK_UNLOCK_VIDEO_RESTRICTIONS,
+                        titleRes = R.string.cfg_unlock_video_restrictions,
+                        descriptionRes = R.string.cfg_unlock_video_restrictions_desc,
+                        type = ConfigType.BooleanVal(defaultValue = true)
+                    ),
+                    ConfigItem(
+                        key = ConfigKeys.HOOK_UNLOCK_TEMPLATE_MAXIMUM_LIMIT,
+                        titleRes = R.string.cfg_unlock_template_maximum_limit,
+                        descriptionRes = R.string.cfg_unlock_template_maximum_limit_desc,
+                        type = ConfigType.BooleanVal(defaultValue = true)
+                    )
+                )
+            )
+        )
+    ),
+    ConfigCategory(
+        icon = ConfigCategoryIcon.Compose(Icons.Filled.Tune),
+        titleRes = R.string.category_misc,
+        descriptionRes = R.string.category_misc_desc,
+        children = listOf(
             ConfigItem(
-                key = ConfigKeys.HOOK_UNLOCK_VIDEO_RESTRICTIONS,
-                titleRes = R.string.cfg_unlock_video_restrictions,
-                descriptionRes = R.string.cfg_unlock_video_restrictions_desc,
-                type = ConfigType.BooleanVal(defaultValue = true)
-            ),
-            ConfigItem(
-                key = ConfigKeys.HOOK_UNLOCK_TEMPLATE_MAXIMUM_LIMIT,
-                titleRes = R.string.cfg_unlock_template_maximum_limit,
-                descriptionRes = R.string.cfg_unlock_template_maximum_limit_desc,
-                type = ConfigType.BooleanVal(defaultValue = true)
+                key = ConfigKeys.MISC_HOOK_GMS_UNLOCK,
+                titleRes = R.string.enable_misc_unlock_gms,
+                descriptionRes = R.string.category_misc_desc,
+                type = ConfigType.BooleanVal(defaultValue = false)
             )
         )
     )
