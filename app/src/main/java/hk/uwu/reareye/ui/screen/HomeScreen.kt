@@ -1,5 +1,7 @@
 package hk.uwu.reareye.ui.screen
 
+import android.annotation.SuppressLint
+import android.content.Intent
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutLinearInEasing
@@ -41,6 +43,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
 import com.highcapable.yukihookapi.YukiHookAPI
 import hk.uwu.reareye.R
 import hk.uwu.reareye.generated.AppProperties
@@ -169,6 +172,7 @@ fun HomeScreen() {
                             minWidth = 220.dp,
                             renderInRootScaffold = true,
                         ) {
+                            @SuppressLint("LocalContextGetResourceValueCall")
                             ListPopupColumn {
                                 SpinnerItemImpl(
                                     entry = SpinnerEntry(
@@ -182,6 +186,7 @@ fun HomeScreen() {
                                     spinnerColors = SpinnerDefaults.spinnerColors(),
                                     onSelectedIndexChange = {
                                         showTopMenu.value = false
+
                                         coroutineScope.launch {
                                             forceStopPackageByRoot(
                                                 context = context,
@@ -347,6 +352,8 @@ private fun RevealItem(
 private fun WorkingStatusCard(statusTitle: String, statusVersion: String, activated: Boolean) {
     val cardColor = if (activated) Color(0xFFDFFAE4) else Color(0xFFF8E2E2)
     val iconColor = if (activated) Color(0xFF36D167) else Color(0xFFE06767)
+    val titleColor = if (activated) Color(0xFF1E5A31) else Color(0xFF7A2A2A)
+    val summaryColor = if (activated) Color(0xFF2C7D45) else Color(0xFF9A4D4D)
 
     Card(
         modifier = Modifier
@@ -366,7 +373,12 @@ private fun WorkingStatusCard(statusTitle: String, statusVersion: String, activa
                     .offset(x = 72.dp, y = 56.dp),
             )
             Column(modifier = Modifier.fillMaxWidth()) {
-                Text(text = statusTitle, fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = statusTitle,
+                    fontSize = 21.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = titleColor,
+                )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = androidx.compose.ui.res.stringResource(
@@ -374,6 +386,7 @@ private fun WorkingStatusCard(statusTitle: String, statusVersion: String, activa
                         statusVersion
                     ),
                     style = MiuixTheme.textStyles.body2,
+                    color = summaryColor,
                 )
             }
         }
@@ -382,6 +395,7 @@ private fun WorkingStatusCard(statusTitle: String, statusVersion: String, activa
 
 @Composable
 private fun UpdateWarningCard(currentHash: String, latestHash: String) {
+    val context = LocalContext.current
     val cardColor = Color(0xFFFFF3CD)
     val iconColor = Color(0xFFE0A100)
 
@@ -391,6 +405,14 @@ private fun UpdateWarningCard(currentHash: String, latestHash: String) {
             .height(108.dp),
         colors = CardDefaults.defaultColors(color = cardColor),
         insideMargin = PaddingValues(14.dp),
+        onClick = {
+            context.startActivity(
+                Intent(
+                    Intent.ACTION_VIEW,
+                    "https://github.com/killerprojecte/REAREye/actions".toUri()
+                )
+            )
+        }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             Icon(
@@ -400,7 +422,7 @@ private fun UpdateWarningCard(currentHash: String, latestHash: String) {
                 modifier = Modifier
                     .size(108.dp)
                     .align(Alignment.BottomEnd)
-                    .offset(x = 34.dp, y = 24.dp),
+                    .offset(x = 50.dp, y = 44.dp),
             )
 
             Column(modifier = Modifier.fillMaxWidth()) {
