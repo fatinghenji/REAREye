@@ -5,13 +5,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.ImageVector
 import hk.uwu.reareye.ui.components.config.AppListConfigInput
 import hk.uwu.reareye.ui.components.config.BooleanConfigInput
+import hk.uwu.reareye.ui.components.config.ManagerConfigInput
 
 sealed class ConfigType {
     @Composable
     abstract fun RenderInput(
         item: ConfigItem,
         prefsManager: PrefsManager,
-        onOpenAppList: (ConfigItem) -> Unit
+        onOpenAppList: (ConfigItem) -> Unit,
+        onOpenManager: (ConfigItem) -> Unit,
     )
 
     open val defaultStringSet: Set<String> = emptySet()
@@ -21,7 +23,8 @@ sealed class ConfigType {
         override fun RenderInput(
             item: ConfigItem,
             prefsManager: PrefsManager,
-            onOpenAppList: (ConfigItem) -> Unit
+            onOpenAppList: (ConfigItem) -> Unit,
+            onOpenManager: (ConfigItem) -> Unit,
         ) {
             BooleanConfigInput(
                 item = item,
@@ -39,7 +42,8 @@ sealed class ConfigType {
         override fun RenderInput(
             item: ConfigItem,
             prefsManager: PrefsManager,
-            onOpenAppList: (ConfigItem) -> Unit
+            onOpenAppList: (ConfigItem) -> Unit,
+            onOpenManager: (ConfigItem) -> Unit,
         ) {
             AppListConfigInput(
                 item = item,
@@ -50,7 +54,27 @@ sealed class ConfigType {
         }
     }
 
-    // Additional types like StringVal, IntVal can be added here
+    enum class ManagerType {
+        BUSINESS,
+        CARD,
+    }
+
+    data class Manager(val managerType: ManagerType) : ConfigType() {
+        @Composable
+        override fun RenderInput(
+            item: ConfigItem,
+            prefsManager: PrefsManager,
+            onOpenAppList: (ConfigItem) -> Unit,
+            onOpenManager: (ConfigItem) -> Unit,
+        ) {
+            ManagerConfigInput(
+                item = item,
+                onClick = { onOpenManager(item) }
+            )
+        }
+    }
+
+    // Additional types like StringVal, IntVal can be added here.
 }
 
 sealed interface ConfigNode {

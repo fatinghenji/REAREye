@@ -17,6 +17,11 @@ object ConfigKeys {
     const val HOOK_MUSIC_CONTROLS_FORCE_UPDATE = "enable_music_controls_force_update"
     const val HOOK_VIDEO_LOOPING = "enable_video_looping"
 
+    const val CFG_REAR_WIDGET_BUSINESS_MANAGER = "cfg_rear_widget_business_manager"
+    const val CFG_REAR_WIDGET_CARD_MANAGER = "cfg_rear_widget_card_manager"
+    const val REAR_WIDGET_BUSINESS_DATA = "rear_widget_business_data"
+    const val REAR_WIDGET_CARD_DATA = "rear_widget_card_data"
+
     const val HOOK_BACKGROUND_WHITELIST = "enable_background_whitelist_hook"
     const val BACKGROUND_WHITELIST_APPS = "background_whitelist_apps"
     const val BACKGROUND_LOCK_APPS = "background_lock_apps"
@@ -137,6 +142,24 @@ val REAREyeConfig = listOf(
                 key = ConfigKeys.HOOK_VIDEO_LOOPING,
                 titleRes = R.string.enable_video_looping,
                 type = ConfigType.BooleanVal(defaultValue = false)
+            ),
+            ConfigCategory(
+                titleRes = R.string.rear_widget_manager_category,
+                descriptionRes = R.string.rear_widget_manager_category_desc,
+                children = listOf(
+                    ConfigItem(
+                        key = ConfigKeys.CFG_REAR_WIDGET_BUSINESS_MANAGER,
+                        titleRes = R.string.rear_widget_business_manager,
+                        descriptionRes = R.string.rear_widget_business_manager_desc,
+                        type = ConfigType.Manager(ConfigType.ManagerType.BUSINESS),
+                    ),
+                    ConfigItem(
+                        key = ConfigKeys.CFG_REAR_WIDGET_CARD_MANAGER,
+                        titleRes = R.string.rear_widget_card_manager,
+                        descriptionRes = R.string.rear_widget_card_manager_desc,
+                        type = ConfigType.Manager(ConfigType.ManagerType.CARD),
+                    ),
+                ),
             )
         )
     ),

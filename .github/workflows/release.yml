@@ -80,10 +80,10 @@ jobs:
       - name: Publish to Xposed Modules Repo
         uses: softprops/action-gh-release@v2
         with:
-          repository: Xposed-Modules-Repo/org.pysh.janus
+          repository: Xposed-Modules-Repo/hk.uwu.reareye
           token: ${{ secrets.XPOSED_REPO_TOKEN }}
           tag_name: ${{ github.ref_name }}
-          name: Janus ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
           generate_release_notes: false
           body: "https://github.com/killerprojecte/REAREye/releases/tag/${{ github.ref_name }}"
           files: app/build/outputs/apk/release/*.apk

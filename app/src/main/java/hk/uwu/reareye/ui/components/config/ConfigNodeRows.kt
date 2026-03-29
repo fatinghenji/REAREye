@@ -41,7 +41,8 @@ fun ConfigNodeRow(
     node: ConfigNode,
     prefsManager: PrefsManager,
     onOpenCategory: (ConfigCategory) -> Unit,
-    onOpenAppList: (ConfigItem) -> Unit
+    onOpenAppList: (ConfigItem) -> Unit,
+    onOpenManager: (ConfigItem) -> Unit,
 ) {
     when (node) {
         is ConfigCategory -> ConfigCategoryNodeRow(
@@ -54,7 +55,8 @@ fun ConfigNodeRow(
         is ConfigItem -> ConfigItemNodeRow(
             item = node,
             prefsManager = prefsManager,
-            onOpenAppList = onOpenAppList
+            onOpenAppList = onOpenAppList,
+            onOpenManager = onOpenManager,
         )
     }
 }
@@ -136,12 +138,14 @@ private fun ConfigCategoryStartIcon(icon: ConfigCategoryIcon) {
 fun ConfigItemNodeRow(
     item: ConfigItem,
     prefsManager: PrefsManager,
-    onOpenAppList: (ConfigItem) -> Unit
+    onOpenAppList: (ConfigItem) -> Unit,
+    onOpenManager: (ConfigItem) -> Unit,
 ) {
     item.type.RenderInput(
         item = item,
         prefsManager = prefsManager,
-        onOpenAppList = onOpenAppList
+        onOpenAppList = onOpenAppList,
+        onOpenManager = onOpenManager,
     )
 }
 
@@ -171,7 +175,7 @@ fun AppListConfigInput(
     item: ConfigItem,
     defaultValues: Set<String>,
     prefsManager: PrefsManager,
-    onClick: () -> Unit
+    onClick: () -> Unit,
 ) {
     val selectedCount = prefsManager.getStringSet(item.key, defaultValues).size
     val selectedSummary = stringResource(R.string.config_selected_apps, selectedCount)
@@ -186,5 +190,14 @@ fun AppListConfigInput(
         title = stringResource(item.titleRes),
         summary = summary,
         onClick = onClick
+    )
+}
+
+@Composable
+fun ManagerConfigInput(item: ConfigItem, onClick: () -> Unit) {
+    SuperArrow(
+        title = stringResource(item.titleRes),
+        summary = item.descriptionRes?.let { stringResource(it) },
+        onClick = onClick,
     )
 }

@@ -22,4 +22,12 @@ class PrefsManager(context: Context) {
     fun putStringSet(key: String, value: Set<String>) {
         prefs.edit().putStringSet(key, value).apply()
     }
+
+    fun getString(key: String, defValue: String = ""): String {
+        return prefs.getString(key, defValue)
+    }
+
+    fun putString(key: String, value: String) {
+        prefs.edit().putString(key, value).apply()
+    }
 }
