@@ -25,6 +25,11 @@
     <string name="show_system_apps">Show System Apps</string>
     <string name="search_apps">Search Name or Package…</string>
 
+    <string name="category_module_settings">Module Settings</string>
+    <string name="category_module_settings_desc">Settings for REAREye itself</string>
+    <string name="hide_launcher_entry">Hide launcher entry</string>
+    <string name="hide_launcher_entry_desc">Optional: hide REAREye icon from launcher</string>
+
     <string name="category_system">System Framework</string>
     <string name="cfg_activities_whitelist">Activities Whitelist</string>
     <string name="cfg_activities_whitelist_desc">Allows you to customize which applications can open on the rear screen</string>
@@ -57,8 +62,14 @@
     <string name="home_update_latest">Latest Commit</string>
     <string name="home_update_checking">Checking…</string>
     <string name="home_update_unknown">Unknown</string>
+    <string name="home_update_warning_title">Update available</string>
+    <string name="home_update_warning_desc">Current %1$s, latest %2$s</string>
     <string name="module_version_label">Module Version</string>
     <string name="home_menu_placeholder">No quick actions yet</string>
+    <string name="quick_stop_subscreencenter">Force stop Subscreen Center</string>
+    <string name="quick_stop_thememanager">Force stop Theme Manager</string>
+    <string name="quick_stop_success">Stopped %1$s</string>
+    <string name="quick_stop_failed">Failed to stop %1$s</string>
     <string name="enable_misc_unlock_gms">Remove CN Google Play Services restrictions</string>
     <string name="category_misc">Misc</string>
     <string name="category_misc_desc">Options unrelated to the rear screen</string>
@@ -88,4 +99,6 @@
     <string name="allow_all_activities">Allow all activities to open on the rear screen</string>
     <string name="skip_lock_back_home">Prevent the rear screen returning to Home after locking the screen</string>
     <string name="enable_video_looping">Forced video wallpaper looping</string>
+    <string name="credits_qq_title">QQ Group</string>
+    <string name="credits_qq_desc">Join our QQ group to get the latest information</string>
 </resources>

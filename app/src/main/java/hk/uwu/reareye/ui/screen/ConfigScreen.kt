@@ -114,12 +114,11 @@ fun ConfigScreen(onAppListModeChange: (Boolean) -> Unit = {}) {
                         ) { fullWidth ->
                             if (forward) -fullWidth / 6 else fullWidth / 6
                         }
-                    )
+                        )
             },
             label = "ConfigRouteTransition"
         ) { stack ->
-            val route = stack.last()
-            when (route) {
+            when (val route = stack.last()) {
                 ConfigRoute.Root -> ConfigNodeList(
                     nodes = REAREyeConfig,
                     prefsManager = prefsManager,

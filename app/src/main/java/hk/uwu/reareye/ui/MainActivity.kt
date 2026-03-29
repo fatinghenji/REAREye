@@ -33,6 +33,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import hk.uwu.reareye.R
+import hk.uwu.reareye.ui.config.ConfigKeys
+import hk.uwu.reareye.ui.config.ModuleSettingsController
+import hk.uwu.reareye.ui.config.PrefsManager
 import hk.uwu.reareye.ui.screen.AboutScreen
 import hk.uwu.reareye.ui.screen.ConfigScreen
 import hk.uwu.reareye.ui.screen.HomeScreen
@@ -66,6 +69,12 @@ class MainActivity : ComponentActivity() {
         } catch (e: PackageManager.NameNotFoundException) {
             e.printStackTrace()
         }
+
+        val prefsManager = PrefsManager(applicationContext)
+        ModuleSettingsController.syncLauncherEntryVisibility(
+            context = applicationContext,
+            hidden = prefsManager.getBoolean(ConfigKeys.MODULE_HIDE_LAUNCHER_ENTRY, false),
+        )
 
         setContent {
             var currentScreen by remember { mutableStateOf("home") }

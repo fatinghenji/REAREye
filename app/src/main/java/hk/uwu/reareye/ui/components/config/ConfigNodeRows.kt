@@ -25,7 +25,9 @@ import hk.uwu.reareye.ui.config.ConfigCategory
 import hk.uwu.reareye.ui.config.ConfigCategoryIcon
 import hk.uwu.reareye.ui.config.ConfigGroup
 import hk.uwu.reareye.ui.config.ConfigItem
+import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.ConfigNode
+import hk.uwu.reareye.ui.config.ModuleSettingsController
 import hk.uwu.reareye.ui.config.PrefsManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -145,6 +147,7 @@ fun ConfigItemNodeRow(
 
 @Composable
 fun BooleanConfigInput(item: ConfigItem, defaultValue: Boolean, prefsManager: PrefsManager) {
+    val context = LocalContext.current
     var checked by remember(item.key) {
         mutableStateOf(prefsManager.getBoolean(item.key, defaultValue))
     }
@@ -156,6 +159,9 @@ fun BooleanConfigInput(item: ConfigItem, defaultValue: Boolean, prefsManager: Pr
         onCheckedChange = {
             checked = it
             prefsManager.putBoolean(item.key, it)
+            if (item.key == ConfigKeys.MODULE_HIDE_LAUNCHER_ENTRY) {
+                ModuleSettingsController.syncLauncherEntryVisibility(context, hidden = it)
+            }
         }
     )
 }

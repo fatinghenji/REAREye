@@ -68,8 +68,13 @@ fun AboutScreen() {
         CreditEntry(
             titleRes = R.string.credits_afdian_title,
             summaryRes = R.string.credits_afdian_desc,
-            url = "https://afdian.com/a/rgbmc",
+            url = "https://ifdian.net/a/rgbmc",
         ),
+        CreditEntry(
+            titleRes = R.string.credits_qq_title,
+            summaryRes = R.string.credits_qq_desc,
+            url = "https://qm.qq.com/q/cg2MU3kw6W"
+        )
     )
 
     Scaffold(

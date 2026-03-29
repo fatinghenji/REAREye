@@ -5,6 +5,8 @@ import androidx.compose.material.icons.filled.Tune
 import hk.uwu.reareye.R
 
 object ConfigKeys {
+    const val MODULE_HIDE_LAUNCHER_ENTRY = "module_hide_launcher_entry"
+
     const val HOOK_ACTIVITIES_WHITELIST = "enable_activities_whitelist_hook"
     const val ACTIVITIES_WHITELIST_APPS = "activities_whitelist_apps"
     const val ALLOW_ALL_ACTIVITIES = "allow_all_activities"
@@ -26,6 +28,19 @@ object ConfigKeys {
 }
 
 val REAREyeConfig = listOf(
+    ConfigCategory(
+        icon = ConfigCategoryIcon.Package("hk.uwu.reareye"),
+        titleRes = R.string.category_module_settings,
+        descriptionRes = R.string.category_module_settings_desc,
+        children = listOf(
+            ConfigItem(
+                key = ConfigKeys.MODULE_HIDE_LAUNCHER_ENTRY,
+                titleRes = R.string.hide_launcher_entry,
+                descriptionRes = R.string.hide_launcher_entry_desc,
+                type = ConfigType.BooleanVal(defaultValue = false)
+            )
+        )
+    ),
     ConfigCategory(
         icon = ConfigCategoryIcon.Package("com.android.systemui"),
         titleRes = R.string.category_system,

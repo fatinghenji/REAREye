@@ -1,5 +1,6 @@
 package hk.uwu.reareye.ui.screen
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -24,23 +25,28 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.highcapable.yukihookapi.YukiHookAPI
 import hk.uwu.reareye.R
 import hk.uwu.reareye.generated.AppProperties
+import hk.uwu.reareye.utils.RootHelper
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -100,6 +106,8 @@ fun HomeScreen() {
     val isActivated = YukiHookAPI.Status.isModuleActive
     val showTopMenu = remember { mutableStateOf(false) }
     val scrollBehavior = MiuixScrollBehavior()
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     var latestCommitHash by remember { mutableStateOf<String?>(null) }
     var isCheckingUpdate by remember { mutableStateOf(false) }
@@ -127,22 +135,86 @@ fun HomeScreen() {
     } else {
         androidx.compose.ui.res.stringResource(R.string.home_status_inactive)
     }
+    val normalizedCurrentHash = AppProperties.GIT_HASH.take(7).lowercase()
+    val normalizedLatestHash = latestCommitHash?.take(7)?.lowercase()
+    val showUpdateWarning =
+        !isCheckingUpdate && !normalizedLatestHash.isNullOrBlank() && normalizedLatestHash != normalizedCurrentHash
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = "REAREye",
                 actions = {
-                    IconButton(
-                        modifier = Modifier.padding(end = 16.dp),
-                        onClick = { showTopMenu.value = true },
-                        holdDownState = showTopMenu.value,
-                    ) {
-                        Icon(
-                            imageVector = MiuixIcons.Regular.MoreCircle,
-                            contentDescription = null,
-                            tint = MiuixTheme.colorScheme.onBackground,
-                        )
+                    Box {
+                        IconButton(
+                            modifier = Modifier.padding(end = 16.dp),
+                            onClick = { showTopMenu.value = true },
+                            holdDownState = showTopMenu.value,
+                        ) {
+                            Icon(
+                                imageVector = MiuixIcons.Regular.MoreCircle,
+                                contentDescription = null,
+                                tint = MiuixTheme.colorScheme.onBackground,
+                            )
+                        }
+
+                        SuperListPopup(
+                            show = showTopMenu.value,
+                            popupModifier = Modifier,
+                            popupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
+                            alignment = PopupPositionProvider.Align.End,
+                            enableWindowDim = true,
+                            onDismissRequest = { showTopMenu.value = false },
+                            maxHeight = null,
+                            minWidth = 220.dp,
+                            renderInRootScaffold = true,
+                        ) {
+                            ListPopupColumn {
+                                SpinnerItemImpl(
+                                    entry = SpinnerEntry(
+                                        title = androidx.compose.ui.res.stringResource(
+                                            R.string.quick_stop_subscreencenter,
+                                        ),
+                                    ),
+                                    entryCount = 2,
+                                    isSelected = false,
+                                    index = 0,
+                                    spinnerColors = SpinnerDefaults.spinnerColors(),
+                                    onSelectedIndexChange = {
+                                        showTopMenu.value = false
+                                        coroutineScope.launch {
+                                            forceStopPackageByRoot(
+                                                context = context,
+                                                packageName = "com.xiaomi.subscreencenter",
+                                                appName = context.getString(R.string.category_subscreencenter),
+                                            )
+                                        }
+                                    },
+                                )
+
+                                SpinnerItemImpl(
+                                    entry = SpinnerEntry(
+                                        title = androidx.compose.ui.res.stringResource(
+                                            R.string.quick_stop_thememanager,
+                                        ),
+                                    ),
+                                    entryCount = 2,
+                                    isSelected = false,
+                                    index = 1,
+                                    spinnerColors = SpinnerDefaults.spinnerColors(),
+                                    onSelectedIndexChange = {
+                                        showTopMenu.value = false
+                                        coroutineScope.launch {
+                                            forceStopPackageByRoot(
+                                                context = context,
+                                                packageName = "com.android.thememanager",
+                                                appName = context.getString(R.string.category_thememanager),
+                                            )
+                                        }
+                                    },
+                                )
+                            }
+                        }
                     }
                 },
                 scrollBehavior = scrollBehavior,
@@ -169,11 +241,20 @@ fun HomeScreen() {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     RevealItem(visible = visible, delayMillis = 0) {
-                        WorkingStatusCard(
-                            statusTitle = statusTitle,
-                            statusVersion = AppProperties.BUILD_NUMBER.toString(),
-                            activated = isActivated,
-                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            WorkingStatusCard(
+                                statusTitle = statusTitle,
+                                statusVersion = AppProperties.BUILD_NUMBER.toString(),
+                                activated = isActivated,
+                            )
+
+                            if (showUpdateWarning) {
+                                UpdateWarningCard(
+                                    currentHash = AppProperties.GIT_HASH.take(7),
+                                    latestHash = latestCommitHash?.take(7).orEmpty(),
+                                )
+                            }
+                        }
                     }
 
                     RevealItem(visible = visible, delayMillis = 50) {
@@ -196,28 +277,37 @@ fun HomeScreen() {
             }
         }
 
-        SuperListPopup(
-            show = showTopMenu.value,
-            popupModifier = Modifier,
-            popupPositionProvider = ListPopupDefaults.ContextMenuPositionProvider,
-            alignment = PopupPositionProvider.Align.TopEnd,
-            enableWindowDim = true,
-            onDismissRequest = { showTopMenu.value = false },
-            maxHeight = null,
-            minWidth = 200.dp,
-            renderInRootScaffold = true,
-            content = {
-                ListPopupColumn {
-                    SpinnerItemImpl(
-                        entry = SpinnerEntry(title = androidx.compose.ui.res.stringResource(R.string.home_menu_placeholder)),
-                        entryCount = 1,
-                        isSelected = false,
-                        index = 0,
-                        spinnerColors = SpinnerDefaults.spinnerColors(),
-                        onSelectedIndexChange = { showTopMenu.value = false },
-                    )
-                }
-            })
+    }
+}
+
+private suspend fun forceStopPackageByRoot(
+    context: android.content.Context,
+    packageName: String,
+    appName: String,
+) {
+    withContext(Dispatchers.IO) {
+        if (!RootHelper.hasRootAccess()) {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.toast_need_root_permission),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+            return@withContext
+        }
+
+        val success = RootHelper.executeRootCommandSuccess("am force-stop $packageName")
+        withContext(Dispatchers.Main) {
+            Toast.makeText(
+                context,
+                context.getString(
+                    if (success) R.string.quick_stop_success else R.string.quick_stop_failed,
+                    appName,
+                ),
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
     }
 }
 
@@ -284,6 +374,51 @@ private fun WorkingStatusCard(statusTitle: String, statusVersion: String, activa
                         statusVersion
                     ),
                     style = MiuixTheme.textStyles.body2,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun UpdateWarningCard(currentHash: String, latestHash: String) {
+    val cardColor = Color(0xFFFFF3CD)
+    val iconColor = Color(0xFFE0A100)
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(108.dp),
+        colors = CardDefaults.defaultColors(color = cardColor),
+        insideMargin = PaddingValues(14.dp),
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Icon(
+                imageVector = Icons.Outlined.Sync,
+                contentDescription = null,
+                tint = iconColor,
+                modifier = Modifier
+                    .size(108.dp)
+                    .align(Alignment.BottomEnd)
+                    .offset(x = 34.dp, y = 24.dp),
+            )
+
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = androidx.compose.ui.res.stringResource(R.string.home_update_warning_title),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF7A5A00),
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = androidx.compose.ui.res.stringResource(
+                        R.string.home_update_warning_desc,
+                        currentHash,
+                        latestHash,
+                    ),
+                    style = MiuixTheme.textStyles.body2,
+                    color = Color(0xFF8A6B00),
                 )
             }
         }

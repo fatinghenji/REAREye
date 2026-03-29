@@ -15,7 +15,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -39,6 +38,7 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -51,9 +51,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -86,6 +84,9 @@ import hk.uwu.reareye.R
 import hk.uwu.reareye.ui.config.ConfigItem
 import hk.uwu.reareye.ui.config.PrefsManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
@@ -246,12 +247,11 @@ fun AppListSelectorScreen(
             addAll(selectedPackages.sorted())
         }
     }
-    val middleGhostToken = remember(configItem.key) { mutableStateMapOf<String, Int>() }
-    var reorderWaveId by remember(configItem.key) { mutableIntStateOf(0) }
 
     var showSystemApps by remember(configItem.key) { mutableStateOf(false) }
     var searchQuery by remember(configItem.key) { mutableStateOf("") }
     var searchFocused by remember(configItem.key) { mutableStateOf(false) }
+    val listState = rememberLazyListState()
     var sortMode by remember(configItem.key) { mutableStateOf(AppSortMode.LABEL) }
     var reverseOrder by remember(configItem.key) { mutableStateOf(false) }
 
@@ -503,8 +503,6 @@ fun AppListSelectorScreen(
                                     onSelectedIndexChange = {
                                         selectedPackages.clear()
                                         selectedOrder.clear()
-                                        middleGhostToken.clear()
-                                        reorderWaveId = 0
                                         showMoreMenu.value = false
                                     },
                                 )
@@ -553,6 +551,7 @@ fun AppListSelectorScreen(
                     .overScrollVertical()
                     .nestedScroll(scrollBehavior.nestedScrollConnection)
                     .padding(horizontal = 12.dp),
+                state = listState,
                 contentPadding = PaddingValues(
                     top = searchTopPadding + 46.dp,
                     bottom = paddingValues.calculateBottomPadding() + 84.dp,
@@ -607,60 +606,229 @@ fun AppListSelectorScreen(
                         val packageName = appItem.packageName
                         val isSelected = packageName in selectedPackages
                         val reorderAnimation = remember(packageName) { Animatable(0f) }
+                        val cardAlphaAnimation = remember(packageName) { Animatable(1f) }
+                        val whiteOverlayAnimation = remember(packageName) { Animatable(0f) }
                         val previousIndexState = remember(packageName) {
                             mutableStateOf(indexMap[packageName])
                         }
                         val currentIndex = indexMap[packageName]
-                        val ghostToken = middleGhostToken[packageName] ?: 0
-                        val isGhosting = ghostToken != 0 && ghostToken == reorderWaveId
-                        val middleFadeAnimation = remember(packageName, ghostToken) {
-                            Animatable(if (isGhosting) 0f else 1f)
-                        }
-
-                        LaunchedEffect(ghostToken, reorderWaveId) {
-                            if (isGhosting) {
-                                middleFadeAnimation.animateTo(
-                                    targetValue = 1f,
-                                    animationSpec = tween(
-                                        durationMillis = 420,
-                                        delayMillis = 220,
-                                        easing = LinearOutSlowInEasing,
-                                    ),
-                                )
-
-                                if (middleGhostToken[packageName] == ghostToken) {
-                                    middleGhostToken.remove(packageName)
-                                }
+                        val frameAvgItemHeight =
+                            listState.layoutInfo.visibleItemsInfo.takeIf { it.isNotEmpty() }
+                                ?.map { it.size }
+                                ?.average()
+                                ?.toFloat()
+                                ?.takeIf { it > 0f }
+                                ?: with(density) { 82.dp.toPx() }
+                        val frameDeltaIndex =
+                            if (previousIndexState.value != null && currentIndex != null) {
+                                previousIndexState.value!! - currentIndex
+                            } else {
+                                0
                             }
-                        }
+                        val shouldUsePreTranslate =
+                            frameDeltaIndex != 0 &&
+                                    !reorderAnimation.isRunning &&
+                                    abs(reorderAnimation.value) < with(density) { 1.dp.toPx() }
+                        val preTranslatePx =
+                            if (shouldUsePreTranslate) frameDeltaIndex * frameAvgItemHeight else 0f
 
-                        LaunchedEffect(currentIndex) {
+                        LaunchedEffect(currentIndex, isSelected) {
                             val previousIndex = previousIndexState.value
                             if (previousIndex != null && currentIndex != null) {
                                 val deltaIndex = previousIndex - currentIndex
                                 if (deltaIndex != 0) {
-                                    val estimatedItemHeight = with(density) { 82.dp.toPx() }
+                                    // Update immediately so rapid toggles don't reuse stale indices.
+                                    previousIndexState.value = currentIndex
+
+                                    val visibleItems = listState.layoutInfo.visibleItemsInfo
+                                    val avgItemHeight =
+                                        visibleItems.takeIf { it.isNotEmpty() }
+                                            ?.map { it.size }
+                                            ?.average()
+                                            ?.toFloat()
+                                            ?.takeIf { it > 0f }
+                                            ?: with(density) { 82.dp.toPx() }
+
                                     val moveDuration =
-                                        (380 + abs(deltaIndex) * 90).coerceAtMost(960)
-                                    reorderAnimation.snapTo(deltaIndex * estimatedItemHeight)
-                                    reorderAnimation.animateTo(
-                                        targetValue = 0f,
-                                        animationSpec = tween(
-                                            durationMillis = moveDuration,
-                                            easing = FastOutSlowInEasing,
-                                        ),
-                                    )
+                                        (460 + abs(deltaIndex) * 120).coerceAtMost(1350)
+                                    val longUpwardMove = isSelected && deltaIndex > 1
+                                    val baseShift = deltaIndex * avgItemHeight
+                                    val currentOffset = reorderAnimation.value
+                                    // Preserve visual continuity when list order changes mid-animation.
+                                    val startOffset = currentOffset + baseShift
+
+                                    val startAdjustDistance = abs(currentOffset - startOffset)
+                                    val isInterrupted =
+                                        reorderAnimation.isRunning ||
+                                                cardAlphaAnimation.isRunning ||
+                                                whiteOverlayAnimation.isRunning
+
+                                    if (isInterrupted && startAdjustDistance > with(density) { 8.dp.toPx() }) {
+                                        reorderAnimation.animateTo(
+                                            targetValue = startOffset,
+                                            animationSpec = tween(
+                                                durationMillis =
+                                                    (90 + (startAdjustDistance / avgItemHeight * 50).toInt())
+                                                        .coerceAtMost(210),
+                                                easing = FastOutSlowInEasing,
+                                            ),
+                                        )
+                                    } else {
+                                        reorderAnimation.snapTo(startOffset)
+                                    }
+
+                                    if (isInterrupted) {
+                                        coroutineScope {
+                                            launch {
+                                                cardAlphaAnimation.animateTo(
+                                                    targetValue = 1f,
+                                                    animationSpec = tween(
+                                                        durationMillis = 100,
+                                                        easing = FastOutSlowInEasing,
+                                                    ),
+                                                )
+                                            }
+                                            launch {
+                                                whiteOverlayAnimation.animateTo(
+                                                    targetValue = 0f,
+                                                    animationSpec = tween(
+                                                        durationMillis = 100,
+                                                        easing = FastOutSlowInEasing,
+                                                    ),
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        cardAlphaAnimation.snapTo(1f)
+                                        whiteOverlayAnimation.snapTo(0f)
+                                    }
+
+                                    if (longUpwardMove) {
+                                        val oneBeforeOffset = avgItemHeight
+                                        val initialRiseDuration =
+                                            (moveDuration * 0.22f).toInt().coerceAtLeast(130)
+                                        val turnWhiteDuration =
+                                            (moveDuration * 0.13f).toInt().coerceAtLeast(90)
+                                        val fadeOutDuration =
+                                            (moveDuration * 0.08f).toInt().coerceAtLeast(70)
+                                        val hiddenHoldDuration = 40
+                                        val revealDuration = 110
+                                        val consumed =
+                                            initialRiseDuration + turnWhiteDuration + fadeOutDuration +
+                                                    hiddenHoldDuration + revealDuration
+                                        val finalSlideDuration =
+                                            (moveDuration - consumed).coerceAtLeast(240)
+
+                                        // 1) Start moving upward while still normal.
+                                        reorderAnimation.animateTo(
+                                            targetValue = startOffset * 0.82f,
+                                            animationSpec = tween(
+                                                durationMillis = initialRiseDuration,
+                                                easing = FastOutSlowInEasing,
+                                            ),
+                                        )
+
+                                        // 2) Turn white while still moving upward.
+                                        coroutineScope {
+                                            launch {
+                                                whiteOverlayAnimation.animateTo(
+                                                    targetValue = 1f,
+                                                    animationSpec = tween(
+                                                        durationMillis = turnWhiteDuration,
+                                                        easing = FastOutSlowInEasing,
+                                                    ),
+                                                )
+                                            }
+                                            launch {
+                                                reorderAnimation.animateTo(
+                                                    targetValue = startOffset * 0.58f,
+                                                    animationSpec = tween(
+                                                        durationMillis = turnWhiteDuration,
+                                                        easing = FastOutSlowInEasing,
+                                                    ),
+                                                )
+                                            }
+                                        }
+
+                                        // 3) Fade out, then jump under target and wait.
+                                        coroutineScope {
+                                            launch {
+                                                cardAlphaAnimation.animateTo(
+                                                    targetValue = 0f,
+                                                    animationSpec = tween(
+                                                        durationMillis = fadeOutDuration,
+                                                        easing = FastOutSlowInEasing,
+                                                    ),
+                                                )
+                                            }
+                                            launch {
+                                                reorderAnimation.animateTo(
+                                                    targetValue = startOffset * 0.5f,
+                                                    animationSpec = tween(
+                                                        durationMillis = fadeOutDuration,
+                                                        easing = FastOutSlowInEasing,
+                                                    ),
+                                                )
+                                            }
+                                        }
+
+                                        reorderAnimation.snapTo(oneBeforeOffset)
+                                        delay(hiddenHoldDuration.toLong())
+
+                                        // 4) Show again while others are still descending, then settle.
+                                        coroutineScope {
+                                            launch {
+                                                cardAlphaAnimation.animateTo(
+                                                    targetValue = 1f,
+                                                    animationSpec = tween(
+                                                        durationMillis = revealDuration,
+                                                        easing = FastOutSlowInEasing,
+                                                    ),
+                                                )
+                                            }
+                                            launch {
+                                                whiteOverlayAnimation.animateTo(
+                                                    targetValue = 0f,
+                                                    animationSpec = tween(
+                                                        durationMillis = revealDuration,
+                                                        easing = FastOutSlowInEasing,
+                                                    ),
+                                                )
+                                            }
+                                            launch {
+                                                reorderAnimation.animateTo(
+                                                    targetValue = 0f,
+                                                    animationSpec = tween(
+                                                        durationMillis = finalSlideDuration,
+                                                        easing = FastOutSlowInEasing,
+                                                    ),
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        reorderAnimation.animateTo(
+                                            targetValue = 0f,
+                                            animationSpec = tween(
+                                                durationMillis = moveDuration,
+                                                easing = FastOutSlowInEasing,
+                                            ),
+                                        )
+                                        cardAlphaAnimation.snapTo(1f)
+                                        whiteOverlayAnimation.snapTo(0f)
+                                    }
                                 }
                             }
-                            previousIndexState.value = currentIndex
+                            if (previousIndexState.value != currentIndex) {
+                                previousIndexState.value = currentIndex
+                            }
                         }
 
                         Card(
                             modifier = Modifier
                                 .padding(top = 10.dp)
                                 .graphicsLayer {
-                                    translationY = reorderAnimation.value
-                                    alpha = middleFadeAnimation.value
+                                    translationY = reorderAnimation.value + preTranslatePx
+                                    alpha = cardAlphaAnimation.value
                                 }
                                 .fillMaxWidth(),
                             insideMargin = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
@@ -669,24 +837,6 @@ fun AppListSelectorScreen(
                                     selectedPackages.remove(packageName)
                                     selectedOrder.remove(packageName)
                                 } else {
-                                    val oldIndex =
-                                        filteredApps.indexOfFirst { it.packageName == packageName }
-                                    val targetIndex = filteredApps.indexOfFirst {
-                                        it.packageName !in selectedSnapshot
-                                    }.let { if (it == -1) filteredApps.size else it }
-
-                                    if (oldIndex > targetIndex + 1) {
-                                        val waveId = reorderWaveId + 1
-                                        reorderWaveId = waveId
-
-                                        for (index in targetIndex until oldIndex) {
-                                            val ghostPackage = filteredApps[index].packageName
-                                            if (ghostPackage != packageName) {
-                                                middleGhostToken[ghostPackage] = waveId
-                                            }
-                                        }
-                                    }
-
                                     selectedPackages.add(packageName)
                                     if (packageName !in selectedOrder) {
                                         selectedOrder.add(packageName)
@@ -695,28 +845,40 @@ fun AppListSelectorScreen(
                             },
                             showIndication = true,
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                AppIcon(
-                                    appInfo = appItem.applicationInfo,
-                                    pm = pm,
-                                    modifier = Modifier.padding(end = 12.dp),
-                                )
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = appItem.label,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    AppIcon(
+                                        appInfo = appItem.applicationInfo,
+                                        pm = pm,
+                                        modifier = Modifier.padding(end = 12.dp),
                                     )
-                                    Text(
-                                        text = packageName,
-                                        style = MiuixTheme.textStyles.body2,
-                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = appItem.label,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        Text(
+                                            text = packageName,
+                                            style = MiuixTheme.textStyles.body2,
+                                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    SelectionIndicator(selected = isSelected)
+                                }
+
+                                if (whiteOverlayAnimation.value > 0f) {
+                                    Box(
+                                        modifier = Modifier
+                                            .matchParentSize()
+                                            .background(
+                                                Color.White.copy(alpha = whiteOverlayAnimation.value)
+                                            )
                                     )
                                 }
-                                Spacer(modifier = Modifier.width(8.dp))
-                                SelectionIndicator(selected = isSelected)
                             }
                         }
                     }
@@ -793,7 +955,7 @@ fun AppListSelectorScreen(
                                 setPadding(0, 0, 0, 0)
                                 minHeight = 0
                                 minimumHeight = 0
-                                setIncludeFontPadding(false)
+                                includeFontPadding = false
                                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
 
                                 setText(searchQuery)
