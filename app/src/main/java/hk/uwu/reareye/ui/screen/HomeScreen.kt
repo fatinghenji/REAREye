@@ -11,6 +11,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.DoNotDisturb
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -74,6 +76,7 @@ import top.yukonga.miuix.kmp.extra.SuperListPopup
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.MoreCircle
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
@@ -114,6 +117,7 @@ fun HomeScreen() {
 
     var latestCommitHash by remember { mutableStateOf<String?>(null) }
     var isCheckingUpdate by remember { mutableStateOf(false) }
+    var hasRootAccess by remember { mutableStateOf<Boolean?>(null) }
 
     LaunchedEffect(Unit) {
         if (UpdateInfoCache.loaded) {
@@ -133,6 +137,12 @@ fun HomeScreen() {
         isCheckingUpdate = false
     }
 
+    LaunchedEffect(Unit) {
+        hasRootAccess = withContext(Dispatchers.IO) {
+            RootHelper.hasRootAccess()
+        }
+    }
+
     val statusTitle = if (isActivated) {
         androidx.compose.ui.res.stringResource(R.string.home_status_working)
     } else {
@@ -142,6 +152,8 @@ fun HomeScreen() {
     val normalizedLatestHash = latestCommitHash?.take(7)?.lowercase()
     val showUpdateWarning =
         !isCheckingUpdate && !normalizedLatestHash.isNullOrBlank() && normalizedLatestHash != normalizedCurrentHash
+    val showRootWarning = hasRootAccess == false
+    val updateInfoDelay = if (showRootWarning) 150 else 100
 
     Scaffold(
         topBar = {
@@ -253,6 +265,12 @@ fun HomeScreen() {
                                 activated = isActivated,
                             )
 
+                            if (showRootWarning) {
+                                RevealItem(visible = visible, delayMillis = 100) {
+                                    RootWarningCard()
+                                }
+                            }
+
                             if (showUpdateWarning) {
                                 UpdateWarningCard(
                                     currentHash = AppProperties.GIT_HASH.take(7),
@@ -271,7 +289,7 @@ fun HomeScreen() {
                         )
                     }
 
-                    RevealItem(visible = visible, delayMillis = 100) {
+                    RevealItem(visible = visible, delayMillis = updateInfoDelay) {
                         UpdateInfoCard(
                             currentHash = AppProperties.GIT_HASH,
                             latestHash = latestCommitHash,
@@ -361,6 +379,8 @@ private fun WorkingStatusCard(statusTitle: String, statusVersion: String, activa
             .height(190.dp),
         colors = CardDefaults.defaultColors(color = cardColor),
         insideMargin = PaddingValues(14.dp),
+        pressFeedbackType = PressFeedbackType.Tilt,
+        showIndication = false
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             Icon(
@@ -394,6 +414,52 @@ private fun WorkingStatusCard(statusTitle: String, statusVersion: String, activa
 }
 
 @Composable
+private fun RootWarningCard() {
+    val darkMode = isSystemInDarkTheme()
+    val cardColor = if (darkMode) Color(0xFF4E2528) else Color(0xFFFDE9E9)
+    val iconColor = if (darkMode) Color(0xFFFF8A80) else Color(0xFFD94B4B)
+    val titleColor = if (darkMode) Color(0xFFFFD2CC) else Color(0xFF8C1F1F)
+    val summaryColor = if (darkMode) Color(0xFFFFB4AB) else Color(0xFFA63737)
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(108.dp),
+        colors = CardDefaults.defaultColors(color = cardColor),
+        insideMargin = PaddingValues(14.dp),
+        pressFeedbackType = PressFeedbackType.Tilt,
+        showIndication = false
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Icon(
+                imageVector = Icons.Outlined.DoNotDisturb,
+                contentDescription = null,
+                tint = iconColor,
+                modifier = Modifier
+                    .size(108.dp)
+                    .align(Alignment.BottomEnd)
+                    .offset(x = 50.dp, y = 42.dp),
+            )
+
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = androidx.compose.ui.res.stringResource(R.string.home_root_warning_title),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = titleColor,
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = androidx.compose.ui.res.stringResource(R.string.home_root_warning_desc),
+                    style = MiuixTheme.textStyles.body2,
+                    color = summaryColor,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun UpdateWarningCard(currentHash: String, latestHash: String) {
     val context = LocalContext.current
     val cardColor = Color(0xFFFFF3CD)
@@ -412,7 +478,9 @@ private fun UpdateWarningCard(currentHash: String, latestHash: String) {
                     "https://github.com/killerprojecte/REAREye/actions".toUri()
                 )
             )
-        }
+        },
+        pressFeedbackType = PressFeedbackType.Tilt,
+        showIndication = false
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             Icon(

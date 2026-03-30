@@ -3,22 +3,21 @@ package hk.uwu.reareye.ui.components.config
 import android.annotation.SuppressLint
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,7 +37,13 @@ import hk.uwu.reareye.R
 import hk.uwu.reareye.rearwidget.RearCardConfig
 import hk.uwu.reareye.rearwidget.RearWidgetConfigCodec
 import hk.uwu.reareye.rearwidget.RearWidgetManagerRepository
+import hk.uwu.reareye.ui.components.card.ModuleStyleDeleteAction
+import hk.uwu.reareye.ui.components.card.ModuleStyleIconAction
+import hk.uwu.reareye.ui.components.card.ModuleStyleManagerCard
+import hk.uwu.reareye.ui.components.card.SuperCard
 import hk.uwu.reareye.ui.config.PrefsManager
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -46,11 +51,11 @@ import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
-import top.yukonga.miuix.kmp.extra.SuperArrow
 import top.yukonga.miuix.kmp.extra.SuperDialog
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
@@ -75,29 +80,20 @@ fun CardManagerScreen(
     var showDialog by remember { mutableStateOf(false) }
     var editingCardId by remember { mutableStateOf<String?>(null) }
     var draftTitle by remember { mutableStateOf("") }
-    var draftPackageName by remember { mutableStateOf("com.xiaomi.subscreencenter") }
+    var draftPackageName by remember { mutableStateOf("hk.uwu.reareye") }
     var draftBusiness by remember { mutableStateOf("") }
     var draftPriorityText by remember { mutableStateOf("500") }
-    var draftEnabled by remember { mutableStateOf(true) }
 
     fun persist() {
         RearWidgetManagerRepository.saveCards(context, prefsManager, cards.toList())
     }
 
-    fun moveCard(from: Int, to: Int) {
-        if (from !in cards.indices || to !in cards.indices || from == to) return
-        val item = cards.removeAt(from)
-        cards.add(to, item)
-        persist()
-    }
-
     fun openCreateDialog() {
         editingCardId = null
         draftTitle = ""
-        draftPackageName = "com.xiaomi.subscreencenter"
+        draftPackageName = "hk.uwu.reareye"
         draftBusiness = ""
         draftPriorityText = "500"
-        draftEnabled = true
         showDialog = true
     }
 
@@ -107,7 +103,6 @@ fun CardManagerScreen(
         draftPackageName = item.packageName
         draftBusiness = item.business
         draftPriorityText = item.priority.toString()
-        draftEnabled = item.enabled
         showDialog = true
     }
 
@@ -124,12 +119,14 @@ fun CardManagerScreen(
             return
         }
 
+        val enabled =
+            editingCardId?.let { id -> cards.firstOrNull { it.id == id }?.enabled } ?: true
         val card = RearCardConfig(
             id = editingCardId ?: RearWidgetConfigCodec.newCardId(),
             title = draftTitle.trim().ifBlank { widget },
             packageName = pkg,
             business = widget,
-            enabled = draftEnabled,
+            enabled = enabled,
             priority = draftPriorityText.toIntOrNull() ?: 500,
         )
 
@@ -190,75 +187,79 @@ fun CardManagerScreen(
             overscrollEffect = null,
         ) {
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    SuperArrow(
-                        title = stringResource(R.string.rear_widget_card_dialog_hint_title),
-                        summary = stringResource(
-                            R.string.rear_widget_card_count,
-                            cards.size,
-                        ) + "\n" + stringResource(R.string.rear_widget_card_dialog_hint),
-                        onClick = { openCreateDialog() },
-                    )
+                Card(
+                    modifier = Modifier
+                        .padding(bottom = 12.dp)
+                        .fillMaxWidth()
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SuperCard(
+                            title = stringResource(R.string.rear_widget_card_dialog_hint_title),
+                            summary = stringResource(
+                                R.string.rear_widget_card_count,
+                                cards.size,
+                            ) + "\n" + stringResource(R.string.rear_widget_card_dialog_hint),
+                            onClick = {},
+                            bottomAction = {
+                                Button(
+                                    onClick = { openCreateDialog() },
+                                    colors = ButtonDefaults.buttonColorsPrimary(),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Add,
+                                        contentDescription = null,
+                                        modifier = Modifier.padding(end = 6.dp),
+                                    )
+                                    Text(text = stringResource(R.string.rear_widget_add_card))
+                                }
+                            }
+                        )
+                    }
                 }
             }
 
-            itemsIndexed(cards, key = { _, item -> item.id }) { index, item ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .animateContentSize(),
-                ) {
-                    SuperArrow(
-                        title = item.title,
-                        summary = stringResource(
+            itemsIndexed(cards, key = { _, item -> item.id }) { _, item ->
+                ModuleStyleManagerCard(
+                    title = item.title,
+                    summaryLines = listOf(
+                        stringResource(
                             R.string.rear_widget_card_summary,
                             item.packageName,
                             item.business,
                             item.priority,
                         ),
-                        onClick = { openEditDialog(item) },
-                        endActions = {
-                            Switch(
-                                checked = item.enabled,
-                                onCheckedChange = { checked ->
-                                    val i = cards.indexOfFirst { it.id == item.id }
-                                    if (i >= 0) {
-                                        cards[i] = cards[i].copy(enabled = checked)
-                                        persist()
-                                    }
-                                },
-                            )
-                            IconButton(onClick = {
-                                moveCard(
-                                    index,
-                                    (index - 1).coerceAtLeast(0)
-                                )
-                            }) {
-                                Icon(
-                                    imageVector = Icons.Filled.KeyboardArrowUp,
-                                    contentDescription = null
-                                )
-                            }
-                            IconButton(onClick = {
-                                moveCard(
-                                    index,
-                                    (index + 1).coerceAtMost(cards.lastIndex)
-                                )
-                            }) {
-                                Icon(
-                                    imageVector = Icons.Filled.KeyboardArrowDown,
-                                    contentDescription = null
-                                )
-                            }
-                            IconButton(onClick = {
+                    ),
+                    trailing = {
+                        Switch(
+                            checked = item.enabled,
+                            onCheckedChange = { checked ->
+                                val i = cards.indexOfFirst { it.id == item.id }
+                                if (i >= 0) {
+                                    cards[i] = cards[i].copy(enabled = checked)
+                                    persist()
+                                }
+                            },
+                        )
+                    },
+                    onCardClick = { openEditDialog(item) },
+                    leftAction = {
+                        ModuleStyleIconAction(
+                            icon = Icons.Rounded.EditNote,
+                            onClick = { openEditDialog(item) },
+                        )
+                    },
+                    rightAction = {
+                        ModuleStyleDeleteAction(
+                            icon = MiuixIcons.Delete,
+                            text = stringResource(R.string.rear_widget_action_delete),
+                            onClick = {
                                 cards.remove(item)
                                 persist()
-                            }) {
-                                Icon(imageVector = Icons.Filled.Delete, contentDescription = null)
-                            }
-                        },
-                    )
-                }
+                            },
+                        )
+                    },
+                )
             }
 
             item {
@@ -282,7 +283,10 @@ fun CardManagerScreen(
         onDismissRequest = { showDialog = false },
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .imePadding(),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             TextField(
@@ -313,25 +317,20 @@ fun CardManagerScreen(
                 label = stringResource(R.string.rear_widget_default_priority),
                 singleLine = true,
             )
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(text = stringResource(R.string.rear_widget_enabled))
-                Switch(checked = draftEnabled, onCheckedChange = { draftEnabled = it })
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                TextButton(
-                    text = stringResource(R.string.rear_widget_cancel),
-                    onClick = { showDialog = false },
-                )
-                TextButton(
-                    text = stringResource(R.string.rear_widget_confirm),
+                Button(
                     onClick = { submitDialog() },
-                )
+                    colors = ButtonDefaults.buttonColorsPrimary(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.rear_widget_confirm))
+                }
+                Button(onClick = { showDialog = false }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.rear_widget_cancel))
+                }
             }
         }
     }

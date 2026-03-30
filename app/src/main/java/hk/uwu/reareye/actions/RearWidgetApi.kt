@@ -120,8 +120,8 @@ object RearWidgetApi {
     }
 
     fun getBusinessFile(business: String): String? =
-        businessFiles[business] ?: routes.values.asSequence().mapNotNull { it[business]?.filePath }
-            .firstOrNull()
+        businessFiles[business] ?: routes.values
+            .firstNotNullOfOrNull { it[business]?.filePath }
 
     fun unregisterBusinessFile(business: String) {
         businessFiles.remove(business)
@@ -522,9 +522,7 @@ object RearWidgetApi {
 
     internal fun fallbackBusiness(packageName: String): String? {
         val latest = notices.values.asSequence()
-            .filter { it.ticket.packageName == packageName }
-            .sortedByDescending { it.createdAt }
-            .firstOrNull()
+            .filter { it.ticket.packageName == packageName }.maxByOrNull { it.createdAt }
         return latest?.ticket?.business ?: routes[packageName]?.keys?.firstOrNull()
     }
 
@@ -573,7 +571,7 @@ object RearWidgetApi {
     private fun bundleToJson(bundle: Bundle): JSONObject {
         val out = JSONObject()
         for (k in bundle.keySet()) {
-            when (val v = bundle.get(k)) {
+            when (@Suppress("DEPRECATION") val v = bundle.get(k)) {
                 is String, is Int, is Long, is Boolean, is Double -> out.put(k, v)
                 is Bundle -> out.put(k, bundleToJson(v))
                 null -> out.put(k, JSONObject.NULL)

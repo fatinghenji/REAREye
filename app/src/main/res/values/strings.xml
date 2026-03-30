@@ -62,10 +62,10 @@
     <string name="rear_widget_target_package">Target Package</string>
     <string name="rear_widget_business_name">Widget Name</string>
     <string name="rear_widget_business_file_mode_title">Widget Template Mapping</string>
-    <string name="rear_widget_business_file_mode_hint">Maintain widget-to-template mapping only (for example, music -&gt; custom template).</string>
+    <string name="rear_widget_business_file_mode_hint">Maintain widget-to-template mapping only (for example, music -&gt; custom template)</string>
     <string name="rear_widget_template_file">Template File Path</string>
     <string name="rear_widget_default_index">Default Index</string>
-    <string name="rear_widget_default_priority">Default Priority</string>
+    <string name="rear_widget_default_priority">Default Priority (The lower the value, the higher the priority)</string>
     <string name="rear_widget_default_priority_value">Priority: %1$d</string>
     <string name="rear_widget_pick_file">Select File</string>
     <string name="rear_widget_save_business">Save Widget</string>
@@ -75,7 +75,7 @@
     <string name="rear_widget_card_summary">%1$s
 Widget: %2$s · Priority: %3$d</string>
     <string name="rear_widget_card_dialog_hint_title">Card Display Settings</string>
-    <string name="rear_widget_card_dialog_hint">Use dialogs to add or edit cards. Enabled cards will stay resident on the rear screen.</string>
+    <string name="rear_widget_card_dialog_hint">Use dialogs to add or edit cards. Enabled cards will stay resident on the rear screen</string>
     <string name="rear_widget_empty_business">No widget template registered</string>
     <string name="rear_widget_empty_card">No card configured</string>
     <string name="rear_widget_form_invalid">Please complete all required fields</string>
@@ -87,6 +87,12 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="rear_widget_edit_business">Edit Widget</string>
     <string name="rear_widget_add_card">Add Card</string>
     <string name="rear_widget_edit_card">Edit Card</string>
+    <string name="rear_widget_action_edit">Edit</string>
+    <string name="rear_widget_action_delete">Delete</string>
+    <string name="rear_widget_action_move_up">Move Up</string>
+    <string name="rear_widget_action_move_down">Move Down</string>
+    <string name="rear_widget_dialog_component_hint">Configure a widget name and bind a template file. Saving will update runtime mappings immediately.</string>
+    <string name="rear_widget_dialog_card_hint">Configure card title, package, and widget. Enabled cards are injected as resident rear-screen cards</string>
     <string name="rear_widget_cancel">Cancel</string>
     <string name="rear_widget_confirm">Confirm</string>
     <string name="rear_widget_component_count">Registered Widgets: %1$d</string>
@@ -102,6 +108,8 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="home_update_unknown">Unknown</string>
     <string name="home_update_warning_title">Update available</string>
     <string name="home_update_warning_desc">Current %1$s, latest %2$s</string>
+    <string name="home_root_warning_title">Root unavailable</string>
+    <string name="home_root_warning_desc">Some features require root privileges. Please grant this application root privileges using your root manager</string>
     <string name="module_version_label">Module Version</string>
     <string name="home_menu_placeholder">No quick actions yet</string>
     <string name="quick_stop_subscreencenter">Force stop Subscreen Center</string>
@@ -138,5 +146,7 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="skip_lock_back_home">Prevent the rear screen returning to Home after locking the screen</string>
     <string name="enable_video_looping">Forced video wallpaper looping</string>
     <string name="credits_qq_title">QQ Group</string>
-    <string name="credits_qq_desc">Join our QQ group to get the latest information</string>
+    <string name="credits_qq_desc">Join our QQ group to get more timely feedback</string>
+    <string name="credits_coolapk_title">Coolapk Homepage</string>
+    <string name="credits_coolapk_desc">Follow my account for more information</string>
 </resources>

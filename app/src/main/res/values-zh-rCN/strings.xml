@@ -63,10 +63,10 @@
     <string name="rear_widget_target_package">目标包名</string>
     <string name="rear_widget_business_name">组件名称（Widget）</string>
     <string name="rear_widget_business_file_mode_title">组件模板映射</string>
-    <string name="rear_widget_business_file_mode_hint">仅维护组件（Widget）到模板文件的映射，例如 music -&gt; 自定义模板。</string>
+    <string name="rear_widget_business_file_mode_hint">仅维护组件（Widget）到模板文件的映射，例如 music -&gt; 自定义模板</string>
     <string name="rear_widget_template_file">模板文件路径</string>
     <string name="rear_widget_default_index">默认索引</string>
-    <string name="rear_widget_default_priority">默认优先级</string>
+    <string name="rear_widget_default_priority">默认优先级 (数值越低优先级越高)</string>
     <string name="rear_widget_default_priority_value">优先级：%1$d</string>
     <string name="rear_widget_pick_file">选择文件</string>
     <string name="rear_widget_save_business">保存组件</string>
@@ -76,7 +76,7 @@
     <string name="rear_widget_card_summary">%1$s
 组件：%2$s · 优先级：%3$d</string>
     <string name="rear_widget_card_dialog_hint_title">卡片显示设置</string>
-    <string name="rear_widget_card_dialog_hint">通过对话框新增或编辑卡片，启用后会常驻显示在背屏。</string>
+    <string name="rear_widget_card_dialog_hint">通过对话框新增或编辑卡片，启用后会常驻显示在背屏</string>
     <string name="rear_widget_empty_business">暂无已注册组件模板</string>
     <string name="rear_widget_empty_card">暂无已配置卡片</string>
     <string name="rear_widget_form_invalid">请填写完整必填项</string>
@@ -88,6 +88,12 @@
     <string name="rear_widget_edit_business">编辑组件</string>
     <string name="rear_widget_add_card">新增卡片</string>
     <string name="rear_widget_edit_card">编辑卡片</string>
+    <string name="rear_widget_action_edit">编辑</string>
+    <string name="rear_widget_action_delete">删除</string>
+    <string name="rear_widget_action_move_up">上移</string>
+    <string name="rear_widget_action_move_down">下移</string>
+    <string name="rear_widget_dialog_component_hint">填写组件名称并绑定模板文件，保存后会立即更新运行时映射。</string>
+    <string name="rear_widget_dialog_card_hint">填写卡片标题、目标包名和组件名称，启用后会作为背屏常驻卡片注入</string>
     <string name="rear_widget_cancel">取消</string>
     <string name="rear_widget_confirm">确定</string>
     <string name="rear_widget_component_count">已注册组件：%1$d</string>
@@ -103,6 +109,8 @@
     <string name="home_update_unknown">未知</string>
     <string name="home_update_warning_title">发现版本更新</string>
     <string name="home_update_warning_desc">当前 %1$s，最新 %2$s</string>
+    <string name="home_root_warning_title">Root 不可用</string>
+    <string name="home_root_warning_desc">部分功能依赖 Root 权限， 请在Root管理器中授予本应用Root权限</string>
     <string name="module_version_label">模块版本</string>
     <string name="home_menu_placeholder">暂无快捷功能</string>
     <string name="quick_stop_subscreencenter">快捷终止背屏中心</string>
@@ -137,5 +145,7 @@
     <string name="skip_lock_back_home">阻止锁屏后背屏返回桌面</string>
     <string name="enable_video_looping">强制视频壁纸循环播放</string>
     <string name="credits_qq_title">QQ 群聊</string>
-    <string name="credits_qq_desc">加入我们的QQ群以获取最新的资讯</string>
+    <string name="credits_qq_desc">加入我们的QQ群，获取更及时的反馈</string>
+    <string name="credits_coolapk_title">酷安主页</string>
+    <string name="credits_coolapk_desc">关注我的账号以获取更多资讯</string>
 </resources>

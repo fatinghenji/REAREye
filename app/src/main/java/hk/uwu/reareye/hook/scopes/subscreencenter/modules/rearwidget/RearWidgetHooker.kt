@@ -350,9 +350,9 @@ class RearWidgetHooker : YukiBaseHooker() {
         return runCatching { JSONObject(ack).optBoolean("ok", false) }.getOrDefault(false)
     }
 
-    private fun injectAllActiveNotices(force: Boolean = false) {
+    private fun injectAllActiveNotices() {
         RearWidgetApi.listNotices().forEach { notice ->
-            injectByCompositeKey(notice.ticket.compositeKey, force)
+            injectByCompositeKey(notice.ticket.compositeKey, true)
         }
     }
 
@@ -361,11 +361,11 @@ class RearWidgetHooker : YukiBaseHooker() {
         val epoch = managerEpoch.get()
         handler.postDelayed({
             if (epoch != managerEpoch.get()) return@postDelayed
-            injectAllActiveNotices(force = true)
+            injectAllActiveNotices()
         }, 1200L)
         handler.postDelayed({
             if (epoch != managerEpoch.get()) return@postDelayed
-            injectAllActiveNotices(force = true)
+            injectAllActiveNotices()
         }, 2800L)
     }
 
@@ -486,7 +486,7 @@ class RearWidgetHooker : YukiBaseHooker() {
         }
 
         RearWidgetApi.mapsDirty.set(false)
-        dumpRuntimeMaps("applyRuntimeMaps", pkgBiz, bizPath)
+        dumpRuntimeMaps(bizPath)
     }
 
     private fun patchManagerAppGates(target: Any?) {
@@ -514,6 +514,7 @@ class RearWidgetHooker : YukiBaseHooker() {
         }
     }
 
+    @Suppress("SameParameterValue")
     private fun createU0b(business: String, index: Int, priority: Int): Any {
         return "U0.b".toClass().resolve().firstConstructor {
             parameterCount = 3
@@ -538,6 +539,7 @@ class RearWidgetHooker : YukiBaseHooker() {
         field.set(out)
     }
 
+    @Suppress("SameParameterValue")
     private fun replaceStaticList(
         className: String,
         fieldName: String,
@@ -583,8 +585,6 @@ class RearWidgetHooker : YukiBaseHooker() {
     }
 
     private fun dumpRuntimeMaps(
-        reason: String,
-        pkgBiz: Map<String, Set<String>>,
         bizPath: Map<String, String>,
     ) {
         runCatching {
@@ -596,11 +596,11 @@ class RearWidgetHooker : YukiBaseHooker() {
 
             val missingInWhitelist = bizPath.keys.sorted().filter { it !in cWhitelist }
             debugLog(
-                "dump[$reason] p2.a.a=$aMap, p2.a.c=$cMap, p2.a.d=$dMap, " +
+                "dump p2.a.a=$aMap, p2.a.c=$cMap, p2.a.d=$dMap, " +
                         "p2.c.d=$cPersistMap, p2.c.b.missing=$missingInWhitelist"
             )
         }.onFailure {
-            debugLog("dump[$reason] failed: ${it.message}")
+            debugLog("dump failed: ${it.message}")
         }
     }
 
@@ -611,6 +611,7 @@ class RearWidgetHooker : YukiBaseHooker() {
         return map.entries.associate { (k, v) -> k.toString() to v }
     }
 
+    @Suppress("SameParameterValue")
     private fun readStaticList(className: String, fieldName: String): List<String> {
         val raw = className.toClass().resolve().firstField { name = fieldName }.get<Any>()
             ?: return emptyList()

@@ -34,6 +34,7 @@ import androidx.core.graphics.createBitmap
 import androidx.core.net.toUri
 import hk.uwu.reareye.R
 import hk.uwu.reareye.generated.AppProperties
+import hk.uwu.reareye.ui.components.card.SuperCard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Card
@@ -42,8 +43,11 @@ import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
-import top.yukonga.miuix.kmp.extra.SuperArrow
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
+import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
@@ -74,6 +78,11 @@ fun AboutScreen() {
             titleRes = R.string.credits_qq_title,
             summaryRes = R.string.credits_qq_desc,
             url = "https://qm.qq.com/q/cg2MU3kw6W"
+        ),
+        CreditEntry(
+            titleRes = R.string.credits_coolapk_title,
+            summaryRes = R.string.credits_coolapk_desc,
+            url = "https://www.coolapk.com/u/7190992"
         )
     )
 
@@ -101,6 +110,8 @@ fun AboutScreen() {
                         .fillMaxWidth()
                         .padding(top = 12.dp),
                     insideMargin = PaddingValues(16.dp),
+                    pressFeedbackType = PressFeedbackType.Sink,
+                    showIndication = true
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         AppLogo(modifier = Modifier.size(52.dp))
@@ -114,7 +125,7 @@ fun AboutScreen() {
                             Text(
                                 text = versionText,
                                 style = MiuixTheme.textStyles.body2,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                color = colorScheme.onSurfaceVariantSummary,
                             )
                         }
                     }
@@ -127,12 +138,19 @@ fun AboutScreen() {
                         .fillMaxWidth()
                         .padding(top = 8.dp),
                 ) {
-                    SuperArrow(
+                    SuperCard(
                         title = stringResource(entry.titleRes),
                         summary = stringResource(entry.summaryRes),
                         onClick = {
                             context.startActivity(Intent(Intent.ACTION_VIEW, entry.url.toUri()))
                         },
+                        endActions = {
+                            Icon(
+                                imageVector = MiuixIcons.Link,
+                                tint = colorScheme.onSurface,
+                                contentDescription = null
+                            )
+                        }
                     )
                 }
             }
@@ -177,7 +195,7 @@ private fun AppLogo(modifier: Modifier = Modifier) {
         Icon(
             imageVector = Icons.Filled.Apps,
             contentDescription = null,
-            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            tint = colorScheme.onSurfaceVariantSummary,
             modifier = modifier,
         )
     }

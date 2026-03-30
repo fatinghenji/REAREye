@@ -8,17 +8,19 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,24 +40,30 @@ import hk.uwu.reareye.R
 import hk.uwu.reareye.rearwidget.RearBusinessConfig
 import hk.uwu.reareye.rearwidget.RearWidgetConfigCodec
 import hk.uwu.reareye.rearwidget.RearWidgetManagerRepository
+import hk.uwu.reareye.ui.components.card.ModuleStyleDeleteAction
+import hk.uwu.reareye.ui.components.card.ModuleStyleIconAction
+import hk.uwu.reareye.ui.components.card.ModuleStyleManagerCard
+import hk.uwu.reareye.ui.components.card.SuperCard
 import hk.uwu.reareye.ui.config.PrefsManager
 import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
-import top.yukonga.miuix.kmp.extra.SuperArrow
 import top.yukonga.miuix.kmp.extra.SuperDialog
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
 private const val DEFAULT_COMPONENT_ROUTE_PACKAGE = "com.xiaomi.subscreencenter"
 
+@SuppressLint("LocalContextGetResourceValueCall")
 @Composable
 fun BusinessManagerScreen(
     prefsManager: PrefsManager,
@@ -64,7 +72,7 @@ fun BusinessManagerScreen(
     val context = LocalContext.current
     val layoutDirection = LocalLayoutDirection.current
     val scrollBehavior = MiuixScrollBehavior()
-    val components = remember {
+    val widgets = remember {
         mutableStateListOf<RearBusinessConfig>().apply {
             addAll(RearWidgetManagerRepository.loadBusinesses(prefsManager))
         }
@@ -72,7 +80,7 @@ fun BusinessManagerScreen(
 
     var showDialog by remember { mutableStateOf(false) }
     var editingId by remember { mutableStateOf<String?>(null) }
-    var draftComponent by remember { mutableStateOf("") }
+    var draftWidget by remember { mutableStateOf("") }
     var draftFilePath by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
@@ -80,26 +88,26 @@ fun BusinessManagerScreen(
     }
 
     fun persist() {
-        RearWidgetManagerRepository.saveBusinesses(context, prefsManager, components.toList())
+        RearWidgetManagerRepository.saveBusinesses(context, prefsManager, widgets.toList())
     }
 
     fun openCreateDialog() {
         editingId = null
-        draftComponent = ""
+        draftWidget = ""
         draftFilePath = ""
         showDialog = true
     }
 
     fun openEditDialog(item: RearBusinessConfig) {
         editingId = item.id
-        draftComponent = item.business
+        draftWidget = item.business
         draftFilePath = item.filePath
         showDialog = true
     }
 
     @SuppressLint("LocalContextGetResourceValueCall")
     fun submitDialog() {
-        val widget = draftComponent.trim()
+        val widget = draftWidget.trim()
         val path = draftFilePath.trim()
         if (widget.isBlank() || path.isBlank()) {
             Toast.makeText(
@@ -120,15 +128,15 @@ fun BusinessManagerScreen(
         )
 
         editingId?.let { id ->
-            val oldIndex = components.indexOfFirst { it.id == id }
-            if (oldIndex >= 0) components.removeAt(oldIndex)
+            val oldIndex = widgets.indexOfFirst { it.id == id }
+            if (oldIndex >= 0) widgets.removeAt(oldIndex)
         }
 
-        val existingIndex = components.indexOfFirst { it.business == widget }
+        val existingIndex = widgets.indexOfFirst { it.business == widget }
         if (existingIndex >= 0) {
-            components[existingIndex] = config
+            widgets[existingIndex] = config
         } else {
-            components.add(config)
+            widgets.add(config)
         }
 
         persist()
@@ -140,16 +148,14 @@ fun BusinessManagerScreen(
         ).show()
     }
 
-    @SuppressLint("LocalContextGetResourceValueCall")
     val picker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-
         val copied = RearWidgetManagerRepository.copyTemplateToManagedPath(
             context = context,
             uri = uri,
-            businessNameHint = draftComponent,
+            businessNameHint = draftWidget,
         )
         if (copied.isNullOrBlank()) {
             Toast.makeText(
@@ -208,47 +214,64 @@ fun BusinessManagerScreen(
             overscrollEffect = null,
         ) {
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    SuperArrow(
-                        title = stringResource(R.string.rear_widget_business_file_mode_title),
-                        summary = stringResource(
-                            R.string.rear_widget_component_count,
-                            components.size,
-                        ) + "\n" + stringResource(R.string.rear_widget_business_file_mode_hint),
-                        onClick = { openCreateDialog() },
-                    )
+                Card(
+                    modifier = Modifier
+                        .padding(bottom = 12.dp)
+                        .fillMaxWidth()
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SuperCard(
+                            title = stringResource(R.string.rear_widget_business_file_mode_title),
+                            summary = stringResource(
+                                R.string.rear_widget_component_count,
+                                widgets.size,
+                            ) + "\n" + stringResource(R.string.rear_widget_business_file_mode_hint),
+                            onClick = {},
+                            bottomAction = {
+                                Button(
+                                    onClick = { openCreateDialog() },
+                                    colors = ButtonDefaults.buttonColorsPrimary(),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Add,
+                                        contentDescription = null,
+                                        modifier = Modifier.padding(end = 6.dp),
+                                    )
+                                    Text(text = stringResource(R.string.rear_widget_add_business))
+                                }
+                            }
+                        )
+                    }
                 }
             }
 
-            itemsIndexed(
-                items = components,
-                key = { _, item -> item.id },
-            ) { _, item ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth(),
-                ) {
-                    SuperArrow(
-                        title = item.business,
-                        summary = item.filePath,
-                        onClick = { openEditDialog(item) },
-                        endActions = {
-                            IconButton(onClick = { openEditDialog(item) }) {
-                                Icon(imageVector = Icons.Filled.Edit, contentDescription = null)
-                            }
-                            IconButton(onClick = {
-                                components.remove(item)
+            itemsIndexed(widgets, key = { _, item -> item.id }) { _, item ->
+                ModuleStyleManagerCard(
+                    title = item.business,
+                    summaryLines = listOf(item.filePath),
+                    onCardClick = { openEditDialog(item) },
+                    leftAction = {
+                        ModuleStyleIconAction(
+                            icon = Icons.Rounded.EditNote,
+                            onClick = { openEditDialog(item) },
+                        )
+                    },
+                    rightAction = {
+                        ModuleStyleDeleteAction(
+                            icon = MiuixIcons.Delete,
+                            text = stringResource(R.string.rear_widget_action_delete),
+                            onClick = {
+                                widgets.remove(item)
                                 persist()
-                            }) {
-                                Icon(imageVector = Icons.Filled.Delete, contentDescription = null)
-                            }
-                        },
-                    )
-                }
+                            },
+                        )
+                    },
+                )
             }
 
             item {
-                AnimatedVisibility(visible = components.isEmpty()) {
+                AnimatedVisibility(visible = widgets.isEmpty()) {
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Text(
                             text = stringResource(R.string.rear_widget_empty_business),
@@ -268,12 +291,15 @@ fun BusinessManagerScreen(
         onDismissRequest = { showDialog = false },
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .imePadding(),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             TextField(
-                value = draftComponent,
-                onValueChange = { draftComponent = it },
+                value = draftWidget,
+                onValueChange = { draftWidget = it },
                 modifier = Modifier.fillMaxWidth(),
                 label = stringResource(R.string.rear_widget_business_name),
                 singleLine = true,
@@ -287,22 +313,28 @@ fun BusinessManagerScreen(
             )
             Button(
                 modifier = Modifier.fillMaxWidth(),
-                onClick = { picker.launch(arrayOf("*/*")) },
-            ) {
+                onClick = { picker.launch(arrayOf("*/*")) }) {
+                Icon(
+                    imageVector = Icons.Filled.UploadFile,
+                    contentDescription = null,
+                    modifier = Modifier.padding(end = 6.dp),
+                )
                 Text(stringResource(R.string.rear_widget_pick_file))
             }
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                TextButton(
-                    text = stringResource(R.string.rear_widget_cancel),
-                    onClick = { showDialog = false },
-                )
-                TextButton(
-                    text = stringResource(R.string.rear_widget_confirm),
+                Button(
                     onClick = { submitDialog() },
-                )
+                    colors = ButtonDefaults.buttonColorsPrimary(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.rear_widget_confirm))
+                }
+                Button(onClick = { showDialog = false }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.rear_widget_cancel))
+                }
             }
         }
     }
