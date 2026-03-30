@@ -125,4 +125,6 @@ dependencies {
     implementation(libs.miuix)
     implementation(libs.miuix.icons)
     implementation(libs.okhttp)
+    implementation(libs.lyricon.provider)
+    implementation(libs.lyricon.central)
 }

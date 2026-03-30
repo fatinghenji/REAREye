@@ -14,6 +14,7 @@ compose-bom = "2026.03.01"
 androidx-activity-compose = "1.13.0"
 androidx-lifecycle-runtime-compose = "2.10.0"
 miuix = "0.8.8"
+lyricon = "0.1.69R"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -42,3 +43,5 @@ androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lif
 miuix = { group = "top.yukonga.miuix.kmp", name = "miuix", version.ref = "miuix" }
 miuix-icons = { group = "top.yukonga.miuix.kmp", name = "miuix-icons", version.ref = "miuix" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+lyricon-provider = { group = "io.github.proify.lyricon", name = "provider", version.ref = "lyricon" }
+lyricon-central = { group = "io.github.proify.lyricon", name = "central", version.ref = "lyricon" }

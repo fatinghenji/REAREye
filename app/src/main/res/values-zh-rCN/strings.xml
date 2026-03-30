@@ -79,6 +79,7 @@
     <string name="rear_widget_card_dialog_hint">通过对话框新增或编辑卡片，启用后会常驻显示在背屏</string>
     <string name="rear_widget_empty_business">暂无已注册组件模板</string>
     <string name="rear_widget_empty_card">暂无已配置卡片</string>
+    <string name="rear_widget_loading_data">正在加载数据…</string>
     <string name="rear_widget_form_invalid">请填写完整必填项</string>
     <string name="rear_widget_file_pick_failed">导入文件失败</string>
     <string name="rear_widget_file_pick_success">模板文件已导入</string>

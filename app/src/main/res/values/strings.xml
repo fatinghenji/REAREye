@@ -78,6 +78,7 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="rear_widget_card_dialog_hint">Use dialogs to add or edit cards. Enabled cards will stay resident on the rear screen</string>
     <string name="rear_widget_empty_business">No widget template registered</string>
     <string name="rear_widget_empty_card">No card configured</string>
+    <string name="rear_widget_loading_data">Loading data…</string>
     <string name="rear_widget_form_invalid">Please complete all required fields</string>
     <string name="rear_widget_file_pick_failed">Failed to import file</string>
     <string name="rear_widget_file_pick_success">Template file imported</string>

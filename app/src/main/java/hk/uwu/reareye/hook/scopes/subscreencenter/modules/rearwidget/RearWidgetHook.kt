@@ -20,13 +20,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-/**
- * Hook 侧实现：
- * - 通过 RearWidgetApi 的 channel 命令维护业务路由/通知
- * - 将运行时映射注入 p2.a / p2.c
- * - post/update 后立即触发注入，减少链路时序依赖
- */
-class RearWidgetHooker : YukiBaseHooker() {
+class RearWidgetHook : YukiBaseHooker() {
 
     companion object {
         private const val TAG = "REAREye-RearWidget"

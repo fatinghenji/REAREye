@@ -5,9 +5,18 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -28,6 +37,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -45,9 +55,12 @@ import hk.uwu.reareye.ui.components.card.ModuleStyleIconAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleManagerCard
 import hk.uwu.reareye.ui.components.card.SuperCard
 import hk.uwu.reareye.ui.config.PrefsManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
@@ -72,11 +85,9 @@ fun BusinessManagerScreen(
     val context = LocalContext.current
     val layoutDirection = LocalLayoutDirection.current
     val scrollBehavior = MiuixScrollBehavior()
-    val widgets = remember {
-        mutableStateListOf<RearBusinessConfig>().apply {
-            addAll(RearWidgetManagerRepository.loadBusinesses(prefsManager))
-        }
-    }
+    val widgets = remember { mutableStateListOf<RearBusinessConfig>() }
+    var widgetsLoaded by remember { mutableStateOf(false) }
+    var contentVisible by remember { mutableStateOf(false) }
 
     var showDialog by remember { mutableStateOf(false) }
     var editingId by remember { mutableStateOf<String?>(null) }
@@ -84,7 +95,16 @@ fun BusinessManagerScreen(
     var draftFilePath by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
-        RearWidgetManagerRepository.refreshRuntimeFromPrefs(context, prefsManager)
+        contentVisible = true
+        val loadedWidgets = withContext(Dispatchers.IO) {
+            RearWidgetManagerRepository.loadBusinesses(prefsManager)
+        }
+        widgets.clear()
+        widgets.addAll(loadedWidgets)
+        widgetsLoaded = true
+        withContext(Dispatchers.IO) {
+            RearWidgetManagerRepository.refreshRuntimeFromPrefs(context, prefsManager)
+        }
     }
 
     fun persist() {
@@ -191,7 +211,7 @@ fun BusinessManagerScreen(
                 actions = {
                     IconButton(
                         modifier = Modifier.padding(end = 16.dp),
-                        onClick = { openCreateDialog() }) {
+                        onClick = { if (widgetsLoaded) openCreateDialog() }) {
                         Icon(imageVector = Icons.Filled.Add, contentDescription = null)
                     }
                 },
@@ -214,64 +234,95 @@ fun BusinessManagerScreen(
             overscrollEffect = null,
         ) {
             item {
-                Card(
-                    modifier = Modifier
-                        .padding(bottom = 12.dp)
-                        .fillMaxWidth()
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SuperCard(
-                            title = stringResource(R.string.rear_widget_business_file_mode_title),
-                            summary = stringResource(
-                                R.string.rear_widget_component_count,
-                                widgets.size,
-                            ) + "\n" + stringResource(R.string.rear_widget_business_file_mode_hint),
-                            onClick = {},
-                            bottomAction = {
-                                Button(
-                                    onClick = { openCreateDialog() },
-                                    colors = ButtonDefaults.buttonColorsPrimary(),
-                                    modifier = Modifier.fillMaxWidth(),
+                ManagerRevealItem(visible = contentVisible, delayMillis = 0) {
+                    if (widgetsLoaded) {
+                        Card(
+                            modifier = Modifier
+                                .padding(bottom = 12.dp)
+                                .fillMaxWidth()
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                SuperCard(
+                                    title = stringResource(R.string.rear_widget_business_file_mode_title),
+                                    summary = stringResource(
+                                        R.string.rear_widget_component_count,
+                                        widgets.size,
+                                    ) + "\n" + stringResource(R.string.rear_widget_business_file_mode_hint),
+                                    onClick = {},
+                                    bottomAction = {
+                                        Button(
+                                            onClick = { openCreateDialog() },
+                                            colors = ButtonDefaults.buttonColorsPrimary(),
+                                            modifier = Modifier.fillMaxWidth(),
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Add,
+                                                contentDescription = null,
+                                                modifier = Modifier.padding(end = 6.dp),
+                                            )
+                                            Text(text = stringResource(R.string.rear_widget_add_business))
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    } else {
+                        Card(
+                            modifier = Modifier
+                                .padding(bottom = 12.dp)
+                                .fillMaxWidth(),
+                            insideMargin = PaddingValues(vertical = 24.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Add,
-                                        contentDescription = null,
-                                        modifier = Modifier.padding(end = 6.dp),
-                                    )
-                                    Text(text = stringResource(R.string.rear_widget_add_business))
+                                    CircularProgressIndicator()
+                                    Text(text = stringResource(R.string.rear_widget_loading_data))
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            if (widgetsLoaded) {
+                itemsIndexed(widgets, key = { _, item -> item.id }) { index, item ->
+                    ManagerRevealItem(
+                        visible = contentVisible,
+                        delayMillis = (80 + index * 24).coerceAtMost(280),
+                    ) {
+                        ModuleStyleManagerCard(
+                            title = item.business,
+                            summaryLines = listOf(item.filePath),
+                            onCardClick = { openEditDialog(item) },
+                            leftAction = {
+                                ModuleStyleIconAction(
+                                    icon = Icons.Rounded.EditNote,
+                                    onClick = { openEditDialog(item) },
+                                )
+                            },
+                            rightAction = {
+                                ModuleStyleDeleteAction(
+                                    icon = MiuixIcons.Delete,
+                                    text = stringResource(R.string.rear_widget_action_delete),
+                                    onClick = {
+                                        widgets.remove(item)
+                                        persist()
+                                    },
+                                )
+                            },
                         )
                     }
                 }
             }
 
-            itemsIndexed(widgets, key = { _, item -> item.id }) { _, item ->
-                ModuleStyleManagerCard(
-                    title = item.business,
-                    summaryLines = listOf(item.filePath),
-                    onCardClick = { openEditDialog(item) },
-                    leftAction = {
-                        ModuleStyleIconAction(
-                            icon = Icons.Rounded.EditNote,
-                            onClick = { openEditDialog(item) },
-                        )
-                    },
-                    rightAction = {
-                        ModuleStyleDeleteAction(
-                            icon = MiuixIcons.Delete,
-                            text = stringResource(R.string.rear_widget_action_delete),
-                            onClick = {
-                                widgets.remove(item)
-                                persist()
-                            },
-                        )
-                    },
-                )
-            }
-
             item {
-                AnimatedVisibility(visible = widgets.isEmpty()) {
+                AnimatedVisibility(visible = widgetsLoaded && widgets.isEmpty()) {
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Text(
                             text = stringResource(R.string.rear_widget_empty_business),
@@ -337,5 +388,37 @@ fun BusinessManagerScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ManagerRevealItem(
+    visible: Boolean,
+    delayMillis: Int,
+    content: @Composable () -> Unit,
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(
+            animationSpec = tween(
+                durationMillis = 320,
+                delayMillis = delayMillis,
+                easing = LinearOutSlowInEasing,
+            )
+        ) + slideInVertically(
+            animationSpec = tween(
+                durationMillis = 420,
+                delayMillis = delayMillis,
+                easing = FastOutSlowInEasing,
+            )
+        ) { it / 8 },
+        exit = fadeOut(
+            animationSpec = tween(
+                durationMillis = 120,
+                easing = FastOutLinearInEasing,
+            )
+        ),
+    ) {
+        content()
     }
 }
