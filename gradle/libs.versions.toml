@@ -14,7 +14,7 @@ compose-bom = "2026.03.01"
 androidx-activity-compose = "1.13.0"
 androidx-lifecycle-runtime-compose = "2.10.0"
 miuix = "0.8.8"
-lyricon = "0.1.69R3"
+lyricon = "0.1.70B"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

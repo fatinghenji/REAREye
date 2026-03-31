@@ -1,31 +1,24 @@
 package hk.uwu.reareye.hook.scopes.subscreencenter.modules.lyrics
 
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
-import androidx.core.content.ContextCompat
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import de.robv.android.xposed.XposedBridge
 import hk.uwu.reareye.lyrics.LyricParser
 import hk.uwu.reareye.ui.config.ConfigKeys
-import io.github.proify.lyricon.centralR.BridgeCentral
-import io.github.proify.lyricon.centralR.provider.player.ActivePlayerDispatcher
-import io.github.proify.lyricon.centralR.provider.player.ActivePlayerListener
+import io.github.proify.lyricon.central.BridgeCentral
 import io.github.proify.lyricon.lyric.model.Song
+import io.github.proify.lyricon.provider.ActivePlayerListener
+import io.github.proify.lyricon.provider.ActivePlayerMonitor
+import io.github.proify.lyricon.provider.LyriconFactory
 import io.github.proify.lyricon.provider.ProviderInfo
 
 class LyriconHook : YukiBaseHooker() {
     private val lyricParser = LyricParser()
-    private var hasBoot = false
-    private var hasListener = false
-    private var receiverRegistered = false
-    private var requestReceiverRegistered = false
 
     @Volatile
     private var latestLyricLrc: String = ""
@@ -33,17 +26,21 @@ class LyriconHook : YukiBaseHooker() {
     @Volatile
     private var element: Any? = null
 
+    @Volatile
+    var monitor: ActivePlayerMonitor? = null
+
     override fun onHook() {
         loadApp("com.android.systemui") {
             onAppLifecycle {
                 onCreate {
                     val context = appContext ?: return@onCreate
-                    registerLyricRequestReceiver(context, "com.android.systemui")
-                    initializeLyricBridge(
-                        context,
-                        "com.android.systemui",
-                        forwardToSubscreen = true
-                    )
+                    if (!isLyriconInstalled(context)) {
+                        XposedBridge.log("Lyricon is not found, starting bundled central")
+                        BridgeCentral.initialize(context)
+                        BridgeCentral.sendBootCompleted()
+                    } else {
+                        XposedBridge.log("Lyricon is found, skip to start central")
+                    }
                 }
             }
         }
@@ -52,8 +49,18 @@ class LyriconHook : YukiBaseHooker() {
             onAppLifecycle {
                 onCreate {
                     val context = appContext ?: return@onCreate
-                    registerLyricReceiver(context, processName)
-                    requestLyricFromSystemUi(context, processName)
+                    val listener = createLyricListener()
+                    val monitor =
+                        LyriconFactory.createActivePlayerMonitor(context, listener = listener)
+                    monitor.register()
+                    XposedBridge.log("Register player monitor")
+                }
+
+                onTerminate {
+                    monitor?.also {
+                        it.unregister()
+                        it.destroy()
+                    }
                 }
             }
 
@@ -69,29 +76,6 @@ class LyriconHook : YukiBaseHooker() {
         }
     }
 
-    private fun initializeLyricBridge(
-        context: Context,
-        processName: String,
-        forwardToSubscreen: Boolean
-    ) {
-        runCatching {
-            BridgeCentral.initialize(context)
-            if (!hasListener) {
-                ActivePlayerDispatcher.addActivePlayerListener(
-                    createLyricListener(processName, forwardToSubscreen)
-                )
-                hasListener = true
-            }
-            if (!hasBoot) {
-                BridgeCentral.sendBootCompleted()
-                hasBoot = true
-            }
-            XposedBridge.log("Lyricon bridge initialized in $processName")
-        }.onFailure {
-            XposedBridge.log("Lyricon bridge init failed in $processName: ${it.message}")
-        }
-    }
-
     private fun isLyriconInstalled(context: Context): Boolean {
         return runCatching {
             val pm = context.packageManager
@@ -104,10 +88,7 @@ class LyriconHook : YukiBaseHooker() {
         }.isSuccess
     }
 
-    private fun createLyricListener(
-        processName: String,
-        forwardToSubscreen: Boolean,
-    ): ActivePlayerListener {
+    private fun createLyricListener(): ActivePlayerListener {
         return object : ActivePlayerListener {
             private var currentProvider: ProviderInfo? = null
 
@@ -123,13 +104,10 @@ class LyriconHook : YukiBaseHooker() {
                         ConfigKeys.LYRIC_DISPLAY_MODE_DEFAULT,
                     )
                 )
-                latestLyricLrc = lrc
-                Log.d("REAREye-Lyric", "[$processName] get song lrc $lrc")
-                XposedBridge.log("[$processName] onSongChanged converted LRC length=${lrc.length}")
-
-                if (!forwardToSubscreen) return
-                val context = appContext ?: return
-                dispatchLyricToSubscreen(context, lrc)
+                latestLyricLrc = normalizeForMiuiParser(lrc)
+                Log.d("REAREye-Lyric", "get song lrc $latestLyricLrc")
+                XposedBridge.log("onSongChanged converted LRC length=${latestLyricLrc.length}")
+                forceUpdateLyric(latestLyricLrc)
             }
 
             override fun onPlaybackStateChanged(isPlaying: Boolean) = Unit
@@ -143,34 +121,6 @@ class LyriconHook : YukiBaseHooker() {
             override fun onDisplayTranslationChanged(isDisplayTranslation: Boolean) = Unit
 
             override fun onDisplayRomaChanged(displayRoma: Boolean) = Unit
-        }
-    }
-
-    private fun registerLyricReceiver(context: Context, processName: String) {
-        if (receiverRegistered) return
-
-        runCatching {
-            val filter = IntentFilter(ACTION_SYNC_LYRIC)
-            val receiver = object : BroadcastReceiver() {
-                override fun onReceive(context: Context?, intent: Intent?) {
-                    if (intent?.action != ACTION_SYNC_LYRIC) return
-                    val lrc =
-                        normalizeForMiuiParser(intent.getStringExtra(EXTRA_LYRIC_LRC).orEmpty())
-                    latestLyricLrc = lrc
-                    XposedBridge.log("[$processName] received SongLRC $lrc")
-                    XposedBridge.log("[$processName] receive lyric broadcast length=${lrc.length}")
-                    forceUpdateLyric(lrc)
-                }
-            }
-            ContextCompat.registerReceiver(
-                context,
-                receiver,
-                filter,
-                ContextCompat.RECEIVER_EXPORTED,
-            )
-            receiverRegistered = true
-        }.onFailure {
-            XposedBridge.log("[$processName] register lyric receiver failed: ${it.message}")
         }
     }
 
@@ -193,55 +143,6 @@ class LyriconHook : YukiBaseHooker() {
         }
     }
 
-    private fun registerLyricRequestReceiver(context: Context, processName: String) {
-        if (requestReceiverRegistered) return
-
-        runCatching {
-            val filter = IntentFilter(ACTION_REQUEST_LYRIC)
-            val receiver = object : BroadcastReceiver() {
-                override fun onReceive(context: Context?, intent: Intent?) {
-                    if (intent?.action != ACTION_REQUEST_LYRIC) return
-                    val ctx = context ?: return
-                    dispatchLyricToSubscreen(ctx, latestLyricLrc)
-                    XposedBridge.log("[$processName] received lyric pull request")
-                }
-            }
-            ContextCompat.registerReceiver(
-                context,
-                receiver,
-                filter,
-                ContextCompat.RECEIVER_EXPORTED,
-            )
-            requestReceiverRegistered = true
-        }.onFailure {
-            XposedBridge.log("[$processName] register request receiver failed: ${it.message}")
-        }
-    }
-
-    private fun requestLyricFromSystemUi(context: Context, processName: String) {
-        runCatching {
-            val intent = Intent(ACTION_REQUEST_LYRIC).apply {
-                setPackage(TARGET_SYSTEMUI_PACKAGE)
-            }
-            context.sendBroadcast(intent)
-            XposedBridge.log("[$processName] request lyric from $TARGET_SYSTEMUI_PACKAGE")
-        }.onFailure {
-            XposedBridge.log("[$processName] request lyric failed: ${it.message}")
-        }
-    }
-
-    private fun dispatchLyricToSubscreen(context: Context, lyricLrc: String) {
-        runCatching {
-            val intent = Intent(ACTION_SYNC_LYRIC).apply {
-                setPackage(TARGET_SUBSCREEN_PACKAGE)
-                putExtra(EXTRA_LYRIC_LRC, lyricLrc)
-            }
-            context.sendBroadcast(intent)
-        }.onFailure {
-            XposedBridge.log("dispatch lyric to $TARGET_SUBSCREEN_PACKAGE failed: ${it.message}")
-        }
-    }
-
     private fun normalizeForMiuiParser(rawLrc: String): String {
         if (rawLrc.isEmpty()) return rawLrc
         return rawLrc
@@ -251,11 +152,6 @@ class LyriconHook : YukiBaseHooker() {
     }
 
     private companion object {
-        private const val ACTION_SYNC_LYRIC = "hk.uwu.reareye.action.SYNC_LYRIC"
-        private const val ACTION_REQUEST_LYRIC = "hk.uwu.reareye.action.REQUEST_LYRIC"
-        private const val EXTRA_LYRIC_LRC = "extra_lyric_lrc"
-        private const val TARGET_SUBSCREEN_PACKAGE = "com.xiaomi.subscreencenter"
-        private const val TARGET_SYSTEMUI_PACKAGE = "com.android.systemui"
         private const val TARGET_LYRICON_PACKAGE = "io.github.proify.lyricon"
     }
 }
