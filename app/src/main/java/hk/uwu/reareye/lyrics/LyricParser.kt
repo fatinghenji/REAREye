@@ -11,7 +11,24 @@ class LyricParser {
         private const val MIUI_LRC_LINE_ENDING = "\r\n"
     }
 
-    fun toLrc(song: Song?): String {
+    enum class DisplayMode(val mask: Int) {
+        ORIGINAL(0x01),   // 显示原文
+        TRANSLATION(0x02),// 显示翻译
+        ROMANIZATION(0x04);// 显示罗马音
+
+        companion object {
+            fun shouldShowOriginal(mask: Int): Boolean =
+                (mask and ORIGINAL.mask) != 0
+
+            fun shouldShowTranslation(mask: Int): Boolean =
+                (mask and TRANSLATION.mask) != 0
+
+            fun shouldShowRomanization(mask: Int): Boolean =
+                (mask and ROMANIZATION.mask) != 0
+        }
+    }
+
+    fun toLrc(song: Song?, displayMode: Int): String {
         if (song == null) return ""
         val builder = StringBuilder()
 
@@ -27,7 +44,7 @@ class LyricParser {
             ?.sortedBy { it.begin }
             ?.forEach { line ->
                 val timestamp = formatTimestamp(line.begin)
-                line.toLrcTexts().forEach { text ->
+                line.toLrcTexts(displayMode).forEach { text ->
                     builder.append('[')
                         .append(timestamp)
                         .append(']')
@@ -39,14 +56,26 @@ class LyricParser {
         return builder.toString().removeSuffix(MIUI_LRC_LINE_ENDING)
     }
 
-    private fun RichLyricLine.toLrcTexts(): List<String> {
+    private fun RichLyricLine.toLrcTexts(displayMode: Int): List<String> {
         val main = resolveText(text, words)
         val secondaryText = resolveText(secondary, secondaryWords)
         val translationText = resolveText(translation, translationWords)
         val romaText = normalizeText(roma)
 
-        return linkedSetOf(main, secondaryText, translationText, romaText)
-            .filter { it.isNotBlank() }
+        val result = mutableListOf<String>()
+
+        if (DisplayMode.shouldShowOriginal(displayMode)) {
+            result.add(main)
+            result.add(secondaryText)
+        }
+        if (DisplayMode.shouldShowTranslation(displayMode)) {
+            result.add(translationText)
+        }
+        if (DisplayMode.shouldShowRomanization(displayMode)) {
+            result.add(romaText)
+        }
+
+        return result.filter { it.isNotBlank() }
     }
 
     private fun resolveText(rawText: String?, words: List<LyricWord>?): String {

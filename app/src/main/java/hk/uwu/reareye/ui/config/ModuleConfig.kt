@@ -3,6 +3,7 @@ package hk.uwu.reareye.ui.config
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Tune
 import hk.uwu.reareye.R
+import hk.uwu.reareye.lyrics.LyricParser
 
 object ConfigKeys {
     const val MODULE_HIDE_LAUNCHER_ENTRY = "module_hide_launcher_entry"
@@ -30,6 +31,11 @@ object ConfigKeys {
 
     const val HOOK_UNLOCK_VIDEO_RESTRICTIONS = "enable_unlock_video_restrictions"
     const val HOOK_UNLOCK_TEMPLATE_MAXIMUM_LIMIT = "enable_unlock_template_maximum_limit"
+
+    const val LYRIC_DISPLAY_MODE = "lyric_display_mode"
+    val LYRIC_DISPLAY_MODE_DEFAULT = LyricParser.DisplayMode.ORIGINAL.mask or
+            LyricParser.DisplayMode.TRANSLATION.mask or
+            LyricParser.DisplayMode.ROMANIZATION.mask
 }
 
 val REAREyeConfig = listOf(
@@ -135,6 +141,28 @@ val REAREyeConfig = listOf(
                         titleRes = R.string.enable_music_control_force_update,
                         descriptionRes = R.string.enable_music_control_force_update_desc,
                         type = ConfigType.BooleanVal(defaultValue = false)
+                    )
+                )
+            ),
+            ConfigItem(
+                key = ConfigKeys.LYRIC_DISPLAY_MODE,
+                titleRes = R.string.lyric_display_mode,
+                descriptionRes = R.string.lyric_display_mode_desc,
+                type = ConfigType.MaskMultiSelect(
+                    defaultValue = ConfigKeys.LYRIC_DISPLAY_MODE_DEFAULT,
+                    options = listOf(
+                        ConfigType.MaskOption(
+                            titleRes = R.string.lyric_display_mode_original,
+                            maskValue = LyricParser.DisplayMode.ORIGINAL.mask,
+                        ),
+                        ConfigType.MaskOption(
+                            titleRes = R.string.lyric_display_mode_translation,
+                            maskValue = LyricParser.DisplayMode.TRANSLATION.mask,
+                        ),
+                        ConfigType.MaskOption(
+                            titleRes = R.string.lyric_display_mode_romanization,
+                            maskValue = LyricParser.DisplayMode.ROMANIZATION.mask,
+                        ),
                     )
                 )
             ),

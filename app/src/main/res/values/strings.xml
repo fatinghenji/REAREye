@@ -53,6 +53,12 @@
     <string name="background_lock_apps_desc">Lock the selected application process as a system user</string>
     <string name="enable_music_control_force_update">Enable Music Controls Forced Update</string>
     <string name="enable_music_control_force_update_desc">Force update music controls when track changes</string>
+    <string name="lyric_display_mode">Lyric Display Mode</string>
+    <string name="lyric_display_mode_desc">Choose which lyric content should be shown on the rear screen</string>
+    <string name="lyric_display_mode_original">Original</string>
+    <string name="lyric_display_mode_translation">Translation</string>
+    <string name="lyric_display_mode_romanization">Romanization</string>
+    <string name="lyric_display_mode_none">No display mode selected</string>
     <string name="rear_widget_manager_category">Rear Widget Managers</string>
     <string name="rear_widget_manager_category_desc">Manage custom widget templates and resident cards</string>
     <string name="rear_widget_business_manager">Widget Template Manager</string>
@@ -150,4 +156,5 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="credits_qq_desc">Join our QQ group to get more timely feedback</string>
     <string name="credits_coolapk_title">Coolapk Homepage</string>
     <string name="credits_coolapk_desc">Follow my account for more information</string>
+    <string name="quick_stop_systemui">Force Stop System UI</string>
 </resources>

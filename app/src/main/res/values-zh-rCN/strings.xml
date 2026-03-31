@@ -54,6 +54,12 @@
     <string name="background_lock_apps_desc">以系统用户的身份锁定选中应用的进程</string>
     <string name="enable_music_control_force_update">启用强制更新音乐控件</string>
     <string name="enable_music_control_force_update_desc">在曲目发生变化时强制更新音乐控件</string>
+    <string name="lyric_display_mode">歌词显示模式</string>
+    <string name="lyric_display_mode_desc">选择背屏歌词中要显示的内容</string>
+    <string name="lyric_display_mode_original">原文</string>
+    <string name="lyric_display_mode_translation">翻译</string>
+    <string name="lyric_display_mode_romanization">罗马音</string>
+    <string name="lyric_display_mode_none">未选择任何显示模式</string>
     <string name="rear_widget_manager_category">背屏组件管理</string>
     <string name="rear_widget_manager_category_desc">管理自定义组件模板与常驻卡片</string>
     <string name="rear_widget_business_manager">组件模板管理器</string>
@@ -149,4 +155,5 @@
     <string name="credits_qq_desc">加入我们的QQ群，获取更及时的反馈</string>
     <string name="credits_coolapk_title">酷安主页</string>
     <string name="credits_coolapk_desc">关注我的账号以获取更多资讯</string>
+    <string name="quick_stop_systemui">快捷终止系统界面</string>
 </resources>

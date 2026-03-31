@@ -4,6 +4,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
@@ -11,6 +13,7 @@ import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import de.robv.android.xposed.XposedBridge
 import hk.uwu.reareye.lyrics.LyricParser
+import hk.uwu.reareye.ui.config.ConfigKeys
 import io.github.proify.lyricon.central.BridgeCentral
 import io.github.proify.lyricon.central.provider.player.ActivePlayerDispatcher
 import io.github.proify.lyricon.central.provider.player.ActivePlayerListener
@@ -79,14 +82,30 @@ class LyriconHook : YukiBaseHooker() {
                 )
                 hasListener = true
             }
-            if (!hasBoot) {
+            val hasLyriconApp = isLyriconInstalled(context)
+            if (!hasBoot && !hasLyriconApp) {
                 BridgeCentral.sendBootCompleted()
                 hasBoot = true
+            }
+            if (hasLyriconApp) {
+                XposedBridge.log("Lyricon app detected, skip BridgeCentral boot in $processName")
             }
             XposedBridge.log("Lyricon bridge initialized in $processName")
         }.onFailure {
             XposedBridge.log("Lyricon bridge init failed in $processName: ${it.message}")
         }
+    }
+
+    private fun isLyriconInstalled(context: Context): Boolean {
+        return runCatching {
+            val pm = context.packageManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.getPackageInfo(TARGET_LYRICON_PACKAGE, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getPackageInfo(TARGET_LYRICON_PACKAGE, 0)
+            }
+        }.isSuccess
     }
 
     private fun createLyricListener(
@@ -101,7 +120,13 @@ class LyriconHook : YukiBaseHooker() {
             }
 
             override fun onSongChanged(song: Song?) {
-                val lrc = lyricParser.toLrc(song)
+                val lrc = lyricParser.toLrc(
+                    song,
+                    prefs.getInt(
+                        ConfigKeys.LYRIC_DISPLAY_MODE,
+                        ConfigKeys.LYRIC_DISPLAY_MODE_DEFAULT,
+                    )
+                )
                 latestLyricLrc = lrc
                 Log.d("REAREye-Lyric", "[$processName] get song lrc $lrc")
                 XposedBridge.log("[$processName] onSongChanged converted LRC length=${lrc.length}")
@@ -235,5 +260,6 @@ class LyriconHook : YukiBaseHooker() {
         private const val EXTRA_LYRIC_LRC = "extra_lyric_lrc"
         private const val TARGET_SUBSCREEN_PACKAGE = "com.xiaomi.subscreencenter"
         private const val TARGET_SYSTEMUI_PACKAGE = "com.android.systemui"
+        private const val TARGET_LYRICON_PACKAGE = "io.github.proify.lyricon"
     }
 }

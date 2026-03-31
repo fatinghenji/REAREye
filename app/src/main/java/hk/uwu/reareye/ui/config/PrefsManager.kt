@@ -30,4 +30,12 @@ class PrefsManager(context: Context) {
     fun putString(key: String, value: String) {
         prefs.edit().putString(key, value).apply()
     }
+
+    fun getInt(key: String, defValue: Int): Int {
+        return prefs.getInt(key, defValue)
+    }
+
+    fun putInt(key: String, value: Int) {
+        prefs.edit().putInt(key, value).apply()
+    }
 }

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -27,12 +28,20 @@ import hk.uwu.reareye.ui.config.ConfigGroup
 import hk.uwu.reareye.ui.config.ConfigItem
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.ConfigNode
+import hk.uwu.reareye.ui.config.ConfigType
 import hk.uwu.reareye.ui.config.ModuleSettingsController
 import hk.uwu.reareye.ui.config.PrefsManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.ListPopupColumn
+import top.yukonga.miuix.kmp.basic.ListPopupDefaults
+import top.yukonga.miuix.kmp.basic.PopupPositionProvider
+import top.yukonga.miuix.kmp.basic.SpinnerDefaults
+import top.yukonga.miuix.kmp.basic.SpinnerEntry
+import top.yukonga.miuix.kmp.basic.SpinnerItemImpl
 import top.yukonga.miuix.kmp.extra.SuperArrow
+import top.yukonga.miuix.kmp.extra.SuperListPopup
 import top.yukonga.miuix.kmp.extra.SuperSwitch
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -191,6 +200,70 @@ fun AppListConfigInput(
         summary = summary,
         onClick = onClick
     )
+}
+
+@Composable
+fun MaskMultiSelectConfigInput(
+    item: ConfigItem,
+    defaultValue: Int,
+    options: List<ConfigType.MaskOption>,
+    prefsManager: PrefsManager,
+) {
+    var showModePopup by remember(item.key) { mutableStateOf(false) }
+    var selectedMask by remember(item.key) {
+        mutableIntStateOf(prefsManager.getInt(item.key, defaultValue))
+    }
+
+    val selectedLabels = options
+        .filter { (selectedMask and it.maskValue) != 0 }
+        .map { stringResource(it.titleRes) }
+
+    val selectedSummary = if (selectedLabels.isEmpty()) {
+        stringResource(R.string.lyric_display_mode_none)
+    } else {
+        selectedLabels.joinToString(separator = " / ")
+    }
+    val description = item.descriptionRes?.let { stringResource(it) }
+    val summary = if (description.isNullOrBlank()) {
+        selectedSummary
+    } else {
+        "$description\n$selectedSummary"
+    }
+
+    SuperArrow(
+        title = stringResource(item.titleRes),
+        summary = summary,
+        holdDownState = showModePopup,
+        onClick = { showModePopup = true }
+    )
+
+    SuperListPopup(
+        show = showModePopup,
+        popupModifier = Modifier,
+        popupPositionProvider = ListPopupDefaults.ContextMenuPositionProvider,
+        alignment = PopupPositionProvider.Align.TopEnd,
+        enableWindowDim = true,
+        onDismissRequest = { showModePopup = false },
+        maxHeight = null,
+        minWidth = 220.dp,
+        renderInRootScaffold = true,
+    ) {
+        ListPopupColumn {
+            options.forEachIndexed { index, option ->
+                SpinnerItemImpl(
+                    entry = SpinnerEntry(title = stringResource(option.titleRes)),
+                    entryCount = options.size,
+                    isSelected = (selectedMask and option.maskValue) != 0,
+                    index = index,
+                    spinnerColors = SpinnerDefaults.spinnerColors(),
+                    onSelectedIndexChange = {
+                        selectedMask = selectedMask xor option.maskValue
+                        prefsManager.putInt(item.key, selectedMask)
+                    },
+                )
+            }
+        }
+    }
 }
 
 @Composable

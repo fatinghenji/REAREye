@@ -1,6 +1,7 @@
 package hk.uwu.reareye.ui.screen
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
@@ -230,6 +231,25 @@ fun HomeScreen() {
                                         }
                                     },
                                 )
+
+                                SpinnerItemImpl(
+                                    entry = SpinnerEntry(
+                                        title = androidx.compose.ui.res.stringResource(
+                                            R.string.quick_stop_systemui,
+                                        ),
+                                    ),
+                                    entryCount = 2,
+                                    isSelected = false,
+                                    index = 1,
+                                    spinnerColors = SpinnerDefaults.spinnerColors(),
+                                    onSelectedIndexChange = {
+                                        showTopMenu.value = false
+                                        coroutineScope.launch {
+                                            forceKillSystemUI(context)
+                                        }
+                                    },
+                                )
+
                             }
                         }
                     }
@@ -304,7 +324,7 @@ fun HomeScreen() {
 }
 
 private suspend fun forceStopPackageByRoot(
-    context: android.content.Context,
+    context: Context,
     packageName: String,
     appName: String,
 ) {
@@ -331,6 +351,23 @@ private suspend fun forceStopPackageByRoot(
                 Toast.LENGTH_SHORT,
             ).show()
         }
+    }
+}
+
+private suspend fun forceKillSystemUI(context: Context) {
+    withContext(Dispatchers.IO) {
+        if (!RootHelper.hasRootAccess()) {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.toast_need_root_permission),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+            return@withContext
+        }
+
+        RootHelper.executeRootCommandSuccess("kill -9 $(pgrep systemui)")
     }
 }
 
