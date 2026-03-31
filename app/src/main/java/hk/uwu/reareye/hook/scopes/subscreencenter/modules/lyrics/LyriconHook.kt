@@ -12,10 +12,10 @@ import hk.uwu.reareye.lyrics.LyricParser
 import hk.uwu.reareye.ui.config.ConfigKeys
 import io.github.proify.lyricon.central.BridgeCentral
 import io.github.proify.lyricon.lyric.model.Song
-import io.github.proify.lyricon.provider.ActivePlayerListener
-import io.github.proify.lyricon.provider.ActivePlayerMonitor
 import io.github.proify.lyricon.provider.LyriconFactory
 import io.github.proify.lyricon.provider.ProviderInfo
+import io.github.proify.lyricon.subscriber.ActivePlayerListener
+import io.github.proify.lyricon.subscriber.ActivePlayerMonitor
 
 class LyriconHook : YukiBaseHooker() {
     private val lyricParser = LyricParser()
