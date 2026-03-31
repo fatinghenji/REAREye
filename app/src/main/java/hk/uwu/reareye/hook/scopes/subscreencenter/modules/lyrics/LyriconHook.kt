@@ -14,9 +14,9 @@ import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import de.robv.android.xposed.XposedBridge
 import hk.uwu.reareye.lyrics.LyricParser
 import hk.uwu.reareye.ui.config.ConfigKeys
-import io.github.proify.lyricon.central.BridgeCentral
-import io.github.proify.lyricon.central.provider.player.ActivePlayerDispatcher
-import io.github.proify.lyricon.central.provider.player.ActivePlayerListener
+import io.github.proify.lyricon.centralR.BridgeCentral
+import io.github.proify.lyricon.centralR.provider.player.ActivePlayerDispatcher
+import io.github.proify.lyricon.centralR.provider.player.ActivePlayerListener
 import io.github.proify.lyricon.lyric.model.Song
 import io.github.proify.lyricon.provider.ProviderInfo
 
@@ -82,13 +82,9 @@ class LyriconHook : YukiBaseHooker() {
                 )
                 hasListener = true
             }
-            val hasLyriconApp = isLyriconInstalled(context)
-            if (!hasBoot && !hasLyriconApp) {
+            if (!hasBoot) {
                 BridgeCentral.sendBootCompleted()
                 hasBoot = true
-            }
-            if (hasLyriconApp) {
-                XposedBridge.log("Lyricon app detected, skip BridgeCentral boot in $processName")
             }
             XposedBridge.log("Lyricon bridge initialized in $processName")
         }.onFailure {
