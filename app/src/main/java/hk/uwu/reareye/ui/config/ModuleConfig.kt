@@ -31,6 +31,7 @@ object ConfigKeys {
 
     const val HOOK_UNLOCK_VIDEO_RESTRICTIONS = "enable_unlock_video_restrictions"
     const val HOOK_UNLOCK_TEMPLATE_MAXIMUM_LIMIT = "enable_unlock_template_maximum_limit"
+    const val HOOK_UNMUTE_VIDEO_WALLPAPER = "enable_unmute_video_wallpaper"
 
     const val LYRIC_DISPLAY_MODE = "lyric_display_mode"
     val LYRIC_DISPLAY_MODE_DEFAULT = LyricParser.DisplayMode.ORIGINAL.mask or
@@ -236,6 +237,12 @@ val REAREyeConfig = listOf(
                         titleRes = R.string.cfg_unlock_template_maximum_limit,
                         descriptionRes = R.string.cfg_unlock_template_maximum_limit_desc,
                         type = ConfigType.BooleanVal(defaultValue = true)
+                    ),
+                    ConfigItem(
+                        key = ConfigKeys.HOOK_UNMUTE_VIDEO_WALLPAPER,
+                        titleRes = R.string.cfg_unmute_video_wallpaper,
+                        descriptionRes = R.string.cfg_unmute_video_wallpaper_desc,
+                        type = ConfigType.BooleanVal(defaultValue = false)
                     )
                 )
             )

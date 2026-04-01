@@ -20,8 +20,8 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
     @SuppressLint("ResourceType")
     override fun onHook() {
         loadApp("com.android.thememanager") {
-            val videoEditClz =
-                "com.android.thememanager.videoedit.VideoEditActivity".toClass().resolve()
+            val videoEditClz = "com.android.thememanager.videoedit.VideoEditActivity".toClass()
+            val videoEditRef = videoEditClz.resolve()
             val fpsLimitClz =
                 $$"com.android.thememanager.videoedit.VideoEditActivity$zy".toClass().resolve()
             val editorCfgClz =
@@ -82,7 +82,7 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                 }
             }
             // 修补视频编辑器
-            videoEditClz.firstMethod {
+            videoEditRef.firstMethod {
                 name = "nsb"
                 returnType = Void.TYPE
             }.hook().replaceUnit {
@@ -154,7 +154,7 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                     "com.android.thememanager.settings.a9".toClass().resolve().firstMethod {
                         name = "f7l8"
                     }.invoke() as String
-                val iVEA = instance.asResolver().firstField { name = "this$0" }.get()!!
+                val iVEA = instance.asResolver().firstField { type = videoEditClz }.get()!!
                 val iRef = iVEA.asResolver()
                 val yObj = iRef.firstField { name = "y" }.get()
                 val cFieldRef = iRef.firstField { name = "c" }
@@ -177,7 +177,7 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                     return@replaceUnit
                 }
                 val pVarN2t = iRef.firstMethod { name = "n2t" }
-                    .invoke(videoEditClz.firstField { name = "b" }.get(), width, height)!!
+                    .invoke(videoEditRef.firstField { name = "b" }.get(), width, height)!!
                     .asResolver()
                 val k = pVarN2t.firstField { name = "k" }.get() as Int
                 val toq = pVarN2t.firstField { name = "toq" }.get() as Int

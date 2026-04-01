@@ -170,4 +170,6 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="quick_stop_systemui">Force Stop System UI</string>
     <string name="home_easter_egg_april_fools_working">Fatal Error</string>
     <string name="home_easter_egg_april_fools_activated">The module has crashed</string>
+    <string name="cfg_unmute_video_wallpaper">Unmute video wallpaper</string>
+    <string name="cfg_unmute_video_wallpaper_desc">Allows you to add unmute video wallpapers</string>
 </resources>
