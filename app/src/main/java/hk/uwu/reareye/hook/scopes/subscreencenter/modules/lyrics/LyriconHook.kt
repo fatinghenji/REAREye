@@ -92,7 +92,7 @@ class LyriconHook : YukiBaseHooker() {
 
                                 override fun onSuperLyric(data: SuperLyricData) {
                                     runCatching {
-                                        //XposedBridge.log("onSuperLyric ${data.lyric}")
+                                        //YLog.debug("onSuperLyric ${data.lyric}")
                                         if (data.lyric.isNotEmpty()) {
                                             updateFallbackLyric(data.lyric)
                                         }
@@ -132,6 +132,24 @@ class LyriconHook : YukiBaseHooker() {
                     }
                 }
             }
+
+            ref.firstMethod {
+                name = "resetLyric"
+            }.hook().replaceUnit {
+                val iRef = instance.asResolver()
+                val mMetadata = iRef.firstField { name = "mMetadata" }.get<MediaMetadata>()
+                if (mMetadata != null && XposedHelpers.getAdditionalInstanceField(
+                        instance,
+                        "OLD_MEDIA_ID"
+                    ) == mMetadata.description.mediaId
+                ) {
+                    YLog.debug("Reject reset lyric while media id is not changed")
+                    return@replaceUnit
+                } else {
+                    invokeOriginal()
+                }
+            }
+
             val seClz = "com.miui.maml.elements.ScreenElement".toClass().resolve()
             seClz.firstMethod {
                 name = "show"
@@ -156,9 +174,22 @@ class LyriconHook : YukiBaseHooker() {
                 val iRef = i.asResolver()
                 val mLyric = iRef.firstField { name = "mLyric" }.get()
                 val lrc = XposedHelpers.getAdditionalInstanceField(i, "TEMP_LRC") as? String
-                //YLog.debug("update $mLyric $lrc")
-                if (mLyric == null && (lrc != null || latestLyricLrc.isNotEmpty())) {
-                    forceUpdateLyric(i, lrc ?: latestLyricLrc)
+                if (mLyric == null) {
+                    if (lrc != null || latestLyricLrc.isNotEmpty()) {
+                        YLog.debug("onUpdateLrc $mLyric ${lrc == null} ${latestLyricLrc.isEmpty()}")
+                        forceUpdateLyric(i, lrc ?: latestLyricLrc)
+                        return@after
+                    }
+                    val line =
+                        XposedHelpers.getAdditionalInstanceField(i, "TEMP_LYRIC_LINE") as? String
+                    val mLyricCurrentVar =
+                        iRef.firstField { name = "mLyricCurrentVar" }.get() ?: return@after
+                    val currentLyric =
+                        mLyricCurrentVar.asResolver().firstMethod { name = "get" }.invoke()
+                    if (line != null && currentLyric == null) {
+                        YLog.debug("onUpdateLine $line")
+                        updateFallbackLine(i, line)
+                    }
                 }
             }
         }
@@ -216,7 +247,7 @@ class LyriconHook : YukiBaseHooker() {
 
             override fun onSendText(text: String?) {
                 runCatching {
-                    //XposedBridge.log("onSendText $text")
+                    //YLog.debug("onSendText $text")
                     if (text != null) updateFallbackLyric(text)
                 }.onFailure {
                     YLog.error(it)
@@ -231,16 +262,21 @@ class LyriconHook : YukiBaseHooker() {
 
     private fun updateFallbackLyric(text: String) {
         elements.forEach { element ->
-            val ref = element.asResolver()
-            val mLyric = ref.firstField { name = "mLyric" }.get()
-            if (mLyric != null) return@forEach
-            val mLyricCurrentVar =
-                ref.firstField { name = "mLyricCurrentVar" }.get() ?: return@forEach
-            mLyricCurrentVar.asResolver().firstMethod {
-                name = "set"
-                parameters(Any::class.java)
-            }.invoke(text)
+            XposedHelpers.setAdditionalInstanceField(element, "TEMP_LYRIC_LINE", text)
+            updateFallbackLine(element, text)
         }
+    }
+
+    private fun updateFallbackLine(element: Any, text: String) {
+        val ref = element.asResolver()
+        val mLyric = ref.firstField { name = "mLyric" }.get()
+        if (mLyric != null) return
+        val mLyricCurrentVar =
+            ref.firstField { name = "mLyricCurrentVar" }.get() ?: return
+        mLyricCurrentVar.asResolver().firstMethod {
+            name = "set"
+            parameters(Any::class.java)
+        }.invoke(text)
     }
 
     private fun forceUpdateLyric(element: Any, lrc: String) {
@@ -258,6 +294,13 @@ class LyriconHook : YukiBaseHooker() {
             mLyric.set(nLyric)
             ref.firstMethod { name = "updateLyric" }.invoke(nLyric)
             YLog.debug("Force Update Lyric")
+            ref.firstField { name = "mMetadata" }.get<MediaMetadata>()?.also {
+                XposedHelpers.setAdditionalInstanceField(
+                    element,
+                    "OLD_MEDIA_ID",
+                    it.description.mediaId
+                )
+            }
             XposedHelpers.setAdditionalInstanceField(element, "TEMP_LRC", lrc)
         }
     }

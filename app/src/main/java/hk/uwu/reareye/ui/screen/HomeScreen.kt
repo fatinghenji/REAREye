@@ -90,6 +90,16 @@ private object UpdateInfoCache {
     var latestCommitHash: String? = null
 }
 
+private class ToastHolder {
+    var toast: Toast? = null
+}
+
+private fun showSingleToast(context: Context, holder: ToastHolder, message: String) {
+    holder.toast?.cancel()
+    holder.toast = Toast.makeText(context.applicationContext, message, Toast.LENGTH_SHORT)
+    holder.toast?.show()
+}
+
 private suspend fun fetchLatestCommitHashFromNetwork(): String? {
     return withContext(Dispatchers.IO) {
         runCatching {
@@ -119,6 +129,7 @@ fun HomeScreen() {
     val scrollBehavior = MiuixScrollBehavior()
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val easterEggToastHolder = remember { ToastHolder() }
 
     var latestCommitHash by remember { mutableStateOf<String?>(null) }
     var isCheckingUpdate by remember { mutableStateOf(false) }
@@ -169,12 +180,16 @@ fun HomeScreen() {
     val updateInfoDelay = if (showRootWarning) 150 else 100
 
     val appTitle = when (easterEggType) {
-        EasterEggType.APRIL_FOOLS -> "FRONTAss"
+        EasterEggType.APRIL_FOOLS -> "FOOLEye"
         else -> "REAREye"
     }
     val moduleVersion = when (easterEggType) {
-        EasterEggType.APRIL_FOOLS -> "4.1.0-410f001-r${AppProperties.BUILD_NUMBER}-${AppProperties.BUILD_CHANNEL}"
+        EasterEggType.APRIL_FOOLS -> "4.1.0-41f001u-r${AppProperties.BUILD_NUMBER}-fool"
         else -> "${AppProperties.PROJECT_APP_VERSION_NAME}-${AppProperties.GIT_HASH}-r${AppProperties.BUILD_NUMBER}-${AppProperties.BUILD_CHANNEL}"
+    }
+    val releaseChannel = when (easterEggType) {
+        EasterEggType.APRIL_FOOLS -> "Oops"
+        else -> AppProperties.BUILD_CHANNEL
     }
 
     Scaffold(
@@ -208,13 +223,15 @@ fun HomeScreen() {
                         ) {
                             @SuppressLint("LocalContextGetResourceValueCall")
                             ListPopupColumn {
+                                Spacer(modifier = Modifier.height(4.dp))
+
                                 SpinnerItemImpl(
                                     entry = SpinnerEntry(
                                         title = androidx.compose.ui.res.stringResource(
                                             R.string.quick_stop_subscreencenter,
                                         ),
                                     ),
-                                    entryCount = 2,
+                                    entryCount = 3,
                                     isSelected = false,
                                     index = 0,
                                     spinnerColors = SpinnerDefaults.spinnerColors(),
@@ -237,7 +254,7 @@ fun HomeScreen() {
                                             R.string.quick_stop_thememanager,
                                         ),
                                     ),
-                                    entryCount = 2,
+                                    entryCount = 3,
                                     isSelected = false,
                                     index = 1,
                                     spinnerColors = SpinnerDefaults.spinnerColors(),
@@ -259,9 +276,9 @@ fun HomeScreen() {
                                             R.string.quick_stop_systemui,
                                         ),
                                     ),
-                                    entryCount = 2,
+                                    entryCount = 3,
                                     isSelected = false,
-                                    index = 1,
+                                    index = 2,
                                     spinnerColors = SpinnerDefaults.spinnerColors(),
                                     onSelectedIndexChange = {
                                         showTopMenu.value = false
@@ -270,6 +287,8 @@ fun HomeScreen() {
                                         }
                                     },
                                 )
+
+                                Spacer(modifier = Modifier.height(2.dp))
 
                             }
                         }
@@ -309,11 +328,11 @@ fun HomeScreen() {
                                     val result =
                                         EasterEggManager.toggleTodayEasterEggEnabled(context)
                                     if (!result.matchedToday) {
-                                        Toast.makeText(
-                                            context,
-                                            context.getString(R.string.home_easter_egg_no_today),
-                                            Toast.LENGTH_SHORT,
-                                        ).show()
+                                        showSingleToast(
+                                            context = context,
+                                            holder = easterEggToastHolder,
+                                            message = context.getString(R.string.home_easter_egg_no_today),
+                                        )
                                         return@WorkingStatusCard
                                     }
 
@@ -324,11 +343,11 @@ fun HomeScreen() {
                                         result.isEnabled -> R.string.home_easter_egg_enabled
                                         else -> R.string.home_easter_egg_disabled
                                     }
-                                    Toast.makeText(
-                                        context,
-                                        context.getString(messageRes, eggName),
-                                        Toast.LENGTH_SHORT,
-                                    ).show()
+                                    showSingleToast(
+                                        context = context,
+                                        holder = easterEggToastHolder,
+                                        message = context.getString(messageRes, eggName),
+                                    )
                                 },
                             )
 
@@ -351,7 +370,7 @@ fun HomeScreen() {
                         ModuleInfoCard(
                             activated = isActivated,
                             moduleVersion = moduleVersion,
-                            releaseChannel = AppProperties.BUILD_CHANNEL,
+                            releaseChannel = releaseChannel,
                             easterEggType = easterEggType
                         )
                     }
@@ -359,11 +378,11 @@ fun HomeScreen() {
                     RevealItem(visible = visible, delayMillis = updateInfoDelay) {
                         UpdateInfoCard(
                             currentHash = when (easterEggType) {
-                                EasterEggType.APRIL_FOOLS -> "410f001"
+                                EasterEggType.APRIL_FOOLS -> "41f001u"
                                 else -> AppProperties.GIT_HASH
                             },
                             latestHash = when {
-                                easterEggType == EasterEggType.APRIL_FOOLS && AppProperties.GIT_HASH == latestCommitHash -> "410f001"
+                                easterEggType == EasterEggType.APRIL_FOOLS && AppProperties.GIT_HASH == latestCommitHash -> "41f001u"
                                 else -> latestCommitHash
                             },
                             checking = isCheckingUpdate,
