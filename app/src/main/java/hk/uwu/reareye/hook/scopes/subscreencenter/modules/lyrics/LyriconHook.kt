@@ -2,6 +2,7 @@ package hk.uwu.reareye.hook.scopes.subscreencenter.modules.lyrics
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.MediaMetadata
 import android.os.Build
 import com.hchen.superlyricapi.ISuperLyric
 import com.hchen.superlyricapi.SuperLyricData
@@ -10,6 +11,7 @@ import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
+import de.robv.android.xposed.XposedHelpers
 import hk.uwu.reareye.lyrics.LyricParser
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.LyricProvider
@@ -140,6 +142,25 @@ class LyriconHook : YukiBaseHooker() {
                     elements.remove(instance)
                 }
             }
+
+            val musicControlListenerClz =
+                "com.miui.maml.elements.MusicControlScreenElement$1".toClass().resolve()
+            musicControlListenerClz.firstMethod {
+                name = "onClientMetadataUpdate"
+                returnType = Void.TYPE
+                parameters(MediaMetadata::class.java)
+            }.hook().after {
+                val i = instance.asResolver().firstField {
+                    name = "this$0"
+                }.get() ?: return@after
+                val iRef = i.asResolver()
+                val mLyric = iRef.firstField { name = "mLyric" }.get()
+                val lrc = XposedHelpers.getAdditionalInstanceField(i, "TEMP_LRC") as? String
+                //YLog.debug("update $mLyric $lrc")
+                if (mLyric == null && (lrc != null || latestLyricLrc.isNotEmpty())) {
+                    forceUpdateLyric(i, lrc ?: latestLyricLrc)
+                }
+            }
         }
     }
 
@@ -175,8 +196,12 @@ class LyriconHook : YukiBaseHooker() {
                     latestLyricLrc = normalizeForMiuiParser(lrc)
                     YLog.debug("REAREye getSongLRC $latestLyricLrc")
                     YLog.debug("onSongChanged converted LRC length=${latestLyricLrc.length}")
+                    YLog.debug("current instance size ${elements.size}")
                     elements.forEach {
                         forceUpdateLyric(it, latestLyricLrc)
+                    }
+                    if (elements.isNotEmpty()) {
+                        latestLyricLrc = ""
                     }
                 }.onFailure {
                     YLog.error(it)
@@ -233,7 +258,7 @@ class LyriconHook : YukiBaseHooker() {
             mLyric.set(nLyric)
             ref.firstMethod { name = "updateLyric" }.invoke(nLyric)
             YLog.debug("Force Update Lyric")
-            latestLyricLrc = ""
+            XposedHelpers.setAdditionalInstanceField(element, "TEMP_LRC", lrc)
         }
     }
 
