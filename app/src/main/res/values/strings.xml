@@ -3,7 +3,7 @@
     <string name="xposed_desc">Something is always watching from behind</string>
     <string name="status_card">Status</string>
     <string name="module_not_activated">Module not activated</string>
-    <string name="module_is_activated">Module is activated</string>
+    <string name="module_is_activated">Module activated</string>
     <string name="home_navigation">Home</string>
     <string name="configuration_navigation">Config</string>
     <string name="about_navigation">About</string>
@@ -54,11 +54,15 @@
     <string name="enable_music_control_force_update">Enable Music Controls Forced Update</string>
     <string name="enable_music_control_force_update_desc">Force update music controls when track changes</string>
     <string name="lyric_display_mode">Lyric Display Mode</string>
-    <string name="lyric_display_mode_desc">Choose which lyric content should be shown on the rear screen</string>
+    <string name="lyric_display_mode_desc">Only applies to some Lyricon providers. Choose which lyric content should be shown on the rear screen</string>
     <string name="lyric_display_mode_original">Original</string>
     <string name="lyric_display_mode_translation">Translation</string>
     <string name="lyric_display_mode_romanization">Romanization</string>
     <string name="lyric_display_mode_none">No display mode selected</string>
+    <string name="lyric_provider">Lyric Provider</string>
+    <string name="lyric_provider_desc">Choose which lyric source backend to use</string>
+    <string name="lyric_provider_lyricon">Lyricon</string>
+    <string name="lyric_provider_superlyric">SuperLyric</string>
     <string name="rear_widget_manager_category">Rear Widget Managers</string>
     <string name="rear_widget_manager_category_desc">Manage custom widget templates and resident cards</string>
     <string name="rear_widget_business_manager">Widget Template Manager</string>
@@ -108,6 +112,13 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="home_status_working">Working</string>
     <string name="home_status_inactive">Inactive</string>
     <string name="home_working_version">Version: %1$s</string>
+    <string name="home_easter_egg_active">Easter egg: %1$s</string>
+    <string name="home_easter_egg_none">None</string>
+    <string name="home_easter_egg_new_year">New Year</string>
+    <string name="home_easter_egg_april_fools">April Fools</string>
+    <string name="home_easter_egg_no_today">No easter egg available today</string>
+    <string name="home_easter_egg_enabled">Easter egg enabled: %1$s</string>
+    <string name="home_easter_egg_disabled">Easter egg disabled: %1$s</string>
     <string name="home_update_title">Version Update</string>
     <string name="home_update_current">Current Commit</string>
     <string name="home_update_latest">Latest Commit</string>
@@ -157,4 +168,6 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="credits_coolapk_title">Coolapk Homepage</string>
     <string name="credits_coolapk_desc">Follow my account for more information</string>
     <string name="quick_stop_systemui">Force Stop System UI</string>
+    <string name="home_easter_egg_april_fools_working">Fatal Error</string>
+    <string name="home_easter_egg_april_fools_activated">The module has crashed</string>
 </resources>

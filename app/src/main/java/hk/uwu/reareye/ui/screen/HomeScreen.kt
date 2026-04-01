@@ -28,9 +28,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.DoNotDisturb
 import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -50,6 +52,8 @@ import androidx.core.net.toUri
 import com.highcapable.yukihookapi.YukiHookAPI
 import hk.uwu.reareye.R
 import hk.uwu.reareye.generated.AppProperties
+import hk.uwu.reareye.ui.easteregg.EasterEggManager
+import hk.uwu.reareye.ui.easteregg.EasterEggType
 import hk.uwu.reareye.utils.RootHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -83,7 +87,6 @@ import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
 private object UpdateInfoCache {
     val lock = Mutex()
-    var loaded = false
     var latestCommitHash: String? = null
 }
 
@@ -108,6 +111,7 @@ private suspend fun fetchLatestCommitHashFromNetwork(): String? {
     }
 }
 
+@SuppressLint("LocalContextGetResourceValueCall")
 @Composable
 fun HomeScreen() {
     val isActivated = YukiHookAPI.Status.isModuleActive
@@ -119,9 +123,12 @@ fun HomeScreen() {
     var latestCommitHash by remember { mutableStateOf<String?>(null) }
     var isCheckingUpdate by remember { mutableStateOf(false) }
     var hasRootAccess by remember { mutableStateOf<Boolean?>(null) }
+    var easterEggType by remember {
+        mutableStateOf(EasterEggManager.getCurrentEasterEggType(context))
+    }
 
     LaunchedEffect(Unit) {
-        if (UpdateInfoCache.loaded) {
+        if (!UpdateInfoCache.latestCommitHash.isNullOrBlank()) {
             latestCommitHash = UpdateInfoCache.latestCommitHash
             isCheckingUpdate = false
             return@LaunchedEffect
@@ -129,9 +136,11 @@ fun HomeScreen() {
 
         isCheckingUpdate = true
         latestCommitHash = UpdateInfoCache.lock.withLock {
-            if (!UpdateInfoCache.loaded) {
-                UpdateInfoCache.latestCommitHash = fetchLatestCommitHashFromNetwork()
-                UpdateInfoCache.loaded = true
+            if (UpdateInfoCache.latestCommitHash.isNullOrBlank()) {
+                val fetchedHash = fetchLatestCommitHashFromNetwork()
+                if (!fetchedHash.isNullOrBlank()) {
+                    UpdateInfoCache.latestCommitHash = fetchedHash
+                }
             }
             UpdateInfoCache.latestCommitHash
         }
@@ -145,7 +154,10 @@ fun HomeScreen() {
     }
 
     val statusTitle = if (isActivated) {
-        androidx.compose.ui.res.stringResource(R.string.home_status_working)
+        when (easterEggType) {
+            EasterEggType.APRIL_FOOLS -> androidx.compose.ui.res.stringResource(R.string.home_easter_egg_april_fools_working)
+            else -> androidx.compose.ui.res.stringResource(R.string.home_status_working)
+        }
     } else {
         androidx.compose.ui.res.stringResource(R.string.home_status_inactive)
     }
@@ -156,10 +168,19 @@ fun HomeScreen() {
     val showRootWarning = hasRootAccess == false
     val updateInfoDelay = if (showRootWarning) 150 else 100
 
+    val appTitle = when (easterEggType) {
+        EasterEggType.APRIL_FOOLS -> "FRONTAss"
+        else -> "REAREye"
+    }
+    val moduleVersion = when (easterEggType) {
+        EasterEggType.APRIL_FOOLS -> "4.1.0-410f001-r${AppProperties.BUILD_NUMBER}-${AppProperties.BUILD_CHANNEL}"
+        else -> "${AppProperties.PROJECT_APP_VERSION_NAME}-${AppProperties.GIT_HASH}-r${AppProperties.BUILD_NUMBER}-${AppProperties.BUILD_CHANNEL}"
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = "REAREye",
+                title = appTitle,
                 actions = {
                     Box {
                         IconButton(
@@ -283,6 +304,32 @@ fun HomeScreen() {
                                 statusTitle = statusTitle,
                                 statusVersion = AppProperties.BUILD_NUMBER.toString(),
                                 activated = isActivated,
+                                easterEggType = easterEggType,
+                                onLongPress = {
+                                    val result =
+                                        EasterEggManager.toggleTodayEasterEggEnabled(context)
+                                    if (!result.matchedToday) {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.home_easter_egg_no_today),
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                        return@WorkingStatusCard
+                                    }
+
+                                    easterEggType =
+                                        EasterEggManager.getCurrentEasterEggType(context)
+                                    val eggName = context.getString(result.type.toTitleRes())
+                                    val messageRes = when {
+                                        result.isEnabled -> R.string.home_easter_egg_enabled
+                                        else -> R.string.home_easter_egg_disabled
+                                    }
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(messageRes, eggName),
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                },
                             )
 
                             if (showRootWarning) {
@@ -303,16 +350,22 @@ fun HomeScreen() {
                     RevealItem(visible = visible, delayMillis = 50) {
                         ModuleInfoCard(
                             activated = isActivated,
-                            moduleVersion =
-                                "${AppProperties.PROJECT_APP_VERSION_NAME}-${AppProperties.GIT_HASH}-r${AppProperties.BUILD_NUMBER}-${AppProperties.BUILD_CHANNEL}",
+                            moduleVersion = moduleVersion,
                             releaseChannel = AppProperties.BUILD_CHANNEL,
+                            easterEggType = easterEggType
                         )
                     }
 
                     RevealItem(visible = visible, delayMillis = updateInfoDelay) {
                         UpdateInfoCard(
-                            currentHash = AppProperties.GIT_HASH,
-                            latestHash = latestCommitHash,
+                            currentHash = when (easterEggType) {
+                                EasterEggType.APRIL_FOOLS -> "410f001"
+                                else -> AppProperties.GIT_HASH
+                            },
+                            latestHash = when {
+                                easterEggType == EasterEggType.APRIL_FOOLS && AppProperties.GIT_HASH == latestCommitHash -> "410f001"
+                                else -> latestCommitHash
+                            },
                             checking = isCheckingUpdate,
                         )
                     }
@@ -404,11 +457,50 @@ private fun RevealItem(
 }
 
 @Composable
-private fun WorkingStatusCard(statusTitle: String, statusVersion: String, activated: Boolean) {
-    val cardColor = if (activated) Color(0xFFDFFAE4) else Color(0xFFF8E2E2)
-    val iconColor = if (activated) Color(0xFF36D167) else Color(0xFFE06767)
-    val titleColor = if (activated) Color(0xFF1E5A31) else Color(0xFF7A2A2A)
-    val summaryColor = if (activated) Color(0xFF2C7D45) else Color(0xFF9A4D4D)
+private fun WorkingStatusCard(
+    statusTitle: String,
+    statusVersion: String,
+    activated: Boolean,
+    easterEggType: EasterEggType,
+    onLongPress: () -> Unit,
+) {
+    val (cardColor, iconColor, titleColor, summaryColor) = when {
+        !activated -> listOf(
+            Color(0xFFF8E2E2),
+            Color(0xFFE06767),
+            Color(0xFF7A2A2A),
+            Color(0xFF9A4D4D),
+        )
+
+        easterEggType == EasterEggType.NEW_YEAR -> listOf(
+            Color(0xFFFFECEC),
+            Color(0xFFE64B4B),
+            Color(0xFF7F1E1E),
+            Color(0xFF9A3939),
+        )
+
+        easterEggType == EasterEggType.APRIL_FOOLS -> listOf(
+            Color(0xFFFFF6D8),
+            Color(0xFFEBB027),
+            Color(0xFF7A5100),
+            Color(0xFF8E6900),
+        )
+
+        else -> listOf(
+            Color(0xFFDFFAE4),
+            Color(0xFF36D167),
+            Color(0xFF1E5A31),
+            Color(0xFF2C7D45),
+        )
+    }
+
+    val statusIcon = when {
+        !activated -> Icons.Outlined.Warning
+
+        easterEggType == EasterEggType.APRIL_FOOLS -> Icons.Outlined.BugReport
+
+        else -> Icons.Outlined.CheckCircle
+    }
 
     Card(
         modifier = Modifier
@@ -417,11 +509,14 @@ private fun WorkingStatusCard(statusTitle: String, statusVersion: String, activa
         colors = CardDefaults.defaultColors(color = cardColor),
         insideMargin = PaddingValues(14.dp),
         pressFeedbackType = PressFeedbackType.Tilt,
-        showIndication = false
+        showIndication = false,
+        onLongPress = {
+            onLongPress()
+        }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             Icon(
-                imageVector = Icons.Outlined.CheckCircle,
+                imageVector = statusIcon,
                 contentDescription = null,
                 tint = iconColor,
                 modifier = Modifier
@@ -447,6 +542,14 @@ private fun WorkingStatusCard(statusTitle: String, statusVersion: String, activa
                 )
             }
         }
+    }
+}
+
+private fun EasterEggType.toTitleRes(): Int {
+    return when (this) {
+        EasterEggType.NONE -> R.string.home_easter_egg_none
+        EasterEggType.NEW_YEAR -> R.string.home_easter_egg_new_year
+        EasterEggType.APRIL_FOOLS -> R.string.home_easter_egg_april_fools
     }
 }
 
@@ -553,17 +656,25 @@ private fun UpdateWarningCard(currentHash: String, latestHash: String) {
 }
 
 @Composable
-private fun ModuleInfoCard(activated: Boolean, moduleVersion: String, releaseChannel: String) {
+private fun ModuleInfoCard(
+    activated: Boolean,
+    moduleVersion: String,
+    releaseChannel: String,
+    easterEggType: EasterEggType
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         insideMargin = PaddingValues(16.dp),
     ) {
         InfoLine(
             title = androidx.compose.ui.res.stringResource(R.string.status_card),
-            value = if (activated) {
-                androidx.compose.ui.res.stringResource(R.string.module_is_activated)
-            } else {
-                androidx.compose.ui.res.stringResource(R.string.module_not_activated)
+            value = when {
+                !activated -> androidx.compose.ui.res.stringResource(R.string.module_not_activated)
+                easterEggType == EasterEggType.APRIL_FOOLS -> androidx.compose.ui.res.stringResource(
+                    R.string.home_easter_egg_april_fools_activated
+                )
+
+                else -> androidx.compose.ui.res.stringResource(R.string.module_is_activated)
             },
         )
         Spacer(modifier = Modifier.height(12.dp))

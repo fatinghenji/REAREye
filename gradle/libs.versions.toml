@@ -15,9 +15,11 @@ androidx-activity-compose = "1.13.0"
 androidx-lifecycle-runtime-compose = "2.10.0"
 miuix = "0.8.8"
 lyricon = "0.1.70B1"
+superlyric = "2.5"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
@@ -45,3 +47,4 @@ miuix-icons = { group = "top.yukonga.miuix.kmp", name = "miuix-icons", version.r
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 lyricon-provider = { group = "io.github.proify.lyricon", name = "provider", version.ref = "lyricon" }
 lyricon-central = { group = "io.github.proify.lyricon", name = "central", version.ref = "lyricon" }
+superlyric = { group = "com.github.HChenX", name = "SuperLyricApi", version.ref = "superlyric" }

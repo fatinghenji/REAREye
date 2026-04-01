@@ -7,7 +7,7 @@ import android.util.Size
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import de.robv.android.xposed.XposedBridge
+import com.highcapable.yukihookapi.hook.log.YLog
 import hk.uwu.reareye.ui.config.ConfigKeys
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
@@ -47,7 +47,7 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                     type = Boolean::class.java
                 }.all { it.get() == true }
                 if (isCallFromRearScreen) {
-                    XposedBridge.log("Overwriting video editor max duration & frame-rate limitations")
+                    YLog.debug("Overwriting video editor max duration & frame-rate limitations")
                     // 视频长度
                     ref.firstField {
                         type = Long::class.java

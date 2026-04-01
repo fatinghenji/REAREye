@@ -14,6 +14,7 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven("https://api.xposed.info/")
+        maven("https://jitpack.io")
     }
 }
 
@@ -43,7 +44,7 @@ fun runGitCommand(vararg args: String): String? = runCatching {
 val versionCode = gitVersionCode
 val branch = gitBranch
 val hash = gitHash
-val buildSuffix = providers.gradleProperty("buildSuffix").orNull as? String ?: "dev"
+val buildSuffix = providers.gradleProperty("buildSuffix").orNull ?: "dev"
 
 gradle.extra["versionSuffix"] = "-$hash-r$versionCode-$buildSuffix"
 
@@ -71,3 +72,4 @@ gropify {
 rootProject.name = "REAREye"
 
 include(":app")
+include(":rear-widget-api")

@@ -102,6 +102,8 @@ tasks.withType<KotlinJvmCompile>().configureEach {
 }
 
 dependencies {
+    implementation(project(":rear-widget-api"))
+
     compileOnly(libs.rovo89.xposed.api)
     ksp(libs.yukihookapi.ksp.xposed)
     implementation(libs.yukihookapi)
@@ -127,4 +129,5 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.lyricon.provider)
     implementation(libs.lyricon.central)
+    implementation(libs.superlyric)
 }

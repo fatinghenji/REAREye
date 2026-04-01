@@ -26,6 +26,8 @@ class HookEntry : IYukiHookXposedInit {
     override fun onInit() = configs {
         debugLog {
             tag = "REAREye"
+            isEnable = true
+            elements(TAG, PRIORITY, PACKAGE_NAME, USER_ID)
         }
     }
 

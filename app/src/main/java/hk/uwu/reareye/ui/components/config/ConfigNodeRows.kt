@@ -1,5 +1,6 @@
 package hk.uwu.reareye.ui.components.config
 
+import android.annotation.SuppressLint
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import androidx.compose.foundation.Image
@@ -17,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -202,6 +204,7 @@ fun AppListConfigInput(
     )
 }
 
+@SuppressLint("LocalContextGetResourceValueCall")
 @Composable
 fun MaskMultiSelectConfigInput(
     item: ConfigItem,
@@ -209,14 +212,23 @@ fun MaskMultiSelectConfigInput(
     options: List<ConfigType.MaskOption>,
     prefsManager: PrefsManager,
 ) {
+    val context = LocalContext.current
+    val configuration = LocalConfiguration.current
     var showModePopup by remember(item.key) { mutableStateOf(false) }
     var selectedMask by remember(item.key) {
         mutableIntStateOf(prefsManager.getInt(item.key, defaultValue))
     }
+    val optionTitles = remember(item.key, options, configuration) {
+        options.map { context.getString(it.titleRes) }
+    }
+    val optionEntries = remember(item.key, optionTitles) {
+        optionTitles.map { SpinnerEntry(title = it) }
+    }
 
     val selectedLabels = options
-        .filter { (selectedMask and it.maskValue) != 0 }
-        .map { stringResource(it.titleRes) }
+        .mapIndexedNotNull { index, option ->
+            if ((selectedMask and option.maskValue) != 0) optionTitles[index] else null
+        }
 
     val selectedSummary = if (selectedLabels.isEmpty()) {
         stringResource(R.string.lyric_display_mode_none)
@@ -240,8 +252,8 @@ fun MaskMultiSelectConfigInput(
     SuperListPopup(
         show = showModePopup,
         popupModifier = Modifier,
-        popupPositionProvider = ListPopupDefaults.ContextMenuPositionProvider,
-        alignment = PopupPositionProvider.Align.TopEnd,
+        popupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
+        alignment = PopupPositionProvider.Align.End,
         enableWindowDim = true,
         onDismissRequest = { showModePopup = false },
         maxHeight = null,
@@ -251,7 +263,7 @@ fun MaskMultiSelectConfigInput(
         ListPopupColumn {
             options.forEachIndexed { index, option ->
                 SpinnerItemImpl(
-                    entry = SpinnerEntry(title = stringResource(option.titleRes)),
+                    entry = optionEntries[index],
                     entryCount = options.size,
                     isSelected = (selectedMask and option.maskValue) != 0,
                     index = index,
@@ -259,6 +271,76 @@ fun MaskMultiSelectConfigInput(
                     onSelectedIndexChange = {
                         selectedMask = selectedMask xor option.maskValue
                         prefsManager.putInt(item.key, selectedMask)
+                    },
+                )
+            }
+        }
+    }
+}
+
+@SuppressLint("LocalContextGetResourceValueCall")
+@Composable
+fun EnumSingleSelectConfigInput(
+    item: ConfigItem,
+    defaultValue: Int,
+    options: List<ConfigType.EnumOption>,
+    prefsManager: PrefsManager,
+) {
+    val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    var showEnumPopup by remember(item.key) { mutableStateOf(false) }
+    var selectedValue by remember(item.key) {
+        mutableIntStateOf(prefsManager.getInt(item.key, defaultValue))
+    }
+    val optionTitles = remember(item.key, options, configuration) {
+        options.map { context.getString(it.titleRes) }
+    }
+    val optionEntries = remember(item.key, optionTitles) {
+        optionTitles.map { SpinnerEntry(title = it) }
+    }
+
+    val selectedLabel = options
+        .indexOfFirst { it.value == selectedValue }
+        .takeIf { it >= 0 }
+        ?.let { optionTitles[it] }
+        ?: optionTitles.firstOrNull().orEmpty()
+    val description = item.descriptionRes?.let { stringResource(it) }
+    val summary = if (description.isNullOrBlank()) {
+        selectedLabel
+    } else {
+        "$description\n$selectedLabel"
+    }
+
+    SuperArrow(
+        title = stringResource(item.titleRes),
+        summary = summary,
+        holdDownState = showEnumPopup,
+        onClick = { showEnumPopup = true }
+    )
+
+    SuperListPopup(
+        show = showEnumPopup,
+        popupModifier = Modifier,
+        popupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
+        alignment = PopupPositionProvider.Align.End,
+        enableWindowDim = true,
+        onDismissRequest = { showEnumPopup = false },
+        maxHeight = null,
+        minWidth = 220.dp,
+        renderInRootScaffold = true,
+    ) {
+        ListPopupColumn {
+            options.forEachIndexed { index, option ->
+                SpinnerItemImpl(
+                    entry = optionEntries[index],
+                    entryCount = options.size,
+                    isSelected = selectedValue == option.value,
+                    index = index,
+                    spinnerColors = SpinnerDefaults.spinnerColors(),
+                    onSelectedIndexChange = {
+                        selectedValue = option.value
+                        prefsManager.putInt(item.key, selectedValue)
+                        showEnumPopup = false
                     },
                 )
             }

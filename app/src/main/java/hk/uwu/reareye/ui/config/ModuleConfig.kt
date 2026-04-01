@@ -36,6 +36,20 @@ object ConfigKeys {
     val LYRIC_DISPLAY_MODE_DEFAULT = LyricParser.DisplayMode.ORIGINAL.mask or
             LyricParser.DisplayMode.TRANSLATION.mask or
             LyricParser.DisplayMode.ROMANIZATION.mask
+
+    const val LYRIC_PROVIDER = "lyric_provider"
+    val LYRIC_PROVIDER_DEFAULT = LyricProvider.LYRICON.value
+}
+
+enum class LyricProvider(val value: Int, val titleRes: Int) {
+    LYRICON(value = 0, titleRes = R.string.lyric_provider_lyricon),
+    SUPER_LYRIC(value = 1, titleRes = R.string.lyric_provider_superlyric);
+
+    companion object {
+        fun fromValue(value: Int): LyricProvider {
+            return entries.firstOrNull { it.value == value } ?: LYRICON
+        }
+    }
 }
 
 val REAREyeConfig = listOf(
@@ -164,6 +178,20 @@ val REAREyeConfig = listOf(
                             maskValue = LyricParser.DisplayMode.ROMANIZATION.mask,
                         ),
                     )
+                )
+            ),
+            ConfigItem(
+                key = ConfigKeys.LYRIC_PROVIDER,
+                titleRes = R.string.lyric_provider,
+                descriptionRes = R.string.lyric_provider_desc,
+                type = ConfigType.EnumSingleSelect(
+                    defaultValue = ConfigKeys.LYRIC_PROVIDER_DEFAULT,
+                    options = LyricProvider.entries.map {
+                        ConfigType.EnumOption(
+                            titleRes = it.titleRes,
+                            value = it.value,
+                        )
+                    },
                 )
             ),
             ConfigItem(

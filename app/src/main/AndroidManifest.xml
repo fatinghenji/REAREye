@@ -12,6 +12,10 @@
         tools:ignore="ForegroundServicesPolicy" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
+    <permission
+        android:name="hk.uwu.reareye.permission.ACCESS_REAR_WIDGET_API"
+        android:protectionLevel="normal" />
+
     <application
         android:name=".application.DefaultApplication"
         android:allowBackup="true"
@@ -84,5 +88,6 @@
                 android:name="android.service.quicksettings.ACTIVE_TILE"
                 android:value="false" />
         </service>
+
     </application>
 </manifest>

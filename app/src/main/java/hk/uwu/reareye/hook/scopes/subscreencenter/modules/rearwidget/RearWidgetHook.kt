@@ -3,17 +3,29 @@
 package hk.uwu.reareye.hook.scopes.subscreencenter.modules.rearwidget
 
 import android.annotation.SuppressLint
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.os.Binder
 import android.os.Bundle
 import android.os.Handler
 import android.os.Process
 import android.util.Base64
+import androidx.core.content.ContextCompat
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import de.robv.android.xposed.XposedBridge
+import com.highcapable.yukihookapi.hook.log.YLog
 import hk.uwu.reareye.actions.RearWidgetApi
 import hk.uwu.reareye.rearwidget.RearWidgetConfigCodec
 import hk.uwu.reareye.ui.config.ConfigKeys
+import hk.uwu.reareye.widgetapi.IRearWidgetApiConnection
+import hk.uwu.reareye.widgetapi.IRearWidgetApiService
+import hk.uwu.reareye.widgetapi.RearWidgetApiContract
+import hk.uwu.reareye.widgetapi.RearWidgetNoticeOptions
+import hk.uwu.reareye.widgetapi.RearWidgetNoticeTicket
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -31,6 +43,7 @@ class RearWidgetHook : YukiBaseHooker() {
     private val appliedOnce = AtomicBoolean(false)
     private val startupBootstrapped = AtomicBoolean(false)
     private val channelBridgeRegistered = AtomicBoolean(false)
+    private val bootstrapReceiverRegistered = AtomicBoolean(false)
     private val deployedBlobMetaCache = ConcurrentHashMap<String, String>()
     private val injectedCardSignatureCache = ConcurrentHashMap<String, String>()
     private val injectedCompositeAt = ConcurrentHashMap<String, Long>()
@@ -39,6 +52,7 @@ class RearWidgetHook : YukiBaseHooker() {
 
     private var manager: Any? = null
     private var mainHandler: Handler? = null
+    private var hostContext: Context? = null
 
     override fun onHook() {
         loadApp("com.xiaomi.subscreencenter") {
@@ -55,6 +69,8 @@ class RearWidgetHook : YukiBaseHooker() {
                 name = "attachBaseContext"
                 parameterCount = 1
             }.hook().after {
+                hostContext = (args[0] as? Context)?.applicationContext ?: (args[0] as? Context)
+                registerHookBootstrapReceiver()
                 applyRuntimeMaps(force = true)
                 debugLog("attachBaseContext applied runtime maps (defer bootstrap to manager init)")
             }
@@ -158,6 +174,269 @@ class RearWidgetHook : YukiBaseHooker() {
         val ack = executeApiOperation(op, payload, applyMaps = true, injectNow = true)
         debugLog("channel key=$channelKey op=$op ack=$ack")
         return ack
+    }
+
+    private val hookBinder = object : IRearWidgetApiService.Stub() {
+        override fun registerBusinessFile(business: String?, filePath: String?) {
+            enforceCallerPermission()
+            val normalizedBusiness = business?.trim().orEmpty()
+            val normalizedFilePath = filePath?.trim().orEmpty()
+            if (normalizedBusiness.isBlank() || normalizedFilePath.isBlank()) return
+            dispatchOperation(
+                op = RearWidgetApi.Channel.OP_REGISTER_FILE,
+                payload = RearWidgetApi.buildRegisterBusinessFilePayload(
+                    business = normalizedBusiness,
+                    filePath = normalizedFilePath,
+                ),
+            )
+        }
+
+        override fun unregisterBusinessFile(business: String?) {
+            enforceCallerPermission()
+            val normalizedBusiness = business?.trim().orEmpty()
+            if (normalizedBusiness.isBlank()) return
+            dispatchOperation(
+                op = RearWidgetApi.Channel.OP_UNREGISTER_FILE,
+                payload = RearWidgetApi.buildUnregisterBusinessFilePayload(normalizedBusiness),
+            )
+        }
+
+        override fun registerBusiness(
+            targetPackage: String?,
+            business: String?,
+            filePath: String?,
+            defaultIndex: Int,
+            defaultPriority: Int,
+        ) {
+            enforceCallerPermission()
+            val normalizedBusiness = business?.trim().orEmpty()
+            val normalizedFilePath = filePath?.trim().orEmpty()
+            if (normalizedBusiness.isBlank() || normalizedFilePath.isBlank()) return
+            dispatchOperation(
+                op = RearWidgetApi.Channel.OP_REGISTER,
+                payload = RearWidgetApi.buildRegisterBusinessPayload(
+                    packageName = normalizeTargetPackage(targetPackage),
+                    business = normalizedBusiness,
+                    filePath = normalizedFilePath,
+                    defaultIndex = defaultIndex,
+                    defaultPriority = defaultPriority,
+                ),
+            )
+        }
+
+        override fun registerBusinessWithoutFile(
+            targetPackage: String?,
+            business: String?,
+            defaultIndex: Int,
+            defaultPriority: Int,
+        ) {
+            enforceCallerPermission()
+            val normalizedBusiness = business?.trim().orEmpty()
+            if (normalizedBusiness.isBlank()) return
+            dispatchOperation(
+                op = RearWidgetApi.Channel.OP_REGISTER,
+                payload = RearWidgetApi.buildRegisterBusinessPayloadWithoutFile(
+                    packageName = normalizeTargetPackage(targetPackage),
+                    business = normalizedBusiness,
+                    defaultIndex = defaultIndex,
+                    defaultPriority = defaultPriority,
+                ),
+            )
+        }
+
+        override fun unregisterBusiness(targetPackage: String?, business: String?) {
+            enforceCallerPermission()
+            val normalizedBusiness = business?.trim().orEmpty()
+            if (normalizedBusiness.isBlank()) return
+            dispatchOperation(
+                op = RearWidgetApi.Channel.OP_UNREGISTER,
+                payload = RearWidgetApi.buildUnregisterBusinessPayload(
+                    packageName = normalizeTargetPackage(targetPackage),
+                    business = normalizedBusiness,
+                ),
+            )
+        }
+
+        override fun disableBusinessDisplay(targetPackage: String?, business: String?) {
+            enforceCallerPermission()
+            val normalizedBusiness = business?.trim().orEmpty()
+            if (normalizedBusiness.isBlank()) return
+            dispatchOperation(
+                op = RearWidgetApi.Channel.OP_DISABLE_DISPLAY,
+                payload = RearWidgetApi.buildDisableBusinessDisplayPayload(
+                    packageName = normalizeTargetPackage(targetPackage),
+                    business = normalizedBusiness,
+                ),
+            )
+        }
+
+        override fun postNotice(
+            targetPackage: String?,
+            business: String?,
+            payload: Bundle?,
+            options: Bundle?,
+        ) {
+            enforceCallerPermission()
+            val normalizedBusiness = business?.trim().orEmpty()
+            if (normalizedBusiness.isBlank()) return
+            val noticeOptions = RearWidgetNoticeOptions.fromBundle(options)
+            dispatchOperation(
+                op = RearWidgetApi.Channel.OP_POST,
+                payload = RearWidgetApi.buildPostNoticePayload(
+                    packageName = normalizeTargetPackage(targetPackage),
+                    business = normalizedBusiness,
+                    payload = payload ?: Bundle(),
+                    options = RearWidgetApi.NoticeOptions(
+                        sticky = noticeOptions.sticky,
+                        disablePopup = noticeOptions.disablePopup,
+                        forcePopup = noticeOptions.forcePopup,
+                        enableFloat = noticeOptions.enableFloat,
+                        showTimeTip = noticeOptions.showTimeTip,
+                        index = noticeOptions.index,
+                        priority = noticeOptions.priority,
+                    ),
+                ),
+            )
+        }
+
+        override fun updateNotice(
+            ticket: Bundle?,
+            payload: Bundle?,
+            options: Bundle?,
+            updatePayload: Boolean,
+            updateOptions: Boolean,
+        ) {
+            enforceCallerPermission()
+            val noticeTicket = RearWidgetNoticeTicket.fromBundle(ticket) ?: return
+            val payloadArg = if (updatePayload) payload ?: Bundle() else null
+            val optionsArg = if (updateOptions) {
+                val noticeOptions = RearWidgetNoticeOptions.fromBundle(options)
+                RearWidgetApi.NoticeOptions(
+                    sticky = noticeOptions.sticky,
+                    disablePopup = noticeOptions.disablePopup,
+                    forcePopup = noticeOptions.forcePopup,
+                    enableFloat = noticeOptions.enableFloat,
+                    showTimeTip = noticeOptions.showTimeTip,
+                    index = noticeOptions.index,
+                    priority = noticeOptions.priority,
+                )
+            } else {
+                null
+            }
+            dispatchOperation(
+                op = RearWidgetApi.Channel.OP_UPDATE,
+                payload = RearWidgetApi.buildUpdateNoticePayload(
+                    ticket = RearWidgetApi.NoticeTicket(
+                        packageName = noticeTicket.packageName,
+                        business = noticeTicket.business,
+                        notificationId = noticeTicket.notificationId,
+                        compositeKey = noticeTicket.compositeKey,
+                    ),
+                    payload = payloadArg,
+                    options = optionsArg,
+                ),
+            )
+        }
+
+        override fun removeNotice(ticket: Bundle?) {
+            enforceCallerPermission()
+            val noticeTicket = RearWidgetNoticeTicket.fromBundle(ticket) ?: return
+            dispatchOperation(
+                op = RearWidgetApi.Channel.OP_REMOVE,
+                payload = RearWidgetApi.buildRemoveNoticePayload(
+                    ticket = RearWidgetApi.NoticeTicket(
+                        packageName = noticeTicket.packageName,
+                        business = noticeTicket.business,
+                        notificationId = noticeTicket.notificationId,
+                        compositeKey = noticeTicket.compositeKey,
+                    ),
+                ),
+            )
+        }
+
+        override fun syncState() {
+            enforceCallerPermission()
+            dispatchOperation(
+                op = RearWidgetApi.Channel.OP_SYNC,
+                payload = RearWidgetApi.buildSyncPayload(),
+            )
+        }
+    }
+
+    private val hookBootstrapReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != RearWidgetApiContract.ACTION_REQUEST_HOOK_SERVICE) return
+            val callbackBinder = intent
+                .getBundleExtra(RearWidgetApiContract.Extras.BUNDLE)
+                ?.getBinder(RearWidgetApiContract.Extras.BINDER)
+            val callback = IRearWidgetApiConnection.Stub.asInterface(callbackBinder)
+            val forceSync = intent.getBooleanExtra(RearWidgetApiContract.Extras.FORCE_SYNC, false)
+            if (forceSync) {
+                bootstrapFromPrefsOnInit(force = true)
+            }
+            runCatching {
+                callback?.onServiceConnected(hookBinder)
+            }.onFailure {
+                debugLog("reply hook binder failed err=${it.message}")
+            }
+        }
+    }
+
+    private fun registerHookBootstrapReceiver() {
+        if (!bootstrapReceiverRegistered.compareAndSet(false, true)) return
+        val ctx = hostContext ?: run {
+            bootstrapReceiverRegistered.set(false)
+            return
+        }
+        val ok = runCatching {
+            val filter = IntentFilter(RearWidgetApiContract.ACTION_REQUEST_HOOK_SERVICE)
+            ContextCompat.registerReceiver(
+                ctx,
+                hookBootstrapReceiver,
+                filter,
+                RearWidgetApiContract.SERVICE_PERMISSION,
+                null,
+                ContextCompat.RECEIVER_EXPORTED
+            )
+            true
+        }.onFailure {
+            bootstrapReceiverRegistered.set(false)
+            debugLog("register bootstrap receiver failed err=${it.message}")
+        }.getOrDefault(false)
+        if (ok) {
+            debugLog("register bootstrap receiver success")
+        }
+    }
+
+    private fun dispatchOperation(op: String, payload: String) {
+        val ack = executeApiOperation(op, payload, applyMaps = true, injectNow = true)
+        if (!isAckOk(ack)) {
+            throw IllegalStateException("rear widget op failed: $op ack=$ack")
+        }
+    }
+
+    private fun enforceCallerPermission() {
+        val ctx = hostContext
+        val uid = Binder.getCallingUid()
+        if (uid == Process.myUid()) return
+        if (ctx == null) {
+            throw SecurityException("context not ready for permission check")
+        }
+        val granted = ctx.checkPermission(
+            RearWidgetApiContract.SERVICE_PERMISSION,
+            Binder.getCallingPid(),
+            uid,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            throw SecurityException(
+                "caller uid=$uid requires ${RearWidgetApiContract.SERVICE_PERMISSION}"
+            )
+        }
+    }
+
+    private fun normalizeTargetPackage(targetPackage: String?): String {
+        return targetPackage?.trim().takeUnless { it.isNullOrBlank() }
+            ?: RearWidgetApi.defaultPackageName
     }
 
     private fun executeApiOperation(
@@ -575,7 +854,7 @@ class RearWidgetHook : YukiBaseHooker() {
     }
 
     private fun debugLog(message: String) {
-        XposedBridge.log("[$TAG] $message")
+        YLog.debug("[$TAG] $message")
     }
 
     private fun dumpRuntimeMaps(

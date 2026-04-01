@@ -39,3 +39,4 @@
 
 # --- Tool ---
 -keep class hk.uwu.reareye.hook.** { *; }
+-keep class com.hchen.superlyricapi.* {*;}

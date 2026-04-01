@@ -55,11 +55,15 @@
     <string name="enable_music_control_force_update">启用强制更新音乐控件</string>
     <string name="enable_music_control_force_update_desc">在曲目发生变化时强制更新音乐控件</string>
     <string name="lyric_display_mode">歌词显示模式</string>
-    <string name="lyric_display_mode_desc">选择背屏歌词中要显示的内容</string>
+    <string name="lyric_display_mode_desc">仅在 Lyricon 的部分提供器中生效，选择背屏歌词中要显示的内容</string>
     <string name="lyric_display_mode_original">原文</string>
     <string name="lyric_display_mode_translation">翻译</string>
     <string name="lyric_display_mode_romanization">罗马音</string>
     <string name="lyric_display_mode_none">未选择任何显示模式</string>
+    <string name="lyric_provider">歌词提供器</string>
+    <string name="lyric_provider_desc">选择使用的歌词来源后端</string>
+    <string name="lyric_provider_lyricon">Lyricon (词幕)</string>
+    <string name="lyric_provider_superlyric">SuperLyric</string>
     <string name="rear_widget_manager_category">背屏组件管理</string>
     <string name="rear_widget_manager_category_desc">管理自定义组件模板与常驻卡片</string>
     <string name="rear_widget_business_manager">组件模板管理器</string>
@@ -109,6 +113,13 @@
     <string name="home_status_working">工作中</string>
     <string name="home_status_inactive">未激活</string>
     <string name="home_working_version">版本：%1$s</string>
+    <string name="home_easter_egg_active">彩蛋：%1$s</string>
+    <string name="home_easter_egg_none">无</string>
+    <string name="home_easter_egg_new_year">新年</string>
+    <string name="home_easter_egg_april_fools">愚人节</string>
+    <string name="home_easter_egg_no_today">今天没有可用彩蛋</string>
+    <string name="home_easter_egg_enabled">已启用彩蛋：%1$s</string>
+    <string name="home_easter_egg_disabled">已关闭彩蛋：%1$s</string>
     <string name="home_update_title">版本更新</string>
     <string name="home_update_current">当前提交</string>
     <string name="home_update_latest">最新提交</string>
@@ -156,4 +167,6 @@
     <string name="credits_coolapk_title">酷安主页</string>
     <string name="credits_coolapk_desc">关注我的账号以获取更多资讯</string>
     <string name="quick_stop_systemui">快捷终止系统界面</string>
+    <string name="home_easter_egg_april_fools_working">致命错误</string>
+    <string name="home_easter_egg_april_fools_activated">模块已崩溃</string>
 </resources>

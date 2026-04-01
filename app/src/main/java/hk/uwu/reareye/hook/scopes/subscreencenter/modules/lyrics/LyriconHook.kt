@@ -3,19 +3,24 @@ package hk.uwu.reareye.hook.scopes.subscreencenter.modules.lyrics
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import android.util.Log
+import com.hchen.superlyricapi.ISuperLyric
+import com.hchen.superlyricapi.SuperLyricData
+import com.hchen.superlyricapi.SuperLyricTool
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import de.robv.android.xposed.XposedBridge
+import com.highcapable.yukihookapi.hook.log.YLog
 import hk.uwu.reareye.lyrics.LyricParser
 import hk.uwu.reareye.ui.config.ConfigKeys
+import hk.uwu.reareye.ui.config.LyricProvider
 import io.github.proify.lyricon.central.BridgeCentral
 import io.github.proify.lyricon.lyric.model.Song
 import io.github.proify.lyricon.provider.LyriconFactory
 import io.github.proify.lyricon.provider.ProviderInfo
 import io.github.proify.lyricon.subscriber.ActivePlayerListener
 import io.github.proify.lyricon.subscriber.ActivePlayerMonitor
+import java.util.concurrent.CopyOnWriteArrayList
+
 
 class LyriconHook : YukiBaseHooker() {
     private val lyricParser = LyricParser()
@@ -24,22 +29,34 @@ class LyriconHook : YukiBaseHooker() {
     private var latestLyricLrc: String = ""
 
     @Volatile
-    private var element: Any? = null
+    private var currentProvider: ProviderInfo? = null
+    private val elements: CopyOnWriteArrayList<Any> = CopyOnWriteArrayList<Any>()
 
     @Volatile
     var monitor: ActivePlayerMonitor? = null
+
+    @Volatile
+    var superLyricStub: ISuperLyric.Stub? = null
 
     override fun onHook() {
         loadApp("com.android.systemui") {
             onAppLifecycle {
                 onCreate {
                     val context = appContext ?: return@onCreate
-                    if (!isLyriconInstalled(context)) {
-                        XposedBridge.log("Lyricon is not found, starting bundled central")
-                        BridgeCentral.initialize(context)
-                        BridgeCentral.sendBootCompleted()
-                    } else {
-                        XposedBridge.log("Lyricon is found, skip to start central")
+                    if (LyricProvider.fromValue(
+                            prefs.getInt(
+                                ConfigKeys.LYRIC_PROVIDER,
+                                ConfigKeys.LYRIC_PROVIDER_DEFAULT
+                            )
+                        ) == LyricProvider.LYRICON
+                    ) {
+                        if (!isLyriconInstalled(context)) {
+                            YLog.info("Lyricon is not found, starting bundled central")
+                            BridgeCentral.initialize(context)
+                            BridgeCentral.sendBootCompleted()
+                        } else {
+                            YLog.info("Lyricon is found, skip to start central")
+                        }
                     }
                 }
             }
@@ -49,11 +66,43 @@ class LyriconHook : YukiBaseHooker() {
             onAppLifecycle {
                 onCreate {
                     val context = appContext ?: return@onCreate
-                    val listener = createLyricListener()
-                    val monitor =
-                        LyriconFactory.createActivePlayerMonitor(context, listener = listener)
-                    monitor.register()
-                    XposedBridge.log("Register player monitor")
+                    when (LyricProvider.fromValue(
+                        prefs.getInt(
+                            ConfigKeys.LYRIC_PROVIDER,
+                            ConfigKeys.LYRIC_PROVIDER_DEFAULT
+                        )
+                    )) {
+                        LyricProvider.LYRICON -> {
+                            val listener = createLyricListener()
+                            val monitor =
+                                LyriconFactory.createActivePlayerMonitor(
+                                    context,
+                                    listener = listener
+                                )
+                            monitor.register()
+                            YLog.info("Registered lyricon player monitor")
+                        }
+
+                        LyricProvider.SUPER_LYRIC -> {
+                            superLyricStub = object : ISuperLyric.Stub() {
+                                override fun onStop(data: SuperLyricData) {
+                                }
+
+                                override fun onSuperLyric(data: SuperLyricData) {
+                                    runCatching {
+                                        //XposedBridge.log("onSuperLyric ${data.lyric}")
+                                        if (data.lyric.isNotEmpty()) {
+                                            updateFallbackLyric(data.lyric)
+                                        }
+                                    }.onFailure {
+                                        YLog.error(it)
+                                    }
+                                }
+                            }
+                            SuperLyricTool.registerSuperLyric(context, superLyricStub!!)
+                            YLog.info("Registered super-lyric listener")
+                        }
+                    }
                 }
 
                 onTerminate {
@@ -61,16 +110,34 @@ class LyriconHook : YukiBaseHooker() {
                         it.unregister()
                         it.destroy()
                     }
+                    val context = appContext ?: return@onTerminate
+                    superLyricStub?.also {
+                        SuperLyricTool.unregisterSuperLyric(context, it)
+                    }
+                    YLog.debug("Terminated music lyric services")
                 }
             }
 
-            val clz = "com.miui.maml.elements.MusicControlScreenElement".toClass().resolve()
-            clz.constructor().build().hookAll {
+            val clz = "com.miui.maml.elements.MusicControlScreenElement".toClass()
+            val ref = clz.resolve()
+            ref.constructor().build().hookAll {
                 after {
-                    element = instance
+                    elements.addIfAbsent(instance)
                     if (latestLyricLrc.isNotEmpty()) {
-                        forceUpdateLyric(latestLyricLrc)
+                        elements.forEach {
+                            forceUpdateLyric(it, latestLyricLrc)
+                        }
                     }
+                }
+            }
+            val seClz = "com.miui.maml.elements.ScreenElement".toClass().resolve()
+            seClz.firstMethod {
+                name = "show"
+                parameters(Boolean::class.java)
+            }.hook().after {
+                if (instanceClass == clz && !args(0).boolean()) {
+                    YLog.debug("Release music control instance: $instance")
+                    elements.remove(instance)
                 }
             }
         }
@@ -90,24 +157,30 @@ class LyriconHook : YukiBaseHooker() {
 
     private fun createLyricListener(): ActivePlayerListener {
         return object : ActivePlayerListener {
-            private var currentProvider: ProviderInfo? = null
 
             override fun onActiveProviderChanged(providerInfo: ProviderInfo?) {
                 currentProvider = providerInfo
+                YLog.debug("onProviderChanged $currentProvider")
             }
 
             override fun onSongChanged(song: Song?) {
-                val lrc = lyricParser.toLrc(
-                    song,
-                    prefs.getInt(
-                        ConfigKeys.LYRIC_DISPLAY_MODE,
-                        ConfigKeys.LYRIC_DISPLAY_MODE_DEFAULT,
+                runCatching {
+                    val lrc = lyricParser.toLrc(
+                        song,
+                        prefs.getInt(
+                            ConfigKeys.LYRIC_DISPLAY_MODE,
+                            ConfigKeys.LYRIC_DISPLAY_MODE_DEFAULT,
+                        )
                     )
-                )
-                latestLyricLrc = normalizeForMiuiParser(lrc)
-                Log.d("REAREye-Lyric", "get song lrc $latestLyricLrc")
-                XposedBridge.log("onSongChanged converted LRC length=${latestLyricLrc.length}")
-                forceUpdateLyric(latestLyricLrc)
+                    latestLyricLrc = normalizeForMiuiParser(lrc)
+                    YLog.debug("REAREye getSongLRC $latestLyricLrc")
+                    YLog.debug("onSongChanged converted LRC length=${latestLyricLrc.length}")
+                    elements.forEach {
+                        forceUpdateLyric(it, latestLyricLrc)
+                    }
+                }.onFailure {
+                    YLog.error(it)
+                }
             }
 
             override fun onPlaybackStateChanged(isPlaying: Boolean) = Unit
@@ -116,7 +189,14 @@ class LyriconHook : YukiBaseHooker() {
 
             override fun onSeekTo(position: Long) = Unit
 
-            override fun onSendText(text: String?) = Unit
+            override fun onSendText(text: String?) {
+                runCatching {
+                    //XposedBridge.log("onSendText $text")
+                    if (text != null) updateFallbackLyric(text)
+                }.onFailure {
+                    YLog.error(it)
+                }
+            }
 
             override fun onDisplayTranslationChanged(isDisplayTranslation: Boolean) = Unit
 
@@ -124,21 +204,35 @@ class LyriconHook : YukiBaseHooker() {
         }
     }
 
-    private fun forceUpdateLyric(lrc: String) {
-        XposedBridge.log("current instance: $element")
-        val ref = element?.asResolver() ?: return
+    private fun updateFallbackLyric(text: String) {
+        elements.forEach { element ->
+            val ref = element.asResolver()
+            val mLyric = ref.firstField { name = "mLyric" }.get()
+            if (mLyric != null) return@forEach
+            val mLyricCurrentVar =
+                ref.firstField { name = "mLyricCurrentVar" }.get() ?: return@forEach
+            mLyricCurrentVar.asResolver().firstMethod {
+                name = "set"
+                parameters(Any::class.java)
+            }.invoke(text)
+        }
+    }
+
+    private fun forceUpdateLyric(element: Any, lrc: String) {
+        YLog.debug("handle instance: $element")
+        val ref = element.asResolver()
         val mLyric = ref.firstField { name = "mLyric" }
         val parserClz = "com.miui.maml.elements.MusicLyricParser".toClass().resolve()
         val nLyric = parserClz.firstMethod {
             name = "parseLyric"
             parameters(String::class.java)
         }.invoke(lrc)
-        XposedBridge.log("parsed $nLyric")
+        YLog.debug("parsed $nLyric")
         if (nLyric != null) {
             nLyric.asResolver().firstMethod { name = "decorate" }.invoke()
             mLyric.set(nLyric)
             ref.firstMethod { name = "updateLyric" }.invoke(nLyric)
-            XposedBridge.log("Force Update Lyric")
+            YLog.debug("Force Update Lyric")
             latestLyricLrc = ""
         }
     }
