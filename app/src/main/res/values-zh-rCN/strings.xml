@@ -16,6 +16,7 @@
     <string name="selection_save">保存</string>
     <string name="selection_clear">清空</string>
     <string name="config_selected_apps">已选择 %1$d 个应用</string>
+    <string name="config_slider_current_value">当前值：%1$s</string>
     <string name="app_list_more_actions">更多操作</string>
     <string name="app_list_sort">排序</string>
     <string name="app_list_filter">筛选</string>
@@ -170,5 +171,9 @@
     <string name="home_easter_egg_april_fools_working">致命错误</string>
     <string name="home_easter_egg_april_fools_activated">模块已崩溃</string>
     <string name="cfg_unmute_video_wallpaper">解除视频壁纸静音</string>
-    <string name="cfg_unmute_video_wallpaper_desc">允许您添加解除静音的背屏视频壁纸</string>
+    <string name="cfg_unmute_video_wallpaper_desc">允许您添加带有音频的背屏视频壁纸</string>
+    <string name="cfg_video_wallpaper_volume">视频壁纸音量</string>
+    <string name="cfg_video_wallpaper_volume_desc">设置视频壁纸的播放音量</string>
+    <string name="cfg_disable_rear_screen_cover">禁用背屏保护</string>
+    <string name="cfg_disable_rear_screen_cover_desc">启用此功能后，当主屏处于全屏模式时，背屏将不会被锁定</string>
 </resources>

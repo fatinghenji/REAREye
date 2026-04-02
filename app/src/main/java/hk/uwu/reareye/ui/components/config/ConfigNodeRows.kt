@@ -5,11 +5,16 @@ import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -22,6 +27,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.graphics.createBitmap
 import hk.uwu.reareye.R
 import hk.uwu.reareye.ui.config.ConfigCategory
@@ -39,9 +45,11 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.ListPopupColumn
 import top.yukonga.miuix.kmp.basic.ListPopupDefaults
 import top.yukonga.miuix.kmp.basic.PopupPositionProvider
+import top.yukonga.miuix.kmp.basic.Slider
 import top.yukonga.miuix.kmp.basic.SpinnerDefaults
 import top.yukonga.miuix.kmp.basic.SpinnerEntry
 import top.yukonga.miuix.kmp.basic.SpinnerItemImpl
+import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.extra.SuperArrow
 import top.yukonga.miuix.kmp.extra.SuperListPopup
 import top.yukonga.miuix.kmp.extra.SuperSwitch
@@ -344,6 +352,77 @@ fun EnumSingleSelectConfigInput(
                     },
                 )
             }
+        }
+    }
+}
+
+@Composable
+fun FloatSliderConfigInput(
+    item: ConfigItem,
+    sliderConfig: ConfigType.FloatSlider,
+    prefsManager: PrefsManager,
+) {
+    var selectedValue by remember(item.key) {
+        mutableFloatStateOf(
+            sliderConfig.normalizeValue(
+                prefsManager.getFloat(
+                    item.key,
+                    sliderConfig.defaultValue
+                )
+            )
+        )
+    }
+    val description = item.descriptionRes?.let { stringResource(it) }
+    val valueText = remember(selectedValue, sliderConfig) {
+        sliderConfig.formatValue(selectedValue)
+    }
+    val valueSummary = stringResource(R.string.config_slider_current_value, valueText)
+    val summary = if (description.isNullOrBlank()) {
+        valueSummary
+    } else {
+        "$description\n$valueSummary"
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+    ) {
+        Text(
+            text = stringResource(item.titleRes),
+            fontSize = 17.sp,
+        )
+        Text(
+            text = summary,
+            style = MiuixTheme.textStyles.body2,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            modifier = Modifier.padding(top = 2.dp)
+        )
+        Slider(
+            value = selectedValue,
+            onValueChange = {
+                val normalizedValue = sliderConfig.normalizeValue(it)
+                selectedValue = normalizedValue
+                prefsManager.putFloat(item.key, normalizedValue)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp),
+            valueRange = sliderConfig.minValue..sliderConfig.maxValue,
+            steps = sliderConfig.steps,
+        )
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = sliderConfig.formatValue(sliderConfig.minValue),
+                style = MiuixTheme.textStyles.body2,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                text = sliderConfig.formatValue(sliderConfig.maxValue),
+                style = MiuixTheme.textStyles.body2,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
         }
     }
 }

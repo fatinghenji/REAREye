@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Tune
 import hk.uwu.reareye.R
 import hk.uwu.reareye.lyrics.LyricParser
+import kotlin.math.roundToInt
 
 object ConfigKeys {
     const val MODULE_HIDE_LAUNCHER_ENTRY = "module_hide_launcher_entry"
@@ -32,6 +33,8 @@ object ConfigKeys {
     const val HOOK_UNLOCK_VIDEO_RESTRICTIONS = "enable_unlock_video_restrictions"
     const val HOOK_UNLOCK_TEMPLATE_MAXIMUM_LIMIT = "enable_unlock_template_maximum_limit"
     const val HOOK_UNMUTE_VIDEO_WALLPAPER = "enable_unmute_video_wallpaper"
+    const val VIDEO_WALLPAPER_VOLUME = "unmute_video_wallpaper_volume"
+    const val VIDEO_WALLPAPER_VOLUME_DEFAULT = 0.0f
 
     const val LYRIC_DISPLAY_MODE = "lyric_display_mode"
     val LYRIC_DISPLAY_MODE_DEFAULT = LyricParser.DisplayMode.ORIGINAL.mask or
@@ -40,6 +43,8 @@ object ConfigKeys {
 
     const val LYRIC_PROVIDER = "lyric_provider"
     val LYRIC_PROVIDER_DEFAULT = LyricProvider.LYRICON.value
+
+    const val HOOK_DISABLE_REAR_SCREEN_COVER = "enable_hook_rear_screen_cover"
 }
 
 enum class LyricProvider(val value: Int, val titleRes: Int) {
@@ -68,7 +73,7 @@ val REAREyeConfig = listOf(
         )
     ),
     ConfigCategory(
-        icon = ConfigCategoryIcon.Package("com.android.systemui"),
+        icon = ConfigCategoryIcon.Package("system"),
         titleRes = R.string.category_system,
         children = listOf(
             ConfigCategory(
@@ -125,6 +130,12 @@ val REAREyeConfig = listOf(
                 key = ConfigKeys.HOOK_SKIP_LOCK_BACK_HOME,
                 titleRes = R.string.skip_lock_back_home,
                 type = ConfigType.BooleanVal(defaultValue = false)
+            ),
+            ConfigItem(
+                key = ConfigKeys.HOOK_DISABLE_REAR_SCREEN_COVER,
+                titleRes = R.string.cfg_disable_rear_screen_cover,
+                descriptionRes = R.string.cfg_disable_rear_screen_cover_desc,
+                type = ConfigType.BooleanVal(defaultValue = false)
             )
         )
     ),
@@ -132,6 +143,24 @@ val REAREyeConfig = listOf(
         icon = ConfigCategoryIcon.Package("com.xiaomi.subscreencenter"),
         titleRes = R.string.category_subscreencenter,
         children = listOf(
+            ConfigCategory(
+                titleRes = R.string.rear_widget_manager_category,
+                descriptionRes = R.string.rear_widget_manager_category_desc,
+                children = listOf(
+                    ConfigItem(
+                        key = ConfigKeys.CFG_REAR_WIDGET_BUSINESS_MANAGER,
+                        titleRes = R.string.rear_widget_business_manager,
+                        descriptionRes = R.string.rear_widget_business_manager_desc,
+                        type = ConfigType.Manager(ConfigType.ManagerType.BUSINESS),
+                    ),
+                    ConfigItem(
+                        key = ConfigKeys.CFG_REAR_WIDGET_CARD_MANAGER,
+                        titleRes = R.string.rear_widget_card_manager,
+                        descriptionRes = R.string.rear_widget_card_manager_desc,
+                        type = ConfigType.Manager(ConfigType.ManagerType.CARD),
+                    ),
+                ),
+            ),
             ConfigCategory(
                 titleRes = R.string.cfg_music_control_whitelist,
                 descriptionRes = R.string.cfg_music_control_whitelist_desc,
@@ -200,23 +229,18 @@ val REAREyeConfig = listOf(
                 titleRes = R.string.enable_video_looping,
                 type = ConfigType.BooleanVal(defaultValue = false)
             ),
-            ConfigCategory(
-                titleRes = R.string.rear_widget_manager_category,
-                descriptionRes = R.string.rear_widget_manager_category_desc,
-                children = listOf(
-                    ConfigItem(
-                        key = ConfigKeys.CFG_REAR_WIDGET_BUSINESS_MANAGER,
-                        titleRes = R.string.rear_widget_business_manager,
-                        descriptionRes = R.string.rear_widget_business_manager_desc,
-                        type = ConfigType.Manager(ConfigType.ManagerType.BUSINESS),
-                    ),
-                    ConfigItem(
-                        key = ConfigKeys.CFG_REAR_WIDGET_CARD_MANAGER,
-                        titleRes = R.string.rear_widget_card_manager,
-                        descriptionRes = R.string.rear_widget_card_manager_desc,
-                        type = ConfigType.Manager(ConfigType.ManagerType.CARD),
-                    ),
-                ),
+            ConfigItem(
+                key = ConfigKeys.VIDEO_WALLPAPER_VOLUME,
+                titleRes = R.string.cfg_video_wallpaper_volume,
+                descriptionRes = R.string.cfg_video_wallpaper_volume_desc,
+                type = ConfigType.FloatSlider(
+                    defaultValue = ConfigKeys.VIDEO_WALLPAPER_VOLUME_DEFAULT,
+                    minValue = 0f,
+                    maxValue = 1.0f,
+                    steps = 99,
+                    decimalPlaces = 2,
+                    valueFormatter = { value -> "${(value * 100f).roundToInt()}%" },
+                )
             )
         )
     ),

@@ -15,6 +15,7 @@
     <string name="selection_save">Save</string>
     <string name="selection_clear">Clear</string>
     <string name="config_selected_apps">Selected %1$d apps</string>
+    <string name="config_slider_current_value">Current value: %1$s</string>
     <string name="app_list_more_actions">More actions</string>
     <string name="app_list_sort">Sort</string>
     <string name="app_list_filter">Filter</string>
@@ -171,5 +172,9 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="home_easter_egg_april_fools_working">Fatal Error</string>
     <string name="home_easter_egg_april_fools_activated">The module has crashed</string>
     <string name="cfg_unmute_video_wallpaper">Unmute video wallpaper</string>
-    <string name="cfg_unmute_video_wallpaper_desc">Allows you to add unmute video wallpapers</string>
+    <string name="cfg_unmute_video_wallpaper_desc">Allows you to add video wallpapers with audio</string>
+    <string name="cfg_video_wallpaper_volume">Video wallpaper volume</string>
+    <string name="cfg_video_wallpaper_volume_desc">Set playback volume for video wallpapers</string>
+    <string name="cfg_disable_rear_screen_cover">Disable rear screen cover</string>
+    <string name="cfg_disable_rear_screen_cover_desc">When enabled, the rear screen will not be locked when the main screen is in full-screen mode</string>
 </resources>

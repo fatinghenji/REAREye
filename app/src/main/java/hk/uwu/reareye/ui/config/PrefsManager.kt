@@ -38,4 +38,12 @@ class PrefsManager(context: Context) {
     fun putInt(key: String, value: Int) {
         prefs.edit().putInt(key, value).apply()
     }
+
+    fun getFloat(key: String, defValue: Float): Float {
+        return prefs.getFloat(key, defValue)
+    }
+
+    fun putFloat(key: String, value: Float) {
+        prefs.edit().putFloat(key, value).apply()
+    }
 }
