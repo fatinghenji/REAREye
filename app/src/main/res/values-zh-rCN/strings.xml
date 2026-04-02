@@ -65,6 +65,8 @@
     <string name="lyric_provider_desc">选择使用的歌词来源后端</string>
     <string name="lyric_provider_lyricon">Lyricon (词幕)</string>
     <string name="lyric_provider_superlyric">SuperLyric</string>
+    <string name="super_lyric_display_mode">SuperLyric 显示模式</string>
+    <string name="super_lyric_display_mode_desc">选择 SuperLyric 显示原文或翻译</string>
     <string name="rear_widget_manager_category">背屏组件管理</string>
     <string name="rear_widget_manager_category_desc">管理自定义组件模板与常驻卡片</string>
     <string name="rear_widget_business_manager">组件模板管理器</string>

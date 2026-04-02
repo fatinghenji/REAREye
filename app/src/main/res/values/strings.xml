@@ -64,6 +64,8 @@
     <string name="lyric_provider_desc">Choose which lyric source backend to use</string>
     <string name="lyric_provider_lyricon">Lyricon</string>
     <string name="lyric_provider_superlyric">SuperLyric</string>
+    <string name="super_lyric_display_mode">SuperLyric Display Mode</string>
+    <string name="super_lyric_display_mode_desc">Choose whether SuperLyric shows original text or translation</string>
     <string name="rear_widget_manager_category">Rear Widget Managers</string>
     <string name="rear_widget_manager_category_desc">Manage custom widget templates and resident cards</string>
     <string name="rear_widget_business_manager">Widget Template Manager</string>

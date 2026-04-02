@@ -46,6 +46,9 @@ object ConfigKeys {
     const val LYRIC_PROVIDER = "lyric_provider"
     val LYRIC_PROVIDER_DEFAULT = LyricProvider.LYRICON.value
 
+    const val SUPER_LYRIC_DISPLAY_MODE = "super_lyric_display_mode"
+    val SUPER_LYRIC_DISPLAY_MODE_DEFAULT = LyricParser.DisplayMode.ORIGINAL.mask
+
     const val HOOK_DISABLE_REAR_SCREEN_COVER = "enable_hook_rear_screen_cover"
 
     const val MORE_DEBUG = "enable_more_debug_logging"
@@ -59,6 +62,14 @@ enum class LyricProvider(val value: Int, val titleRes: Int) {
         fun fromValue(value: Int): LyricProvider {
             return entries.firstOrNull { it.value == value } ?: LYRICON
         }
+    }
+}
+
+private fun LyricParser.DisplayMode.toTitleRes(): Int {
+    return when (this) {
+        LyricParser.DisplayMode.ORIGINAL -> R.string.lyric_display_mode_original
+        LyricParser.DisplayMode.TRANSLATION -> R.string.lyric_display_mode_translation
+        LyricParser.DisplayMode.ROMANIZATION -> R.string.lyric_display_mode_romanization
     }
 }
 
@@ -209,20 +220,12 @@ val REAREyeConfig = listOf(
                 descriptionRes = R.string.lyric_display_mode_desc,
                 type = ConfigType.MaskMultiSelect(
                     defaultValue = ConfigKeys.LYRIC_DISPLAY_MODE_DEFAULT,
-                    options = listOf(
+                    options = LyricParser.DisplayMode.entries.map {
                         ConfigType.MaskOption(
-                            titleRes = R.string.lyric_display_mode_original,
-                            maskValue = LyricParser.DisplayMode.ORIGINAL.mask,
-                        ),
-                        ConfigType.MaskOption(
-                            titleRes = R.string.lyric_display_mode_translation,
-                            maskValue = LyricParser.DisplayMode.TRANSLATION.mask,
-                        ),
-                        ConfigType.MaskOption(
-                            titleRes = R.string.lyric_display_mode_romanization,
-                            maskValue = LyricParser.DisplayMode.ROMANIZATION.mask,
-                        ),
-                    )
+                            titleRes = it.toTitleRes(),
+                            maskValue = it.mask,
+                        )
+                    }
                 )
             ),
             ConfigItem(
@@ -235,6 +238,23 @@ val REAREyeConfig = listOf(
                         ConfigType.EnumOption(
                             titleRes = it.titleRes,
                             value = it.value,
+                        )
+                    },
+                )
+            ),
+            ConfigItem(
+                key = ConfigKeys.SUPER_LYRIC_DISPLAY_MODE,
+                titleRes = R.string.super_lyric_display_mode,
+                descriptionRes = R.string.super_lyric_display_mode_desc,
+                type = ConfigType.EnumSingleSelect(
+                    defaultValue = ConfigKeys.SUPER_LYRIC_DISPLAY_MODE_DEFAULT,
+                    options = listOf(
+                        LyricParser.DisplayMode.ORIGINAL,
+                        LyricParser.DisplayMode.TRANSLATION,
+                    ).map {
+                        ConfigType.EnumOption(
+                            titleRes = it.toTitleRes(),
+                            value = it.mask,
                         )
                     },
                 )

@@ -93,10 +93,31 @@ class LyriconHook : YukiBaseHooker() {
                                 override fun onSuperLyric(data: SuperLyricData) {
                                     runCatching {
                                         if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
-                                            YLog.debug("onSuperLyric ${data.lyric}")
+                                            YLog.debug("onSuperLyric ${data.lyric} ${data.translation}")
                                         }
-                                        if (data.lyric.isNotEmpty()) {
-                                            updateFallbackLyric(data.lyric)
+                                        val mode = prefs.getInt(
+                                            ConfigKeys.SUPER_LYRIC_DISPLAY_MODE,
+                                            ConfigKeys.SUPER_LYRIC_DISPLAY_MODE_DEFAULT
+                                        )
+                                        val originalLines = data.lyric.split("\n")
+                                        val lyric = when {
+                                            LyricParser.DisplayMode.shouldShowTranslation(mode) -> {
+                                                val translation = data.translation
+                                                if (!translation.isNullOrEmpty()) {
+                                                    translation
+                                                } else if (originalLines.size > 1) {
+                                                    originalLines[1]
+                                                } else {
+                                                    data.lyric
+                                                }
+                                            }
+
+                                            else -> {
+                                                originalLines[0]
+                                            }
+                                        }
+                                        if (lyric.isNotEmpty()) {
+                                            updateFallbackLyric(lyric)
                                         }
                                     }.onFailure {
                                         YLog.error(it)
