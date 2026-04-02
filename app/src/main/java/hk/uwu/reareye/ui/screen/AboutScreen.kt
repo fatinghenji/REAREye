@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -35,6 +36,10 @@ import androidx.core.net.toUri
 import hk.uwu.reareye.R
 import hk.uwu.reareye.generated.AppProperties
 import hk.uwu.reareye.ui.components.card.SuperCard
+import hk.uwu.reareye.ui.theme.rearAcrylicEffect
+import hk.uwu.reareye.ui.theme.rearAcrylicSource
+import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
+import hk.uwu.reareye.ui.theme.rememberAcrylicHazeStyle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Card
@@ -61,6 +66,8 @@ private data class CreditEntry(
 fun AboutScreen() {
     val context = LocalContext.current
     val scrollBehavior = MiuixScrollBehavior()
+    val hazeState = rememberAcrylicHazeState()
+    val hazeStyle = rememberAcrylicHazeStyle()
     val versionText = rememberVersionText()
 
     val entries = listOf(
@@ -89,6 +96,8 @@ fun AboutScreen() {
     Scaffold(
         topBar = {
             TopAppBar(
+                modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
+                color = Color.Transparent,
                 title = stringResource(R.string.about_navigation),
                 scrollBehavior = scrollBehavior,
             )
@@ -100,6 +109,7 @@ fun AboutScreen() {
                 .scrollEndHaptic()
                 .overScrollVertical()
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
+                .rearAcrylicSource(hazeState)
                 .padding(horizontal = 12.dp),
             contentPadding = paddingValues,
             overscrollEffect = null,

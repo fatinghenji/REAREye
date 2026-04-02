@@ -62,6 +62,7 @@ fun ConfigNodeRow(
     onOpenCategory: (ConfigCategory) -> Unit,
     onOpenAppList: (ConfigItem) -> Unit,
     onOpenManager: (ConfigItem) -> Unit,
+    onPreferenceChanged: (ConfigItem) -> Unit = {},
 ) {
     when (node) {
         is ConfigCategory -> ConfigCategoryNodeRow(
@@ -76,6 +77,7 @@ fun ConfigNodeRow(
             prefsManager = prefsManager,
             onOpenAppList = onOpenAppList,
             onOpenManager = onOpenManager,
+            onPreferenceChanged = onPreferenceChanged,
         )
     }
 }
@@ -159,17 +161,24 @@ fun ConfigItemNodeRow(
     prefsManager: PrefsManager,
     onOpenAppList: (ConfigItem) -> Unit,
     onOpenManager: (ConfigItem) -> Unit,
+    onPreferenceChanged: (ConfigItem) -> Unit = {},
 ) {
     item.type.RenderInput(
         item = item,
         prefsManager = prefsManager,
         onOpenAppList = onOpenAppList,
         onOpenManager = onOpenManager,
+        onPreferenceChanged = onPreferenceChanged,
     )
 }
 
 @Composable
-fun BooleanConfigInput(item: ConfigItem, defaultValue: Boolean, prefsManager: PrefsManager) {
+fun BooleanConfigInput(
+    item: ConfigItem,
+    defaultValue: Boolean,
+    prefsManager: PrefsManager,
+    onPreferenceChanged: (ConfigItem) -> Unit = {},
+) {
     val context = LocalContext.current
     var checked by remember(item.key) {
         mutableStateOf(prefsManager.getBoolean(item.key, defaultValue))
@@ -185,6 +194,7 @@ fun BooleanConfigInput(item: ConfigItem, defaultValue: Boolean, prefsManager: Pr
             if (item.key == ConfigKeys.MODULE_HIDE_LAUNCHER_ENTRY) {
                 ModuleSettingsController.syncLauncherEntryVisibility(context, hidden = it)
             }
+            onPreferenceChanged(item)
         }
     )
 }
@@ -219,6 +229,7 @@ fun MaskMultiSelectConfigInput(
     defaultValue: Int,
     options: List<ConfigType.MaskOption>,
     prefsManager: PrefsManager,
+    onPreferenceChanged: (ConfigItem) -> Unit = {},
 ) {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
@@ -279,6 +290,7 @@ fun MaskMultiSelectConfigInput(
                     onSelectedIndexChange = {
                         selectedMask = selectedMask xor option.maskValue
                         prefsManager.putInt(item.key, selectedMask)
+                        onPreferenceChanged(item)
                     },
                 )
             }
@@ -293,6 +305,7 @@ fun EnumSingleSelectConfigInput(
     defaultValue: Int,
     options: List<ConfigType.EnumOption>,
     prefsManager: PrefsManager,
+    onPreferenceChanged: (ConfigItem) -> Unit = {},
 ) {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
@@ -348,6 +361,7 @@ fun EnumSingleSelectConfigInput(
                     onSelectedIndexChange = {
                         selectedValue = option.value
                         prefsManager.putInt(item.key, selectedValue)
+                        onPreferenceChanged(item)
                         showEnumPopup = false
                     },
                 )
@@ -361,6 +375,7 @@ fun FloatSliderConfigInput(
     item: ConfigItem,
     sliderConfig: ConfigType.FloatSlider,
     prefsManager: PrefsManager,
+    onPreferenceChanged: (ConfigItem) -> Unit = {},
 ) {
     var selectedValue by remember(item.key) {
         mutableFloatStateOf(
@@ -404,6 +419,7 @@ fun FloatSliderConfigInput(
                 val normalizedValue = sliderConfig.normalizeValue(it)
                 selectedValue = normalizedValue
                 prefsManager.putFloat(item.key, normalizedValue)
+                onPreferenceChanged(item)
             },
             modifier = Modifier
                 .fillMaxWidth()

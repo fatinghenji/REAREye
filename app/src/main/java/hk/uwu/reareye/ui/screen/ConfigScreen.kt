@@ -24,6 +24,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -37,11 +38,17 @@ import hk.uwu.reareye.ui.components.config.ConfigNodeRow
 import hk.uwu.reareye.ui.config.ConfigCategory
 import hk.uwu.reareye.ui.config.ConfigGroup
 import hk.uwu.reareye.ui.config.ConfigItem
+import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.ConfigNode
 import hk.uwu.reareye.ui.config.ConfigType
 import hk.uwu.reareye.ui.config.PrefsManager
 import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
 import hk.uwu.reareye.ui.config.REAREyeConfig
+import hk.uwu.reareye.ui.theme.AppThemeMode
+import hk.uwu.reareye.ui.theme.rearAcrylicEffect
+import hk.uwu.reareye.ui.theme.rearAcrylicSource
+import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
+import hk.uwu.reareye.ui.theme.rememberAcrylicHazeStyle
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -60,7 +67,10 @@ private sealed interface ConfigRoute {
 }
 
 @Composable
-fun ConfigScreen(onAppListModeChange: (Boolean) -> Unit = {}) {
+fun ConfigScreen(
+    onAppListModeChange: (Boolean) -> Unit = {},
+    onThemeModeChange: (Int) -> Unit = {},
+) {
     val context = LocalContext.current
     val prefsManager = remember { context.getPrefsManager() }
 
@@ -71,6 +81,21 @@ fun ConfigScreen(onAppListModeChange: (Boolean) -> Unit = {}) {
             currentRoute is ConfigRoute.CardManager ||
             currentRoute is ConfigRoute.BusinessExtraManager
     val scrollBehavior = MiuixScrollBehavior()
+    val hazeState = rememberAcrylicHazeState()
+    val hazeStyle = rememberAcrylicHazeStyle()
+
+    val handlePreferenceChanged = remember(prefsManager, onThemeModeChange) {
+        { item: ConfigItem ->
+            if (item.key == ConfigKeys.MODULE_THEME_MODE) {
+                onThemeModeChange(
+                    prefsManager.getInt(
+                        ConfigKeys.MODULE_THEME_MODE,
+                        AppThemeMode.default.value,
+                    )
+                )
+            }
+        }
+    }
 
     LaunchedEffect(isOverlayMode) {
         onAppListModeChange(isOverlayMode)
@@ -84,6 +109,8 @@ fun ConfigScreen(onAppListModeChange: (Boolean) -> Unit = {}) {
         topBar = {
             if (!isOverlayMode) {
                 TopAppBar(
+                    modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
+                    color = Color.Transparent,
                     title = when (currentRoute) {
                         ConfigRoute.Root -> stringResource(R.string.configuration_title)
                         is ConfigRoute.Category -> stringResource(currentRoute.category.titleRes)
@@ -135,6 +162,7 @@ fun ConfigScreen(onAppListModeChange: (Boolean) -> Unit = {}) {
                     prefsManager = prefsManager,
                     contentPadding = paddingValues,
                     scrollBehavior = scrollBehavior,
+                    modifier = Modifier.rearAcrylicSource(hazeState),
                     onOpenCategory = { category ->
                         routeStack = routeStack + ConfigRoute.Category(category)
                     },
@@ -157,7 +185,8 @@ fun ConfigScreen(onAppListModeChange: (Boolean) -> Unit = {}) {
 
                             null -> Unit
                         }
-                    }
+                    },
+                    onPreferenceChanged = handlePreferenceChanged,
                 )
 
                 is ConfigRoute.Category -> ConfigNodeList(
@@ -165,6 +194,7 @@ fun ConfigScreen(onAppListModeChange: (Boolean) -> Unit = {}) {
                     prefsManager = prefsManager,
                     contentPadding = paddingValues,
                     scrollBehavior = scrollBehavior,
+                    modifier = Modifier.rearAcrylicSource(hazeState),
                     onOpenCategory = { category ->
                         routeStack = routeStack + ConfigRoute.Category(category)
                     },
@@ -187,7 +217,8 @@ fun ConfigScreen(onAppListModeChange: (Boolean) -> Unit = {}) {
 
                             null -> Unit
                         }
-                    }
+                    },
+                    onPreferenceChanged = handlePreferenceChanged,
                 )
 
                 is ConfigRoute.AppList -> AppListSelectorScreen(
@@ -222,9 +253,11 @@ private fun ConfigNodeList(
     prefsManager: PrefsManager,
     contentPadding: PaddingValues,
     scrollBehavior: ScrollBehavior,
+    modifier: Modifier = Modifier,
     onOpenCategory: (ConfigCategory) -> Unit,
     onOpenAppList: (ConfigItem) -> Unit,
     onOpenManager: (ConfigItem) -> Unit,
+    onPreferenceChanged: (ConfigItem) -> Unit = {},
 ) {
     LazyColumn(
         modifier = Modifier
@@ -232,6 +265,7 @@ private fun ConfigNodeList(
             .scrollEndHaptic()
             .overScrollVertical()
             .nestedScroll(scrollBehavior.nestedScrollConnection)
+            .then(modifier)
             .padding(horizontal = 12.dp),
         contentPadding = contentPadding,
         overscrollEffect = null
@@ -250,6 +284,7 @@ private fun ConfigNodeList(
                             onOpenCategory = onOpenCategory,
                             onOpenAppList = onOpenAppList,
                             onOpenManager = onOpenManager,
+                            onPreferenceChanged = onPreferenceChanged,
                         )
                     }
                 }
@@ -265,6 +300,7 @@ private fun ConfigNodeList(
                         onOpenCategory = onOpenCategory,
                         onOpenAppList = onOpenAppList,
                         onOpenManager = onOpenManager,
+                        onPreferenceChanged = onPreferenceChanged,
                     )
                 }
             }

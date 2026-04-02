@@ -37,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
@@ -58,6 +59,10 @@ import hk.uwu.reareye.ui.config.ConfigItem
 import hk.uwu.reareye.ui.config.ConfigNode
 import hk.uwu.reareye.ui.config.ConfigType
 import hk.uwu.reareye.ui.config.PrefsManager
+import hk.uwu.reareye.ui.theme.rearAcrylicEffect
+import hk.uwu.reareye.ui.theme.rearAcrylicSource
+import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
+import hk.uwu.reareye.ui.theme.rememberAcrylicHazeStyle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
@@ -100,6 +105,8 @@ fun BusinessExtraConfigManagerScreen(
     val context = LocalContext.current
     val layoutDirection = LocalLayoutDirection.current
     val scrollBehavior = MiuixScrollBehavior()
+    val hazeState = rememberAcrylicHazeState()
+    val hazeStyle = rememberAcrylicHazeStyle()
     val entries = remember { mutableStateListOf<RearBusinessExtraConfigEntry>() }
     var loaded by remember { mutableStateOf(false) }
     var contentVisible by remember { mutableStateOf(false) }
@@ -186,6 +193,8 @@ fun BusinessExtraConfigManagerScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
+                color = Color.Transparent,
                 title = stringResource(R.string.rear_widget_business_extra_manager),
                 navigationIcon = {
                     IconButton(modifier = Modifier.padding(start = 16.dp), onClick = onBack) {
@@ -216,6 +225,7 @@ fun BusinessExtraConfigManagerScreen(
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .scrollEndHaptic()
                 .overScrollVertical()
+                .rearAcrylicSource(hazeState)
                 .padding(horizontal = 12.dp),
             contentPadding = PaddingValues(
                 top = paddingValues.calculateTopPadding() + 12.dp,
@@ -374,6 +384,8 @@ fun BusinessExtraConfigScreen(
 ) {
     val layoutDirection = LocalLayoutDirection.current
     val scrollBehavior = MiuixScrollBehavior()
+    val hazeState = rememberAcrylicHazeState()
+    val hazeStyle = rememberAcrylicHazeStyle()
     var config by remember(business) {
         mutableStateOf(
             RearBusinessExtraConfigRepository.getConfigForBusiness(
@@ -386,6 +398,8 @@ fun BusinessExtraConfigScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
+                color = Color.Transparent,
                 title = stringResource(R.string.rear_widget_business_extra_settings),
                 navigationIcon = {
                     IconButton(modifier = Modifier.padding(start = 16.dp), onClick = onBack) {
@@ -408,6 +422,7 @@ fun BusinessExtraConfigScreen(
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .scrollEndHaptic()
                 .overScrollVertical()
+                .rearAcrylicSource(hazeState)
                 .padding(horizontal = 12.dp),
             contentPadding = PaddingValues(
                 top = paddingValues.calculateTopPadding() + 12.dp,

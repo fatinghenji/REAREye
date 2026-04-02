@@ -36,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
@@ -52,6 +53,10 @@ import hk.uwu.reareye.ui.components.card.ModuleStyleIconAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleManagerCard
 import hk.uwu.reareye.ui.components.card.SuperCard
 import hk.uwu.reareye.ui.config.PrefsManager
+import hk.uwu.reareye.ui.theme.rearAcrylicEffect
+import hk.uwu.reareye.ui.theme.rearAcrylicSource
+import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
+import hk.uwu.reareye.ui.theme.rememberAcrylicHazeStyle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
@@ -80,6 +85,8 @@ fun CardManagerScreen(
     val context = LocalContext.current
     val layoutDirection = LocalLayoutDirection.current
     val scrollBehavior = MiuixScrollBehavior()
+    val hazeState = rememberAcrylicHazeState()
+    val hazeStyle = rememberAcrylicHazeStyle()
     val cards = remember { mutableStateListOf<RearCardConfig>() }
     var cardsLoaded by remember { mutableStateOf(false) }
     var contentVisible by remember { mutableStateOf(false) }
@@ -169,6 +176,8 @@ fun CardManagerScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
+                color = Color.Transparent,
                 title = stringResource(R.string.rear_widget_card_manager),
                 navigationIcon = {
                     IconButton(modifier = Modifier.padding(start = 16.dp), onClick = onBack) {
@@ -198,6 +207,7 @@ fun CardManagerScreen(
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .scrollEndHaptic()
                 .overScrollVertical()
+                .rearAcrylicSource(hazeState)
                 .padding(horizontal = 12.dp),
             contentPadding = PaddingValues(
                 top = paddingValues.calculateTopPadding() + 12.dp,

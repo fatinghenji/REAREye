@@ -4,10 +4,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Tune
 import hk.uwu.reareye.R
 import hk.uwu.reareye.lyrics.LyricParser
+import hk.uwu.reareye.ui.theme.AppThemeMode
 import kotlin.math.roundToInt
 
 object ConfigKeys {
     const val MODULE_HIDE_LAUNCHER_ENTRY = "module_hide_launcher_entry"
+    const val MODULE_THEME_MODE = "module_theme_mode"
 
     const val HOOK_ACTIVITIES_WHITELIST = "enable_activities_whitelist_hook"
     const val ACTIVITIES_WHITELIST_APPS = "activities_whitelist_apps"
@@ -79,6 +81,20 @@ val REAREyeConfig = listOf(
         titleRes = R.string.category_module_settings,
         descriptionRes = R.string.category_module_settings_desc,
         children = listOf(
+            ConfigItem(
+                key = ConfigKeys.MODULE_THEME_MODE,
+                titleRes = R.string.module_theme_mode,
+                descriptionRes = R.string.module_theme_mode_desc,
+                type = ConfigType.EnumSingleSelect(
+                    defaultValue = AppThemeMode.default.value,
+                    options = AppThemeMode.selectableEntries.map {
+                        ConfigType.EnumOption(
+                            titleRes = it.titleRes,
+                            value = it.value,
+                        )
+                    },
+                ),
+            ),
             ConfigItem(
                 key = ConfigKeys.MODULE_HIDE_LAUNCHER_ENTRY,
                 titleRes = R.string.hide_launcher_entry,

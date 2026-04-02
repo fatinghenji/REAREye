@@ -12,7 +12,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -54,6 +54,10 @@ import hk.uwu.reareye.R
 import hk.uwu.reareye.generated.AppProperties
 import hk.uwu.reareye.ui.easteregg.EasterEggManager
 import hk.uwu.reareye.ui.easteregg.EasterEggType
+import hk.uwu.reareye.ui.theme.rearAcrylicEffect
+import hk.uwu.reareye.ui.theme.rearAcrylicSource
+import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
+import hk.uwu.reareye.ui.theme.rememberAcrylicHazeStyle
 import hk.uwu.reareye.utils.RootHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -128,6 +132,8 @@ fun HomeScreen() {
     val showTopMenu = remember { mutableStateOf(false) }
     val scrollBehavior = MiuixScrollBehavior()
     val context = LocalContext.current
+    val hazeState = rememberAcrylicHazeState()
+    val hazeStyle = rememberAcrylicHazeStyle()
     val coroutineScope = rememberCoroutineScope()
     val easterEggToastHolder = remember { ToastHolder() }
 
@@ -195,6 +201,8 @@ fun HomeScreen() {
     Scaffold(
         topBar = {
             TopAppBar(
+                modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
+                color = Color.Transparent,
                 title = appTitle,
                 actions = {
                     Box {
@@ -308,6 +316,7 @@ fun HomeScreen() {
                 .scrollEndHaptic()
                 .overScrollVertical()
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
+                .rearAcrylicSource(hazeState)
                 .padding(horizontal = 12.dp),
             contentPadding = PaddingValues(
                 top = paddingValues.calculateTopPadding() + 12.dp,
@@ -574,7 +583,7 @@ private fun EasterEggType.toTitleRes(): Int {
 
 @Composable
 private fun RootWarningCard() {
-    val darkMode = isSystemInDarkTheme()
+    val darkMode = MiuixTheme.colorScheme.background.luminance() < 0.5f
     val cardColor = if (darkMode) Color(0xFF4E2528) else Color(0xFFFDE9E9)
     val iconColor = if (darkMode) Color(0xFFFF8A80) else Color(0xFFD94B4B)
     val titleColor = if (darkMode) Color(0xFFFFD2CC) else Color(0xFF8C1F1F)

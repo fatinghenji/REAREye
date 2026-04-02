@@ -1,6 +1,5 @@
 package hk.uwu.reareye.ui.components.card
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -11,6 +10,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -86,8 +86,9 @@ fun ModuleStyleIconAction(
     onClick: () -> Unit,
 ) {
     val secondaryContainer = MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f)
+    val actionIconAlpha = if (secondaryContainer.luminance() < 0.5f) 0.7f else 0.9f
     val actionIconTint =
-        MiuixTheme.colorScheme.onSurface.copy(alpha = if (isSystemInDarkTheme()) 0.7f else 0.9f)
+        MiuixTheme.colorScheme.onSurface.copy(alpha = actionIconAlpha)
     IconButton(
         minHeight = 35.dp,
         minWidth = 35.dp,
@@ -109,8 +110,9 @@ fun ModuleStyleDeleteAction(
     onClick: () -> Unit,
 ) {
     val secondaryContainer = MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f)
+    val actionIconAlpha = if (secondaryContainer.luminance() < 0.5f) 0.7f else 0.9f
     val actionIconTint =
-        MiuixTheme.colorScheme.onSurface.copy(alpha = if (isSystemInDarkTheme()) 0.7f else 0.9f)
+        MiuixTheme.colorScheme.onSurface.copy(alpha = actionIconAlpha)
     IconButton(
         minHeight = 35.dp,
         minWidth = 35.dp,

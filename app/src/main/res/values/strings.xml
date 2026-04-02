@@ -28,6 +28,14 @@
 
     <string name="category_module_settings">Module Settings</string>
     <string name="category_module_settings_desc">Settings for REAREye itself</string>
+    <string name="module_theme_mode">Theme Style</string>
+    <string name="module_theme_mode_desc">Switch between Miuix and Monet theme variants, including follow-system, light, and dark modes</string>
+    <string name="module_theme_mode_miuix_system">Miuix Follow System</string>
+    <string name="module_theme_mode_miuix_light">Miuix Light</string>
+    <string name="module_theme_mode_miuix_dark">Miuix Dark</string>
+    <string name="module_theme_mode_monet_system">Monet Follow System</string>
+    <string name="module_theme_mode_monet_light">Monet Light</string>
+    <string name="module_theme_mode_monet_dark">Monet Dark</string>
     <string name="hide_launcher_entry">Hide launcher entry</string>
     <string name="hide_launcher_entry_desc">Optional: hide REAREye icon from launcher</string>
 

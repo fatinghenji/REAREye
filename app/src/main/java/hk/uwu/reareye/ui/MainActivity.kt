@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -39,6 +40,8 @@ import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
 import hk.uwu.reareye.ui.screen.AboutScreen
 import hk.uwu.reareye.ui.screen.ConfigScreen
 import hk.uwu.reareye.ui.screen.HomeScreen
+import hk.uwu.reareye.ui.theme.AppTheme
+import hk.uwu.reareye.ui.theme.AppThemeMode
 import top.yukonga.miuix.kmp.basic.NavigationBar
 import top.yukonga.miuix.kmp.basic.NavigationBarDisplayMode
 import top.yukonga.miuix.kmp.basic.NavigationBarItem
@@ -77,6 +80,14 @@ class MainActivity : ComponentActivity() {
         )
 
         setContent {
+            var themeModeValue by remember {
+                mutableIntStateOf(
+                    prefsManager.getInt(
+                        ConfigKeys.MODULE_THEME_MODE,
+                        AppThemeMode.default.value,
+                    )
+                )
+            }
             var currentScreen by remember { mutableStateOf("home") }
             var navBarVisible by remember { mutableStateOf(false) }
             var configInAppListMode by remember { mutableStateOf(false) }
@@ -86,7 +97,7 @@ class MainActivity : ComponentActivity() {
                 navBarVisible = true
             }
 
-            hk.uwu.reareye.ui.theme.AppTheme {
+            AppTheme(themeMode = AppThemeMode.fromValue(themeModeValue)) {
                 Scaffold(
                     bottomBar = {
                         val showNavigation =
@@ -188,7 +199,8 @@ class MainActivity : ComponentActivity() {
                                 "config" -> ConfigScreen(
                                     onAppListModeChange = {
                                         configInAppListMode = it
-                                    }
+                                    },
+                                    onThemeModeChange = { themeModeValue = it },
                                 )
 
                                 "about" -> AboutScreen()

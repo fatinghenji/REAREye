@@ -21,6 +21,7 @@ sealed class ConfigType {
         prefsManager: PrefsManager,
         onOpenAppList: (ConfigItem) -> Unit,
         onOpenManager: (ConfigItem) -> Unit,
+        onPreferenceChanged: (ConfigItem) -> Unit,
     )
 
     open val defaultStringSet: Set<String> = emptySet()
@@ -42,11 +43,13 @@ sealed class ConfigType {
             prefsManager: PrefsManager,
             onOpenAppList: (ConfigItem) -> Unit,
             onOpenManager: (ConfigItem) -> Unit,
+            onPreferenceChanged: (ConfigItem) -> Unit,
         ) {
             BooleanConfigInput(
                 item = item,
                 defaultValue = defaultValue,
-                prefsManager = prefsManager
+                prefsManager = prefsManager,
+                onPreferenceChanged = onPreferenceChanged,
             )
         }
     }
@@ -61,12 +64,13 @@ sealed class ConfigType {
             prefsManager: PrefsManager,
             onOpenAppList: (ConfigItem) -> Unit,
             onOpenManager: (ConfigItem) -> Unit,
+            onPreferenceChanged: (ConfigItem) -> Unit,
         ) {
             AppListConfigInput(
                 item = item,
                 defaultValues = defaultValues,
                 prefsManager = prefsManager,
-                onClick = { onOpenAppList(item) }
+                onClick = { onOpenAppList(item) },
             )
         }
     }
@@ -81,12 +85,14 @@ sealed class ConfigType {
             prefsManager: PrefsManager,
             onOpenAppList: (ConfigItem) -> Unit,
             onOpenManager: (ConfigItem) -> Unit,
+            onPreferenceChanged: (ConfigItem) -> Unit,
         ) {
             MaskMultiSelectConfigInput(
                 item = item,
                 defaultValue = defaultValue,
                 options = options,
                 prefsManager = prefsManager,
+                onPreferenceChanged = onPreferenceChanged,
             )
         }
     }
@@ -101,12 +107,14 @@ sealed class ConfigType {
             prefsManager: PrefsManager,
             onOpenAppList: (ConfigItem) -> Unit,
             onOpenManager: (ConfigItem) -> Unit,
+            onPreferenceChanged: (ConfigItem) -> Unit,
         ) {
             EnumSingleSelectConfigInput(
                 item = item,
                 defaultValue = defaultValue,
                 options = options,
                 prefsManager = prefsManager,
+                onPreferenceChanged = onPreferenceChanged,
             )
         }
     }
@@ -132,11 +140,13 @@ sealed class ConfigType {
             prefsManager: PrefsManager,
             onOpenAppList: (ConfigItem) -> Unit,
             onOpenManager: (ConfigItem) -> Unit,
+            onPreferenceChanged: (ConfigItem) -> Unit,
         ) {
             FloatSliderConfigInput(
                 item = item,
                 sliderConfig = this,
                 prefsManager = prefsManager,
+                onPreferenceChanged = onPreferenceChanged,
             )
         }
 
@@ -171,6 +181,7 @@ sealed class ConfigType {
             prefsManager: PrefsManager,
             onOpenAppList: (ConfigItem) -> Unit,
             onOpenManager: (ConfigItem) -> Unit,
+            onPreferenceChanged: (ConfigItem) -> Unit,
         ) {
             ManagerConfigInput(
                 item = item,

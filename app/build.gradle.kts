@@ -126,6 +126,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.miuix)
     implementation(libs.miuix.icons)
+    implementation(libs.haze)
     implementation(libs.okhttp)
     implementation(libs.gson)
     implementation(libs.lyricon.provider)
