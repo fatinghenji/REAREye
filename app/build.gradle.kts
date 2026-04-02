@@ -25,7 +25,13 @@ fun runGitCommand(vararg args: String): String? = runCatching {
 android {
     buildToolsVersion = gropify.project.android.buildToolsVersion
     namespace = gropify.project.app.packageName
-    compileSdk = gropify.project.android.compileSdk
+    compileSdk {
+        version =
+            release(gropify.project.android.compileSdk) {
+                minorApiLevel = gropify.project.android.compileSdkMinor
+            }
+       }
+    }
 
     val baseVersionName = gropify.project.app.versionName.replace("\"", "")
     val buildSuffix = project.findProperty("buildSuffix") as? String ?: "dev"
