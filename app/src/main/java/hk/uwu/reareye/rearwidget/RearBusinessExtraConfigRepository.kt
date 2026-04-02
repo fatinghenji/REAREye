@@ -3,6 +3,7 @@ package hk.uwu.reareye.rearwidget
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonObject
+import com.google.gson.annotations.SerializedName
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.PrefsManager
 
@@ -130,14 +131,16 @@ object RearBusinessExtraConfigRepository {
     )
 
     private data class StoreModel(
+        @SerializedName("version")
         val version: Int = STORE_VERSION,
+        @SerializedName("items")
         val items: List<ItemModel> = emptyList(),
     )
 
     private data class ItemModel(
+        @SerializedName("business")
         val business: String? = null,
-        // Keep compatibility with old key.
-        val businessId: String? = null,
+        @SerializedName("config")
         val config: JsonObject? = null,
     )
 
@@ -153,7 +156,7 @@ object RearBusinessExtraConfigRepository {
 
         val configByBusiness = linkedMapOf<String, RearBusinessExtraConfig>()
         parsedModel.items.forEach { item ->
-            val business = (item.business ?: item.businessId).orEmpty().trim()
+            val business = (item.business).orEmpty().trim()
             if (business.isBlank()) return@forEach
 
             val config = normalizeConfig(RearBusinessExtraConfig(item.config ?: JsonObject()))
