@@ -23,6 +23,7 @@ fun runGitCommand(vararg args: String): String? = runCatching {
 }.getOrNull()
 
 android {
+    buildToolsVersion = gropify.project.android.buildToolsVersion
     namespace = gropify.project.app.packageName
     compileSdk = gropify.project.android.compileSdk
 
