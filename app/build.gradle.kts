@@ -30,7 +30,6 @@ android {
             release(gropify.project.android.compileSdk) {
                 minorApiLevel = gropify.project.android.compileSdkMinor
             }
-       }
     }
 
     val baseVersionName = gropify.project.app.versionName.replace("\"", "")
