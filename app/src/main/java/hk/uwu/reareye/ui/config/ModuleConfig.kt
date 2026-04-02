@@ -21,8 +21,10 @@ object ConfigKeys {
 
     const val CFG_REAR_WIDGET_BUSINESS_MANAGER = "cfg_rear_widget_business_manager"
     const val CFG_REAR_WIDGET_CARD_MANAGER = "cfg_rear_widget_card_manager"
+    const val CFG_REAR_WIDGET_BUSINESS_EXTRA_MANAGER = "cfg_rear_widget_business_extra_manager"
     const val REAR_WIDGET_BUSINESS_DATA = "rear_widget_business_data"
     const val REAR_WIDGET_CARD_DATA = "rear_widget_card_data"
+    const val REAR_WIDGET_BUSINESS_EXTRA_CONFIG_DATA = "rear_widget_business_extra_config_data"
 
     const val HOOK_BACKGROUND_WHITELIST = "enable_background_whitelist_hook"
     const val BACKGROUND_WHITELIST_APPS = "background_whitelist_apps"
@@ -45,6 +47,8 @@ object ConfigKeys {
     val LYRIC_PROVIDER_DEFAULT = LyricProvider.LYRICON.value
 
     const val HOOK_DISABLE_REAR_SCREEN_COVER = "enable_hook_rear_screen_cover"
+
+    const val MORE_DEBUG = "enable_more_debug_logging"
 }
 
 enum class LyricProvider(val value: Int, val titleRes: Int) {
@@ -68,6 +72,11 @@ val REAREyeConfig = listOf(
                 key = ConfigKeys.MODULE_HIDE_LAUNCHER_ENTRY,
                 titleRes = R.string.hide_launcher_entry,
                 descriptionRes = R.string.hide_launcher_entry_desc,
+                type = ConfigType.BooleanVal(defaultValue = false)
+            ),
+            ConfigItem(
+                key = ConfigKeys.MORE_DEBUG,
+                titleRes = R.string.cfg_more_debug,
                 type = ConfigType.BooleanVal(defaultValue = false)
             )
         )
@@ -158,6 +167,12 @@ val REAREyeConfig = listOf(
                         titleRes = R.string.rear_widget_card_manager,
                         descriptionRes = R.string.rear_widget_card_manager_desc,
                         type = ConfigType.Manager(ConfigType.ManagerType.CARD),
+                    ),
+                    ConfigItem(
+                        key = ConfigKeys.CFG_REAR_WIDGET_BUSINESS_EXTRA_MANAGER,
+                        titleRes = R.string.rear_widget_business_extra_manager,
+                        descriptionRes = R.string.rear_widget_business_extra_manager_desc,
+                        type = ConfigType.Manager(ConfigType.ManagerType.BUSINESS_EXTRA),
                     ),
                 ),
             ),

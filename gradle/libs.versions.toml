@@ -16,6 +16,7 @@ androidx-lifecycle-runtime-compose = "2.10.0"
 miuix = "0.8.8"
 lyricon = "0.1.70B1"
 superlyric = "2.5"
+gson = "2.13.2"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -48,3 +49,4 @@ okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhtt
 lyricon-provider = { group = "io.github.proify.lyricon", name = "provider", version.ref = "lyricon" }
 lyricon-central = { group = "io.github.proify.lyricon", name = "central", version.ref = "lyricon" }
 superlyric = { group = "com.github.HChenX", name = "SuperLyricApi", version.ref = "superlyric" }
+gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }

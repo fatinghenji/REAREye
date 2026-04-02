@@ -6,6 +6,7 @@ import hk.uwu.reareye.hook.scopes.subscreencenter.modules.MusicControlWhitelistM
 import hk.uwu.reareye.hook.scopes.subscreencenter.modules.VideoLoopModule
 import hk.uwu.reareye.hook.scopes.subscreencenter.modules.VideoVolumeHook
 import hk.uwu.reareye.hook.scopes.subscreencenter.modules.lyrics.LyriconHook
+import hk.uwu.reareye.hook.scopes.subscreencenter.modules.rearwidget.ExtraTimeTipHook
 import hk.uwu.reareye.hook.scopes.subscreencenter.modules.rearwidget.RearWidgetHook
 
 class SubscreenCenterScope : Scope {
@@ -14,6 +15,7 @@ class SubscreenCenterScope : Scope {
         VideoLoopModule(),
         RearWidgetHook(),
         LyriconHook(),
-        VideoVolumeHook()
+        VideoVolumeHook(),
+        ExtraTimeTipHook()
     )
 }

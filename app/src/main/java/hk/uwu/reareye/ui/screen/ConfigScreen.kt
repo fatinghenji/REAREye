@@ -30,6 +30,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import hk.uwu.reareye.R
 import hk.uwu.reareye.ui.components.config.AppListSelectorScreen
+import hk.uwu.reareye.ui.components.config.BusinessExtraConfigManagerScreen
 import hk.uwu.reareye.ui.components.config.BusinessManagerScreen
 import hk.uwu.reareye.ui.components.config.CardManagerScreen
 import hk.uwu.reareye.ui.components.config.ConfigNodeRow
@@ -39,6 +40,7 @@ import hk.uwu.reareye.ui.config.ConfigItem
 import hk.uwu.reareye.ui.config.ConfigNode
 import hk.uwu.reareye.ui.config.ConfigType
 import hk.uwu.reareye.ui.config.PrefsManager
+import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
 import hk.uwu.reareye.ui.config.REAREyeConfig
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
@@ -54,18 +56,20 @@ private sealed interface ConfigRoute {
     data class AppList(val item: ConfigItem) : ConfigRoute
     data object BusinessManager : ConfigRoute
     data object CardManager : ConfigRoute
+    data object BusinessExtraManager : ConfigRoute
 }
 
 @Composable
 fun ConfigScreen(onAppListModeChange: (Boolean) -> Unit = {}) {
     val context = LocalContext.current
-    val prefsManager = remember { PrefsManager(context) }
+    val prefsManager = remember { context.getPrefsManager() }
 
     var routeStack by remember { mutableStateOf(listOf<ConfigRoute>(ConfigRoute.Root)) }
     val currentRoute = routeStack.last()
     val isOverlayMode = currentRoute is ConfigRoute.AppList ||
             currentRoute is ConfigRoute.BusinessManager ||
-            currentRoute is ConfigRoute.CardManager
+            currentRoute is ConfigRoute.CardManager ||
+            currentRoute is ConfigRoute.BusinessExtraManager
     val scrollBehavior = MiuixScrollBehavior()
 
     LaunchedEffect(isOverlayMode) {
@@ -147,6 +151,10 @@ fun ConfigScreen(onAppListModeChange: (Boolean) -> Unit = {}) {
                                 routeStack = routeStack + ConfigRoute.CardManager
                             }
 
+                            ConfigType.ManagerType.BUSINESS_EXTRA -> {
+                                routeStack = routeStack + ConfigRoute.BusinessExtraManager
+                            }
+
                             null -> Unit
                         }
                     }
@@ -173,6 +181,10 @@ fun ConfigScreen(onAppListModeChange: (Boolean) -> Unit = {}) {
                                 routeStack = routeStack + ConfigRoute.CardManager
                             }
 
+                            ConfigType.ManagerType.BUSINESS_EXTRA -> {
+                                routeStack = routeStack + ConfigRoute.BusinessExtraManager
+                            }
+
                             null -> Unit
                         }
                     }
@@ -191,6 +203,11 @@ fun ConfigScreen(onAppListModeChange: (Boolean) -> Unit = {}) {
                 )
 
                 ConfigRoute.CardManager -> CardManagerScreen(
+                    prefsManager = prefsManager,
+                    onBack = { routeStack = routeStack.dropLast(1) },
+                )
+
+                ConfigRoute.BusinessExtraManager -> BusinessExtraConfigManagerScreen(
                     prefsManager = prefsManager,
                     onBack = { routeStack = routeStack.dropLast(1) },
                 )

@@ -92,7 +92,9 @@ class LyriconHook : YukiBaseHooker() {
 
                                 override fun onSuperLyric(data: SuperLyricData) {
                                     runCatching {
-                                        //YLog.debug("onSuperLyric ${data.lyric}")
+                                        if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+                                            YLog.debug("onSuperLyric ${data.lyric}")
+                                        }
                                         if (data.lyric.isNotEmpty()) {
                                             updateFallbackLyric(data.lyric)
                                         }
@@ -247,7 +249,9 @@ class LyriconHook : YukiBaseHooker() {
 
             override fun onSendText(text: String?) {
                 runCatching {
-                    //YLog.debug("onSendText $text")
+                    if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+                        YLog.debug("onSendText $text")
+                    }
                     if (text != null) updateFallbackLyric(text)
                 }.onFailure {
                     YLog.error(it)

@@ -161,6 +161,7 @@ sealed class ConfigType {
     enum class ManagerType {
         BUSINESS,
         CARD,
+        BUSINESS_EXTRA,
     }
 
     data class Manager(val managerType: ManagerType) : ConfigType() {

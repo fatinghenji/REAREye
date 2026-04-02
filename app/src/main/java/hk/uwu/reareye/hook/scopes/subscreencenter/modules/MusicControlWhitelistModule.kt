@@ -49,7 +49,9 @@ class MusicControlWhitelistModule : YukiBaseHooker() {
                 mRoot.asResolver().firstMethod {
                     name = "requestUpdate"
                 }.invoke()
-                //YLog.debug("Request render controller to update metadata")
+                if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+                    YLog.debug("Request render controller to update metadata")
+                }
             }
         }
     }

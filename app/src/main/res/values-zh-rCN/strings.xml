@@ -69,6 +69,8 @@
     <string name="rear_widget_manager_category_desc">管理自定义组件模板与常驻卡片</string>
     <string name="rear_widget_business_manager">组件模板管理器</string>
     <string name="rear_widget_business_manager_desc">仅管理 Widget 到模板文件的映射，不注入包路由</string>
+    <string name="rear_widget_business_extra_manager">组件额外设置管理器</string>
+    <string name="rear_widget_business_extra_manager_desc">手动添加需要额外显示选项的组件</string>
     <string name="rear_widget_card_manager">卡片管理器</string>
     <string name="rear_widget_card_manager_desc">管理常驻卡片、显示顺序与启用状态</string>
     <string name="rear_widget_target_package">目标包名</string>
@@ -98,6 +100,15 @@
     <string name="rear_widget_card_saved">卡片已保存</string>
     <string name="rear_widget_add_business">新增组件</string>
     <string name="rear_widget_edit_business">编辑组件</string>
+    <string name="rear_widget_business_extra_add">添加组件</string>
+    <string name="rear_widget_business_extra_empty">暂无组件额外设置</string>
+    <string name="rear_widget_business_extra_hint_title">组件额外选项</string>
+    <string name="rear_widget_business_extra_hint">先添加组件，再进入详情页配置额外选项</string>
+    <string name="rear_widget_business_extra_count">已配置组件：%1$d</string>
+    <string name="rear_widget_business_extra_settings">组件额外设置</string>
+    <string name="rear_widget_business_extra_settings_target">当前组件：%1$s</string>
+    <string name="rear_widget_business_hide_time_tip">关闭显示时间</string>
+    <string name="rear_widget_business_hide_time_tip_desc">关闭该组件通知中的时间显示</string>
     <string name="rear_widget_add_card">新增卡片</string>
     <string name="rear_widget_edit_card">编辑卡片</string>
     <string name="rear_widget_action_edit">编辑</string>
@@ -176,4 +187,5 @@
     <string name="cfg_video_wallpaper_volume_desc">设置视频壁纸的播放音量</string>
     <string name="cfg_disable_rear_screen_cover">禁用背屏保护</string>
     <string name="cfg_disable_rear_screen_cover_desc">启用此功能后，当主屏处于全屏模式时，背屏将不会被锁定</string>
+    <string name="cfg_more_debug">更多调试输出</string>
 </resources>
