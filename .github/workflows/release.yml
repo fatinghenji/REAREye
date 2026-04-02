@@ -30,8 +30,6 @@ jobs:
 
       - name: Setup Android SDK
         uses: amyu/setup-android@v5
-        with:
-          sdk-version: 37
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
