@@ -199,4 +199,8 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="cfg_disable_rear_screen_cover">Disable rear screen cover</string>
     <string name="cfg_disable_rear_screen_cover_desc">When enabled, the rear screen will not be locked when the main screen is in full-screen mode</string>
     <string name="cfg_more_debug">More debug output</string>
+    <string name="subcategory_lyrics">Lyrics</string>
+    <string name="subcategory_lyrics_desc">Manage lyrics options</string>
+    <string name="credits_docs">Documentation</string>
+    <string name="credits_docs_desc">User Guide and Troubleshooting</string>
 </resources>

@@ -2,22 +2,10 @@ package hk.uwu.reareye.ui.components.config
 
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import android.graphics.Canvas
-import android.graphics.drawable.BitmapDrawable
-import android.text.Editable
-import android.text.InputType
-import android.text.TextWatcher
-import android.util.TypedValue
-import android.view.View
-import android.view.inputmethod.EditorInfo
-import android.widget.EditText
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -27,7 +15,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -40,6 +27,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Apps
@@ -48,19 +38,22 @@ import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -68,12 +61,14 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.graphics.createBitmap
+import androidx.compose.ui.unit.sp
 import hk.uwu.reareye.R
+import hk.uwu.reareye.ui.components.rememberApplicationIconBitmap
 import hk.uwu.reareye.ui.config.ConfigItem
 import hk.uwu.reareye.ui.config.PrefsManager
 import hk.uwu.reareye.ui.theme.rearAcrylicEffect
@@ -81,7 +76,6 @@ import hk.uwu.reareye.ui.theme.rearAcrylicSource
 import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
 import hk.uwu.reareye.ui.theme.rememberAcrylicHazeStyle
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -102,16 +96,15 @@ import top.yukonga.miuix.kmp.basic.SpinnerEntry
 import top.yukonga.miuix.kmp.basic.SpinnerItemImpl
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
-import top.yukonga.miuix.kmp.extra.SuperListPopup
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.Check
 import top.yukonga.miuix.kmp.icon.extended.MoreCircle
 import top.yukonga.miuix.kmp.icon.extended.Sort
 import top.yukonga.miuix.kmp.icon.extended.Tune
+import top.yukonga.miuix.kmp.overlay.OverlayListPopup
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import kotlin.math.abs
 
 private enum class AppSortMode {
     LABEL,
@@ -123,7 +116,93 @@ data class AppItem(
     val label: String,
     val packageName: String,
     val isSystem: Boolean,
+    val labelKey: String,
+    val packageKey: String,
 )
+
+private data class AppCatalog(
+    val byLabel: List<AppItem>,
+    val byPackage: List<AppItem>,
+)
+
+private val appRowPlacementSpec = spring<Float>(
+    dampingRatio = 0.92f,
+    stiffness = 520f,
+)
+
+private fun buildAppCatalog(packageManager: PackageManager): AppCatalog {
+    val allApps = packageManager
+        .getInstalledApplications(PackageManager.GET_META_DATA)
+        .map { app ->
+            val label = app.loadLabel(packageManager).toString()
+            AppItem(
+                applicationInfo = app,
+                label = label,
+                packageName = app.packageName,
+                isSystem =
+                    (app.flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
+                            (app.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0,
+                labelKey = label.lowercase(),
+                packageKey = app.packageName.lowercase(),
+            )
+        }
+
+    return AppCatalog(
+        byLabel = allApps.sortedBy(AppItem::labelKey),
+        byPackage = allApps.sortedBy(AppItem::packageKey),
+    )
+}
+
+private fun AppCatalog.buildVisibleApps(
+    sortMode: AppSortMode,
+    reverseOrder: Boolean,
+    showSystemApps: Boolean,
+    query: String,
+    selectedOrder: List<String>,
+): List<AppItem> {
+    val normalizedQuery = query.trim().lowercase()
+    val source = when (sortMode) {
+        AppSortMode.LABEL -> byLabel
+        AppSortMode.PACKAGE -> byPackage
+    }
+    val visibleApps = source.filter { app ->
+        val matchesVisibility = showSystemApps || !app.isSystem
+        val matchesQuery = normalizedQuery.isEmpty() ||
+                app.labelKey.contains(normalizedQuery) ||
+                app.packageKey.contains(normalizedQuery)
+        matchesVisibility && matchesQuery
+    }
+    val orderedApps = if (reverseOrder) visibleApps.asReversed() else visibleApps
+
+    if (selectedOrder.isEmpty()) {
+        return orderedApps
+    }
+
+    val selectedLookup = selectedOrder.toHashSet()
+    val selectedItems = HashMap<String, AppItem>(selectedOrder.size)
+    val unselectedItems = ArrayList<AppItem>(orderedApps.size)
+
+    orderedApps.forEach { app ->
+        if (app.packageName in selectedLookup) {
+            selectedItems[app.packageName] = app
+        } else {
+            unselectedItems += app
+        }
+    }
+
+    return buildList(orderedApps.size) {
+        selectedOrder.forEach { packageName ->
+            selectedItems[packageName]?.let(::add)
+        }
+        addAll(unselectedItems)
+    }
+}
+
+private fun MutableList<String>.toggleSelection(packageName: String) {
+    if (!remove(packageName)) {
+        add(packageName)
+    }
+}
 
 @Composable
 private fun AppIcon(
@@ -131,44 +210,216 @@ private fun AppIcon(
     pm: PackageManager,
     modifier: Modifier = Modifier,
 ) {
-    var imageBitmap by remember(appInfo.packageName) { mutableStateOf<ImageBitmap?>(null) }
-
-    LaunchedEffect(appInfo.packageName) {
-        withContext(Dispatchers.IO) {
-            try {
-                val drawable = appInfo.loadIcon(pm)
-                val bitmap = if (drawable is BitmapDrawable) {
-                    drawable.bitmap
-                } else {
-                    val bmp = createBitmap(
-                        drawable.intrinsicWidth.takeIf { it > 0 } ?: 1,
-                        drawable.intrinsicHeight.takeIf { it > 0 } ?: 1,
-                    )
-                    val canvas = Canvas(bmp)
-                    drawable.setBounds(0, 0, canvas.width, canvas.height)
-                    drawable.draw(canvas)
-                    bmp
-                }
-                imageBitmap = bitmap.asImageBitmap()
-            } catch (_: Exception) {
-                // Ignore icon loading errors.
-            }
-        }
-    }
+    val imageBitmap = rememberApplicationIconBitmap(
+        packageManager = pm,
+        applicationInfo = appInfo,
+    )
 
     if (imageBitmap != null) {
-        Image(bitmap = imageBitmap!!, contentDescription = null, modifier = modifier.size(44.dp))
+        Image(bitmap = imageBitmap, contentDescription = null, modifier = modifier.size(44.dp))
     } else {
         Spacer(modifier = modifier.size(44.dp))
     }
 }
 
 @Composable
+private fun LoadingAppsCard() {
+    Card(
+        modifier = Modifier
+            .padding(top = 12.dp)
+            .fillMaxWidth(),
+        insideMargin = PaddingValues(vertical = 26.dp),
+    ) {
+        Box(
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.Center,
+        ) {
+            CircularProgressIndicator()
+        }
+    }
+}
+
+@Composable
+private fun EmptyAppsCard() {
+    Card(
+        modifier = Modifier
+            .padding(top = 12.dp)
+            .fillMaxWidth(),
+        insideMargin = PaddingValues(vertical = 22.dp),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Search,
+                contentDescription = null,
+                tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = stringResource(R.string.app_list_empty_result),
+                style = MiuixTheme.textStyles.body2,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AppSelectorRow(
+    appItem: AppItem,
+    packageManager: PackageManager,
+    selected: Boolean,
+    currentIndex: Int,
+    averageItemHeightPx: Float,
+    onToggle: () -> Unit,
+) {
+    val density = LocalDensity.current
+    var previousIndex by remember(appItem.packageName) { mutableStateOf(currentIndex) }
+    var placementOffset by remember(appItem.packageName) { mutableFloatStateOf(0f) }
+    val animatedPlacementOffset by animateFloatAsState(
+        targetValue = placementOffset,
+        animationSpec = appRowPlacementSpec,
+        label = "AppRowPlacementOffset",
+    )
+    val selectionOverlayAlpha by animateFloatAsState(
+        targetValue = if (selected) 0.08f else 0f,
+        animationSpec = spring(
+            dampingRatio = 0.9f,
+            stiffness = 520f,
+        ),
+        label = "AppRowSelectionOverlayAlpha",
+    )
+    val selectionOverlayScale by animateFloatAsState(
+        targetValue = if (selected) 1f else 0.965f,
+        animationSpec = spring(
+            dampingRatio = 0.92f,
+            stiffness = 540f,
+        ),
+        label = "AppRowSelectionOverlayScale",
+    )
+    val contentOffsetPx by animateFloatAsState(
+        targetValue = with(density) { if (selected) 1.5.dp.toPx() else 0.dp.toPx() },
+        animationSpec = spring(
+            dampingRatio = 0.92f,
+            stiffness = 560f,
+        ),
+        label = "AppRowContentOffset",
+    )
+    val contentScale by animateFloatAsState(
+        targetValue = if (selected) 0.998f else 1f,
+        animationSpec = spring(
+            dampingRatio = 0.95f,
+            stiffness = 600f,
+        ),
+        label = "AppRowContentScale",
+    )
+
+    LaunchedEffect(currentIndex, averageItemHeightPx) {
+        if (previousIndex == currentIndex) {
+            return@LaunchedEffect
+        }
+
+        placementOffset = (previousIndex - currentIndex) * averageItemHeightPx
+        previousIndex = currentIndex
+        withFrameNanos { }
+        placementOffset = 0f
+    }
+
+    Card(
+        modifier = Modifier
+            .padding(top = 10.dp)
+            .graphicsLayer {
+                translationY = animatedPlacementOffset
+            }
+            .fillMaxWidth(),
+        insideMargin = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+        onClick = onToggle,
+        showIndication = true,
+    ) {
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        alpha = selectionOverlayAlpha
+                        scaleX = selectionOverlayScale
+                        scaleY = selectionOverlayScale
+                    }
+                    .background(
+                        color = MiuixTheme.colorScheme.primary,
+                        shape = RoundedCornerShape(20.dp),
+                    )
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        translationX = contentOffsetPx
+                        scaleX = contentScale
+                        scaleY = contentScale
+                    },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AppIcon(
+                    appInfo = appItem.applicationInfo,
+                    pm = packageManager,
+                    modifier = Modifier.padding(end = 12.dp),
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = appItem.label,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = appItem.packageName,
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                SelectionIndicator(selected = selected)
+            }
+        }
+    }
+}
+
+@Composable
 private fun SelectionIndicator(selected: Boolean) {
+    val haloAlpha by animateFloatAsState(
+        targetValue = if (selected) 0.18f else 0f,
+        animationSpec = spring(
+            dampingRatio = 0.88f,
+            stiffness = 460f,
+        ),
+        label = "SelectionHaloAlpha",
+    )
+    val haloScale by animateFloatAsState(
+        targetValue = if (selected) 1.7f else 0.7f,
+        animationSpec = spring(
+            dampingRatio = 0.82f,
+            stiffness = 420f,
+        ),
+        label = "SelectionHaloScale",
+    )
     val ringColor by animateColorAsState(
         targetValue = if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.outline,
         animationSpec = spring(stiffness = 500f),
         label = "SelectionRingColor",
+    )
+    val ringScale by animateFloatAsState(
+        targetValue = if (selected) 1f else 0.94f,
+        animationSpec = spring(
+            dampingRatio = 0.88f,
+            stiffness = 520f,
+        ),
+        label = "SelectionRingScale",
     )
     val fillScale by animateFloatAsState(
         targetValue = if (selected) 1f else 0f,
@@ -186,35 +437,64 @@ private fun SelectionIndicator(selected: Boolean) {
         ),
         label = "SelectionIconAlpha",
     )
+    val iconRotation by animateFloatAsState(
+        targetValue = if (selected) 0f else -16f,
+        animationSpec = spring(
+            dampingRatio = 0.84f,
+            stiffness = 560f,
+        ),
+        label = "SelectionIconRotation",
+    )
 
     Box(
-        modifier = Modifier
-            .size(24.dp)
-            .border(width = 2.dp, color = ringColor, shape = CircleShape),
+        modifier = Modifier.size(30.dp),
         contentAlignment = Alignment.Center
     ) {
         Box(
             modifier = Modifier
-                .fillMaxSize()
+                .size(18.dp)
                 .graphicsLayer {
-                    scaleX = fillScale
-                    scaleY = fillScale
+                    alpha = haloAlpha
+                    scaleX = haloScale
+                    scaleY = haloScale
                 }
                 .background(MiuixTheme.colorScheme.primary, CircleShape)
         )
 
-        Icon(
-            imageVector = MiuixIcons.Basic.Check,
-            contentDescription = null,
-            tint = MiuixTheme.colorScheme.onPrimary,
+        Box(
             modifier = Modifier
-                .size(16.dp)
+                .size(24.dp)
                 .graphicsLayer {
-                    alpha = iconAlpha
-                    scaleX = 0.92f + (0.08f * fillScale)
-                    scaleY = 0.92f + (0.08f * fillScale)
+                    scaleX = ringScale
+                    scaleY = ringScale
                 }
-        )
+                .border(width = 2.dp, color = ringColor, shape = CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = fillScale
+                        scaleY = fillScale
+                    }
+                    .background(MiuixTheme.colorScheme.primary, CircleShape)
+            )
+
+            Icon(
+                imageVector = MiuixIcons.Basic.Check,
+                contentDescription = null,
+                tint = MiuixTheme.colorScheme.onPrimary,
+                modifier = Modifier
+                    .size(16.dp)
+                    .graphicsLayer {
+                        alpha = iconAlpha
+                        rotationZ = iconRotation
+                        scaleX = 0.9f + (0.1f * fillScale)
+                        scaleY = 0.9f + (0.1f * fillScale)
+                    }
+            )
+        }
     }
 }
 
@@ -237,8 +517,10 @@ private fun AppSelectorHeader(
         )
     )
     val searchHint = stringResource(R.string.search_apps)
-    val searchTextColor = MiuixTheme.colorScheme.onBackground.toArgb()
-    val searchHintColor = MiuixTheme.colorScheme.onSurfaceVariantSummary.toArgb()
+    val searchTextStyle = TextStyle(
+        color = MiuixTheme.colorScheme.onBackground,
+        fontSize = 14.sp,
+    )
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -270,76 +552,36 @@ private fun AppSelectorHeader(
                         .padding(end = 6.dp),
                 )
 
-                AndroidView(
+                BasicTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchQueryChange,
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxHeight(),
-                    factory = { editContext ->
-                        EditText(editContext).apply {
-                            background = null
-                            setSingleLine(true)
-                            maxLines = 1
-                            imeOptions = EditorInfo.IME_ACTION_SEARCH
-                            inputType =
-                                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-                            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
-                            setPadding(0, 0, 0, 0)
-                            minHeight = 0
-                            minimumHeight = 0
-                            includeFontPadding = false
-                            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-
-                            setText(searchQuery)
-                            setSelection(text?.length ?: 0)
-
-                            setOnFocusChangeListener { _, hasFocus ->
-                                onSearchFocusChange(hasFocus)
-                            }
-
-                            setOnEditorActionListener { _, actionId, _ ->
-                                if (actionId == EditorInfo.IME_ACTION_SEARCH || actionId == EditorInfo.IME_ACTION_DONE) {
-                                    focusManager.clearFocus(force = true)
-                                    keyboardController?.hide()
-                                    true
-                                } else {
-                                    false
-                                }
-                            }
-
-                            addTextChangedListener(object : TextWatcher {
-                                override fun beforeTextChanged(
-                                    s: CharSequence?,
-                                    start: Int,
-                                    count: Int,
-                                    after: Int,
-                                ) = Unit
-
-                                override fun onTextChanged(
-                                    s: CharSequence?,
-                                    start: Int,
-                                    before: Int,
-                                    count: Int,
-                                ) {
-                                    val next = s?.toString().orEmpty()
-                                    if (next != searchQuery) {
-                                        onSearchQueryChange(next)
-                                    }
-                                }
-
-                                override fun afterTextChanged(s: Editable?) = Unit
-                            })
+                        .onFocusChanged { onSearchFocusChange(it.isFocused) },
+                    singleLine = true,
+                    textStyle = searchTextStyle,
+                    cursorBrush = SolidColor(MiuixTheme.colorScheme.primary),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(
+                        onSearch = {
+                            focusManager.clearFocus(force = true)
+                            keyboardController?.hide()
                         }
-                    },
-                    update = { editText ->
-                        if (editText.text?.toString() != searchQuery) {
-                            editText.setText(searchQuery)
-                            editText.setSelection(searchQuery.length)
+                    ),
+                    decorationBox = { innerTextField ->
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            if (searchQuery.isEmpty()) {
+                                Text(
+                                    text = searchHint,
+                                    style = MiuixTheme.textStyles.body2,
+                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                )
+                            }
+                            innerTextField()
                         }
-
-                        editText.hint = searchHint
-                        editText.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
-                        editText.setTextColor(searchTextColor)
-                        editText.setHintTextColor(searchHintColor)
                     },
                 )
             }
@@ -360,21 +602,18 @@ fun AppListSelectorScreen(
     val density = LocalDensity.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val popupScope = rememberCoroutineScope()
 
-    var installedApps by remember { mutableStateOf<List<AppItem>?>(null) }
+    var appCatalog by remember { mutableStateOf<AppCatalog?>(null) }
     var loading by remember { mutableStateOf(true) }
-    val selectedPackages = remember(configItem.key) {
+    val selectedOrder = remember(configItem.key) {
         mutableStateListOf<String>().apply {
             addAll(prefsManager.getStringSet(configItem.key, configItem.type.defaultStringSet))
         }
     }
-    val selectedOrder = remember(configItem.key) {
-        mutableStateListOf<String>().apply {
-            addAll(selectedPackages.sorted())
-        }
-    }
 
     var showSystemApps by remember(configItem.key) { mutableStateOf(false) }
+    var searchInput by remember(configItem.key) { mutableStateOf("") }
     var searchQuery by remember(configItem.key) { mutableStateOf("") }
     var searchFocused by remember(configItem.key) { mutableStateOf(false) }
     val listState = rememberLazyListState()
@@ -395,72 +634,66 @@ fun AppListSelectorScreen(
 
     LaunchedEffect(configItem.key) {
         loading = true
-        installedApps = null
-        withContext(Dispatchers.IO) {
-            val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-            val items = apps.map { app ->
-                AppItem(
-                    applicationInfo = app,
-                    label = app.loadLabel(pm).toString(),
-                    packageName = app.packageName,
-                    isSystem =
-                        (app.flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
-                                (app.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0,
-                )
-            }
+        appCatalog = null
+        delay(220)
+        appCatalog = withContext(Dispatchers.IO) { buildAppCatalog(pm) }
+        delay(80)
+        loading = false
+    }
 
-            withContext(Dispatchers.Main) {
-                installedApps = items
-                loading = false
-            }
+    LaunchedEffect(searchInput) {
+        delay(90)
+        if (searchQuery != searchInput) {
+            searchQuery = searchInput
         }
     }
 
-    val selectedSnapshot = selectedPackages.toSet()
-    LaunchedEffect(selectedSnapshot) {
-        selectedOrder.removeAll { it !in selectedSnapshot }
-        selectedSnapshot.forEach { packageName ->
-            if (packageName !in selectedOrder) {
-                selectedOrder.add(packageName)
-            }
-        }
+    val selectedOrderSnapshot by remember {
+        derivedStateOf { selectedOrder.toList() }
     }
-
-    val selectedOrderSnapshot = selectedOrder.toList()
-    val filteredApps = remember(
-        installedApps,
+    val selectedLookup = remember(selectedOrderSnapshot) {
+        selectedOrderSnapshot.toHashSet()
+    }
+    val filteredApps by remember(
+        appCatalog,
         showSystemApps,
         searchQuery,
-        selectedSnapshot,
         selectedOrderSnapshot,
         sortMode,
         reverseOrder,
     ) {
-        val query = searchQuery.trim().lowercase()
-        val base = installedApps?.filter { app ->
-            val matchesVisibility = showSystemApps || !app.isSystem
-            val matchesQuery = if (query.isBlank()) {
-                true
-            } else {
-                app.label.lowercase().contains(query) || app.packageName.lowercase().contains(query)
-            }
-            matchesVisibility && matchesQuery
-        } ?: emptyList()
-
-        val sorted = when (sortMode) {
-            AppSortMode.LABEL -> base.sortedBy { it.label.lowercase() }
-            AppSortMode.PACKAGE -> base.sortedBy { it.packageName.lowercase() }
+        derivedStateOf {
+            appCatalog?.buildVisibleApps(
+                sortMode = sortMode,
+                reverseOrder = reverseOrder,
+                showSystemApps = showSystemApps,
+                query = searchQuery,
+                selectedOrder = selectedOrderSnapshot,
+            ) ?: emptyList()
         }
-
-        val baseOrder = if (reverseOrder) sorted.reversed() else sorted
-        val byPackage = baseOrder.associateBy { it.packageName }
-        val selectedPart = selectedOrderSnapshot.mapNotNull(byPackage::get)
-        val unselectedPart = baseOrder.filterNot { it.packageName in selectedSnapshot }
-
-        selectedPart + unselectedPart
     }
     val indexMap = remember(filteredApps) {
         filteredApps.mapIndexed { index, appItem -> appItem.packageName to index }.toMap()
+    }
+    val averageItemHeightPx by remember(listState, density) {
+        derivedStateOf {
+            listState.layoutInfo.visibleItemsInfo
+                .takeIf { it.isNotEmpty() }
+                ?.map { it.size }
+                ?.average()
+                ?.toFloat()
+                ?.takeIf { it > 0f }
+                ?: with(density) { 82.dp.toPx() }
+        }
+    }
+    val dismissThenApply = remember(popupScope) {
+        { dismiss: () -> Unit, apply: () -> Unit ->
+            dismiss()
+            popupScope.launch {
+                withFrameNanos { }
+                apply()
+            }
+        }
     }
 
     Scaffold(
@@ -497,7 +730,7 @@ fun AppListSelectorScreen(
                                 tint = MiuixTheme.colorScheme.onBackground,
                             )
                         }
-                        SuperListPopup(
+                        OverlayListPopup(
                             show = showSortMenu.value,
                             popupModifier = Modifier,
                             popupPositionProvider = ListPopupDefaults.ContextMenuPositionProvider,
@@ -516,8 +749,10 @@ fun AppListSelectorScreen(
                                         index = 0,
                                         spinnerColors = SpinnerDefaults.spinnerColors(),
                                         onSelectedIndexChange = {
-                                            sortMode = AppSortMode.LABEL
-                                            showSortMenu.value = false
+                                            dismissThenApply(
+                                                { showSortMenu.value = false },
+                                                { sortMode = AppSortMode.LABEL },
+                                            )
                                         },
                                     )
                                     SpinnerItemImpl(
@@ -527,8 +762,10 @@ fun AppListSelectorScreen(
                                         index = 1,
                                         spinnerColors = SpinnerDefaults.spinnerColors(),
                                         onSelectedIndexChange = {
-                                            sortMode = AppSortMode.PACKAGE
-                                            showSortMenu.value = false
+                                            dismissThenApply(
+                                                { showSortMenu.value = false },
+                                                { sortMode = AppSortMode.PACKAGE },
+                                            )
                                         },
                                     )
                                     SpinnerItemImpl(
@@ -538,8 +775,10 @@ fun AppListSelectorScreen(
                                         index = 2,
                                         spinnerColors = SpinnerDefaults.spinnerColors(),
                                         onSelectedIndexChange = {
-                                            reverseOrder = !reverseOrder
-                                            showSortMenu.value = false
+                                            dismissThenApply(
+                                                { showSortMenu.value = false },
+                                                { reverseOrder = !reverseOrder },
+                                            )
                                         },
                                     )
                                 }
@@ -555,7 +794,7 @@ fun AppListSelectorScreen(
                                 tint = MiuixTheme.colorScheme.onBackground,
                             )
                         }
-                        SuperListPopup(
+                        OverlayListPopup(
                             show = showFilterMenu.value,
                             popupModifier = Modifier,
                             popupPositionProvider = ListPopupDefaults.ContextMenuPositionProvider,
@@ -584,8 +823,10 @@ fun AppListSelectorScreen(
                                         index = 0,
                                         spinnerColors = SpinnerDefaults.spinnerColors(),
                                         onSelectedIndexChange = {
-                                            showSystemApps = !showSystemApps
-                                            showFilterMenu.value = false
+                                            dismissThenApply(
+                                                { showFilterMenu.value = false },
+                                                { showSystemApps = !showSystemApps },
+                                            )
                                         },
                                     )
                                 }
@@ -602,7 +843,7 @@ fun AppListSelectorScreen(
                                 tint = MiuixTheme.colorScheme.onBackground,
                             )
                         }
-                        SuperListPopup(
+                        OverlayListPopup(
                             show = showMoreMenu.value,
                             popupModifier = Modifier,
                             popupPositionProvider = ListPopupDefaults.ContextMenuPositionProvider,
@@ -631,9 +872,10 @@ fun AppListSelectorScreen(
                                         index = 0,
                                         spinnerColors = SpinnerDefaults.spinnerColors(),
                                         onSelectedIndexChange = {
-                                            selectedPackages.clear()
-                                            selectedOrder.clear()
-                                            showMoreMenu.value = false
+                                            dismissThenApply(
+                                                { showMoreMenu.value = false },
+                                                { selectedOrder.clear() },
+                                            )
                                         },
                                     )
                                 }
@@ -646,8 +888,8 @@ fun AppListSelectorScreen(
                     modifier = Modifier
                         .padding(horizontal = 12.dp)
                         .padding(bottom = 12.dp),
-                    searchQuery = searchQuery,
-                    onSearchQueryChange = { searchQuery = it },
+                    searchQuery = searchInput,
+                    onSearchQueryChange = { searchInput = it },
                     onSearchFocusChange = { searchFocused = it },
                 )
             }
@@ -655,7 +897,7 @@ fun AppListSelectorScreen(
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {
-                    prefsManager.putStringSet(configItem.key, selectedPackages.toSet())
+                    prefsManager.putStringSet(configItem.key, selectedLookup)
                     onSave()
                 },
             ) {
@@ -685,329 +927,25 @@ fun AppListSelectorScreen(
             ),
             overscrollEffect = null,
         ) {
-            if (loading || installedApps == null) {
+            if (loading || appCatalog == null) {
                 item {
-                    Card(
-                        modifier = Modifier
-                            .padding(top = 12.dp)
-                            .fillMaxWidth(),
-                        insideMargin = PaddingValues(vertical = 26.dp),
-                    ) {
-                        Box(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator()
-                        }
-                    }
+                    LoadingAppsCard()
                 }
             } else if (filteredApps.isEmpty()) {
                 item {
-                    Card(
-                        modifier = Modifier
-                            .padding(top = 12.dp)
-                            .fillMaxWidth(),
-                        insideMargin = PaddingValues(vertical = 22.dp),
-                    ) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Search,
-                                contentDescription = null,
-                                tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = stringResource(R.string.app_list_empty_result),
-                                style = MiuixTheme.textStyles.body2,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            )
-                        }
-                    }
+                    EmptyAppsCard()
                 }
             } else {
                 items(filteredApps, key = { it.packageName }) { appItem ->
-                    val packageName = appItem.packageName
-                    val isSelected = packageName in selectedPackages
-                    val reorderAnimation = remember(packageName) { Animatable(0f) }
-                    val cardAlphaAnimation = remember(packageName) { Animatable(1f) }
-                    val whiteOverlayAnimation = remember(packageName) { Animatable(0f) }
-                    val previousIndexState = remember(packageName) {
-                        mutableStateOf(indexMap[packageName])
-                    }
-                    val currentIndex = indexMap[packageName]
-                    val frameAvgItemHeight =
-                        listState.layoutInfo.visibleItemsInfo.takeIf { it.isNotEmpty() }
-                            ?.map { it.size }
-                            ?.average()
-                            ?.toFloat()
-                            ?.takeIf { it > 0f }
-                            ?: with(density) { 82.dp.toPx() }
-                    val frameDeltaIndex =
-                        if (previousIndexState.value != null && currentIndex != null) {
-                            previousIndexState.value!! - currentIndex
-                        } else {
-                            0
-                        }
-                    val shouldUsePreTranslate =
-                        frameDeltaIndex != 0 &&
-                                !reorderAnimation.isRunning &&
-                                abs(reorderAnimation.value) < with(density) { 1.dp.toPx() }
-                    val preTranslatePx =
-                        if (shouldUsePreTranslate) frameDeltaIndex * frameAvgItemHeight else 0f
-
-                    LaunchedEffect(currentIndex, isSelected) {
-                        val previousIndex = previousIndexState.value
-                        if (previousIndex != null && currentIndex != null) {
-                            val deltaIndex = previousIndex - currentIndex
-                            if (deltaIndex != 0) {
-                                // Update immediately so rapid toggles don't reuse stale indices.
-                                previousIndexState.value = currentIndex
-
-                                val visibleItems = listState.layoutInfo.visibleItemsInfo
-                                val avgItemHeight =
-                                    visibleItems.takeIf { it.isNotEmpty() }
-                                        ?.map { it.size }
-                                        ?.average()
-                                        ?.toFloat()
-                                        ?.takeIf { it > 0f }
-                                        ?: with(density) { 82.dp.toPx() }
-
-                                val moveDuration =
-                                    (460 + abs(deltaIndex) * 120).coerceAtMost(1350)
-                                val longUpwardMove = isSelected && deltaIndex > 1
-                                val baseShift = deltaIndex * avgItemHeight
-                                val currentOffset = reorderAnimation.value
-                                // Preserve visual continuity when list order changes mid-animation.
-                                val startOffset = currentOffset + baseShift
-
-                                val startAdjustDistance = abs(currentOffset - startOffset)
-                                val isInterrupted =
-                                    reorderAnimation.isRunning ||
-                                            cardAlphaAnimation.isRunning ||
-                                            whiteOverlayAnimation.isRunning
-
-                                if (isInterrupted && startAdjustDistance > with(density) { 8.dp.toPx() }) {
-                                    reorderAnimation.animateTo(
-                                        targetValue = startOffset,
-                                        animationSpec = tween(
-                                            durationMillis =
-                                                (90 + (startAdjustDistance / avgItemHeight * 50).toInt())
-                                                    .coerceAtMost(210),
-                                            easing = FastOutSlowInEasing,
-                                        ),
-                                    )
-                                } else {
-                                    reorderAnimation.snapTo(startOffset)
-                                }
-
-                                if (isInterrupted) {
-                                    coroutineScope {
-                                        launch {
-                                            cardAlphaAnimation.animateTo(
-                                                targetValue = 1f,
-                                                animationSpec = tween(
-                                                    durationMillis = 100,
-                                                    easing = FastOutSlowInEasing,
-                                                ),
-                                            )
-                                        }
-                                        launch {
-                                            whiteOverlayAnimation.animateTo(
-                                                targetValue = 0f,
-                                                animationSpec = tween(
-                                                    durationMillis = 100,
-                                                    easing = FastOutSlowInEasing,
-                                                ),
-                                            )
-                                        }
-                                    }
-                                } else {
-                                    cardAlphaAnimation.snapTo(1f)
-                                    whiteOverlayAnimation.snapTo(0f)
-                                }
-
-                                if (longUpwardMove) {
-                                    val oneBeforeOffset = avgItemHeight
-                                    val initialRiseDuration =
-                                        (moveDuration * 0.22f).toInt().coerceAtLeast(130)
-                                    val turnWhiteDuration =
-                                        (moveDuration * 0.13f).toInt().coerceAtLeast(90)
-                                    val fadeOutDuration =
-                                        (moveDuration * 0.08f).toInt().coerceAtLeast(70)
-                                    val hiddenHoldDuration = 40
-                                    val revealDuration = 110
-                                    val consumed =
-                                        initialRiseDuration + turnWhiteDuration + fadeOutDuration +
-                                                hiddenHoldDuration + revealDuration
-                                    val finalSlideDuration =
-                                        (moveDuration - consumed).coerceAtLeast(240)
-
-                                    // 1) Start moving upward while still normal.
-                                    reorderAnimation.animateTo(
-                                        targetValue = startOffset * 0.82f,
-                                        animationSpec = tween(
-                                            durationMillis = initialRiseDuration,
-                                            easing = FastOutSlowInEasing,
-                                        ),
-                                    )
-
-                                    // 2) Turn white while still moving upward.
-                                    coroutineScope {
-                                        launch {
-                                            whiteOverlayAnimation.animateTo(
-                                                targetValue = 1f,
-                                                animationSpec = tween(
-                                                    durationMillis = turnWhiteDuration,
-                                                    easing = FastOutSlowInEasing,
-                                                ),
-                                            )
-                                        }
-                                        launch {
-                                            reorderAnimation.animateTo(
-                                                targetValue = startOffset * 0.58f,
-                                                animationSpec = tween(
-                                                    durationMillis = turnWhiteDuration,
-                                                    easing = FastOutSlowInEasing,
-                                                ),
-                                            )
-                                        }
-                                    }
-
-                                    // 3) Fade out, then jump under target and wait.
-                                    coroutineScope {
-                                        launch {
-                                            cardAlphaAnimation.animateTo(
-                                                targetValue = 0f,
-                                                animationSpec = tween(
-                                                    durationMillis = fadeOutDuration,
-                                                    easing = FastOutSlowInEasing,
-                                                ),
-                                            )
-                                        }
-                                        launch {
-                                            reorderAnimation.animateTo(
-                                                targetValue = startOffset * 0.5f,
-                                                animationSpec = tween(
-                                                    durationMillis = fadeOutDuration,
-                                                    easing = FastOutSlowInEasing,
-                                                ),
-                                            )
-                                        }
-                                    }
-
-                                    reorderAnimation.snapTo(oneBeforeOffset)
-                                    delay(hiddenHoldDuration.toLong())
-
-                                    // 4) Show again while others are still descending, then settle.
-                                    coroutineScope {
-                                        launch {
-                                            cardAlphaAnimation.animateTo(
-                                                targetValue = 1f,
-                                                animationSpec = tween(
-                                                    durationMillis = revealDuration,
-                                                    easing = FastOutSlowInEasing,
-                                                ),
-                                            )
-                                        }
-                                        launch {
-                                            whiteOverlayAnimation.animateTo(
-                                                targetValue = 0f,
-                                                animationSpec = tween(
-                                                    durationMillis = revealDuration,
-                                                    easing = FastOutSlowInEasing,
-                                                ),
-                                            )
-                                        }
-                                        launch {
-                                            reorderAnimation.animateTo(
-                                                targetValue = 0f,
-                                                animationSpec = tween(
-                                                    durationMillis = finalSlideDuration,
-                                                    easing = FastOutSlowInEasing,
-                                                ),
-                                            )
-                                        }
-                                    }
-                                } else {
-                                    reorderAnimation.animateTo(
-                                        targetValue = 0f,
-                                        animationSpec = tween(
-                                            durationMillis = moveDuration,
-                                            easing = FastOutSlowInEasing,
-                                        ),
-                                    )
-                                    cardAlphaAnimation.snapTo(1f)
-                                    whiteOverlayAnimation.snapTo(0f)
-                                }
-                            }
-                        }
-                        if (previousIndexState.value != currentIndex) {
-                            previousIndexState.value = currentIndex
-                        }
-                    }
-
-                    Card(
-                        modifier = Modifier
-                            .padding(top = 10.dp)
-                            .graphicsLayer {
-                                translationY = reorderAnimation.value + preTranslatePx
-                                alpha = cardAlphaAnimation.value
-                            }
-                            .fillMaxWidth(),
-                        insideMargin = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
-                        onClick = {
-                            if (isSelected) {
-                                selectedPackages.remove(packageName)
-                                selectedOrder.remove(packageName)
-                            } else {
-                                selectedPackages.add(packageName)
-                                if (packageName !in selectedOrder) {
-                                    selectedOrder.add(packageName)
-                                }
-                            }
-                        },
-                        showIndication = true,
-                    ) {
-                        Box(modifier = Modifier.fillMaxWidth()) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                AppIcon(
-                                    appInfo = appItem.applicationInfo,
-                                    pm = pm,
-                                    modifier = Modifier.padding(end = 12.dp),
-                                )
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = appItem.label,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    Text(
-                                        text = packageName,
-                                        style = MiuixTheme.textStyles.body2,
-                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(8.dp))
-                                SelectionIndicator(selected = isSelected)
-                            }
-
-                            if (whiteOverlayAnimation.value > 0f) {
-                                Box(
-                                    modifier = Modifier
-                                        .matchParentSize()
-                                        .background(
-                                            Color.White.copy(alpha = whiteOverlayAnimation.value)
-                                        )
-                                )
-                            }
-                        }
-                    }
+                    val currentIndex = indexMap.getValue(appItem.packageName)
+                    AppSelectorRow(
+                        appItem = appItem,
+                        packageManager = pm,
+                        selected = appItem.packageName in selectedLookup,
+                        currentIndex = currentIndex,
+                        averageItemHeightPx = averageItemHeightPx,
+                        onToggle = { selectedOrder.toggleSelection(appItem.packageName) },
+                    )
                 }
             }
         }

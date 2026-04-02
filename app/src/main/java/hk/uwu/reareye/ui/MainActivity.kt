@@ -18,7 +18,8 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cottage
 import androidx.compose.material.icons.filled.Info
@@ -29,8 +30,14 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import hk.uwu.reareye.R
@@ -42,6 +49,10 @@ import hk.uwu.reareye.ui.screen.ConfigScreen
 import hk.uwu.reareye.ui.screen.HomeScreen
 import hk.uwu.reareye.ui.theme.AppTheme
 import hk.uwu.reareye.ui.theme.AppThemeMode
+import hk.uwu.reareye.ui.theme.rearAcrylicEffect
+import hk.uwu.reareye.ui.theme.rearAcrylicSource
+import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
+import hk.uwu.reareye.ui.theme.rememberAcrylicHazeStyle
 import top.yukonga.miuix.kmp.basic.NavigationBar
 import top.yukonga.miuix.kmp.basic.NavigationBarDisplayMode
 import top.yukonga.miuix.kmp.basic.NavigationBarItem
@@ -98,12 +109,82 @@ class MainActivity : ComponentActivity() {
             }
 
             AppTheme(themeMode = AppThemeMode.fromValue(themeModeValue)) {
-                Scaffold(
-                    bottomBar = {
-                        val showNavigation =
-                            navBarVisible && !(currentScreen == "config" && configInAppListMode)
+                val navigationHazeState = rememberAcrylicHazeState()
+                val navigationHazeStyle = rememberAcrylicHazeStyle()
+                val showNavigation =
+                    navBarVisible && !(currentScreen == "config" && configInAppListMode)
+                val density = LocalDensity.current
+                var stableBottomInset by remember { mutableStateOf(0.dp) }
+                Scaffold { paddingValues ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer { clip = true }
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .rearAcrylicSource(navigationHazeState)
+                        ) {
+                            AnimatedContent(
+                                targetState = currentScreen,
+                                contentKey = { it },
+                                transitionSpec = {
+                                    val initialIndex =
+                                        screenOrder.indexOf(initialState).coerceAtLeast(0)
+                                    val targetIndex =
+                                        screenOrder.indexOf(targetState).coerceAtLeast(0)
+                                    val forward = targetIndex >= initialIndex
+
+                                    fadeIn(
+                                        animationSpec = tween(
+                                            durationMillis = 210,
+                                            delayMillis = 50,
+                                            easing = LinearOutSlowInEasing,
+                                        )
+                                    ) + slideInHorizontally(
+                                        animationSpec = tween(
+                                            durationMillis = 280,
+                                            easing = FastOutSlowInEasing,
+                                        )
+                                    ) { fullWidth ->
+                                        if (forward) fullWidth / 9 else -fullWidth / 9
+                                    } togetherWith (
+                                            fadeOut(
+                                                animationSpec = tween(
+                                                    durationMillis = 110,
+                                                    easing = FastOutLinearInEasing,
+                                                )
+                                            ) + slideOutHorizontally(
+                                                animationSpec = tween(
+                                                    durationMillis = 190,
+                                                    easing = FastOutLinearInEasing,
+                                                )
+                                            ) { fullWidth ->
+                                                if (forward) -fullWidth / 12 else fullWidth / 12
+                                            }
+                                            )
+                                },
+                                label = "ScreenTransition"
+                            ) { screen ->
+                                when (screen) {
+                                    "home" -> HomeScreen(bottomInnerPadding = stableBottomInset)
+
+                                    "config" -> ConfigScreen(
+                                        bottomInnerPadding = stableBottomInset,
+                                        onAppListModeChange = {
+                                            configInAppListMode = it
+                                        },
+                                        onThemeModeChange = { themeModeValue = it },
+                                    )
+
+                                    "about" -> AboutScreen(bottomInnerPadding = stableBottomInset)
+                                }
+                            }
+                        }
 
                         AnimatedVisibility(
+                            modifier = Modifier.align(Alignment.BottomCenter),
                             visible = showNavigation,
                             enter = fadeIn(
                                 animationSpec = tween(
@@ -129,6 +210,22 @@ class MainActivity : ComponentActivity() {
                             ) { it / 3 }
                         ) {
                             NavigationBar(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .onGloballyPositioned { coordinates ->
+                                        val totalHeight = with(density) {
+                                            coordinates.size.height.toDp()
+                                        }
+                                        if (totalHeight > stableBottomInset) {
+                                            stableBottomInset = totalHeight
+                                        }
+                                    }
+                                    .rearAcrylicEffect(
+                                        navigationHazeState,
+                                        navigationHazeStyle,
+                                        blurRadius = 8.dp,
+                                    ),
+                                color = Color.Transparent,
                                 mode = NavigationBarDisplayMode.IconAndText
                             ) {
                                 NavigationBarItem(
@@ -149,61 +246,6 @@ class MainActivity : ComponentActivity() {
                                     icon = Icons.Filled.Info,
                                     label = stringResource(R.string.about_navigation)
                                 )
-                            }
-                        }
-                    }
-                ) { paddingValues ->
-                    Box(modifier = Modifier.padding(bottom = paddingValues.calculateBottomPadding())) {
-                        AnimatedContent(
-                            targetState = currentScreen,
-                            transitionSpec = {
-                                val initialIndex =
-                                    screenOrder.indexOf(initialState).coerceAtLeast(0)
-                                val targetIndex = screenOrder.indexOf(targetState).coerceAtLeast(0)
-                                val forward = targetIndex >= initialIndex
-
-                                (fadeIn(
-                                    animationSpec = tween(
-                                        durationMillis = 260,
-                                        delayMillis = 40,
-                                        easing = LinearOutSlowInEasing,
-                                    )
-                                ) + slideInHorizontally(
-                                    animationSpec = tween(
-                                        durationMillis = 320,
-                                        easing = FastOutSlowInEasing,
-                                    )
-                                ) { fullWidth ->
-                                    if (forward) fullWidth / 5 else -fullWidth / 5
-                                }) togetherWith (
-                                        fadeOut(
-                                            animationSpec = tween(
-                                                durationMillis = 180,
-                                                easing = FastOutLinearInEasing,
-                                            )
-                                        ) + slideOutHorizontally(
-                                            animationSpec = tween(
-                                                durationMillis = 240,
-                                                easing = FastOutLinearInEasing,
-                                            )
-                                        ) { fullWidth ->
-                                            if (forward) -fullWidth / 6 else fullWidth / 6
-                                        }
-                                        )
-                            },
-                            label = "ScreenTransition"
-                        ) { screen ->
-                            when (screen) {
-                                "home" -> HomeScreen()
-
-                                "config" -> ConfigScreen(
-                                    onAppListModeChange = {
-                                        configInAppListMode = it
-                                    },
-                                    onThemeModeChange = { themeModeValue = it },
-                                )
-
-                                "about" -> AboutScreen()
                             }
                         }
                     }

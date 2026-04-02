@@ -1,5 +1,7 @@
 package hk.uwu.reareye.ui.components.card
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -34,6 +36,12 @@ fun ModuleStyleManagerCard(
 ) {
     Card(
         modifier = Modifier
+            .animateContentSize(
+                animationSpec = spring(
+                    dampingRatio = 0.9f,
+                    stiffness = 620f,
+                )
+            )
             .padding(bottom = 12.dp),
         insideMargin = PaddingValues(16.dp),
         onClick = onCardClick ?: {},
@@ -46,7 +54,7 @@ fun ModuleStyleManagerCard(
                 modifier = Modifier
                     .weight(1f)
                     .padding(end = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
                     text = title,

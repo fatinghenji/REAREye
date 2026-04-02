@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.createBitmap
 import androidx.core.net.toUri
@@ -63,7 +64,7 @@ private data class CreditEntry(
 )
 
 @Composable
-fun AboutScreen() {
+fun AboutScreen(bottomInnerPadding: Dp = 0.dp) {
     val context = LocalContext.current
     val scrollBehavior = MiuixScrollBehavior()
     val hazeState = rememberAcrylicHazeState()
@@ -75,6 +76,11 @@ fun AboutScreen() {
             titleRes = R.string.credits_github_title,
             summaryRes = R.string.credits_github_desc,
             url = "https://github.com/killerprojecte/REAREye",
+        ),
+        CreditEntry(
+            titleRes = R.string.credits_docs,
+            summaryRes = R.string.credits_docs_desc,
+            url = "https://reareye.uwu.hk"
         ),
         CreditEntry(
             titleRes = R.string.credits_afdian_title,
@@ -111,7 +117,10 @@ fun AboutScreen() {
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .rearAcrylicSource(hazeState)
                 .padding(horizontal = 12.dp),
-            contentPadding = paddingValues,
+            contentPadding = PaddingValues(
+                top = paddingValues.calculateTopPadding(),
+                bottom = paddingValues.calculateBottomPadding() + bottomInnerPadding,
+            ),
             overscrollEffect = null,
         ) {
             item {

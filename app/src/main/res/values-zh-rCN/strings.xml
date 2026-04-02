@@ -198,4 +198,8 @@
     <string name="cfg_disable_rear_screen_cover">禁用背屏保护</string>
     <string name="cfg_disable_rear_screen_cover_desc">启用此功能后，当主屏处于全屏模式时，背屏将不会被锁定</string>
     <string name="cfg_more_debug">更多调试输出</string>
+    <string name="subcategory_lyrics">歌词</string>
+    <string name="subcategory_lyrics_desc">管理歌词配置</string>
+    <string name="credits_docs">文档</string>
+    <string name="credits_docs_desc">使用教程和疑难解惑</string>
 </resources>

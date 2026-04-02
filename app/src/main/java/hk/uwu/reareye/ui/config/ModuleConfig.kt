@@ -230,49 +230,55 @@ val REAREyeConfig = listOf(
                     )
                 )
             ),
-            ConfigItem(
-                key = ConfigKeys.LYRIC_DISPLAY_MODE,
-                titleRes = R.string.lyric_display_mode,
-                descriptionRes = R.string.lyric_display_mode_desc,
-                type = ConfigType.MaskMultiSelect(
-                    defaultValue = ConfigKeys.LYRIC_DISPLAY_MODE_DEFAULT,
-                    options = LyricParser.DisplayMode.entries.map {
-                        ConfigType.MaskOption(
-                            titleRes = it.toTitleRes(),
-                            maskValue = it.mask,
+            ConfigCategory(
+                titleRes = R.string.subcategory_lyrics,
+                descriptionRes = R.string.subcategory_lyrics_desc,
+                children = listOf(
+                    ConfigItem(
+                        key = ConfigKeys.LYRIC_DISPLAY_MODE,
+                        titleRes = R.string.lyric_display_mode,
+                        descriptionRes = R.string.lyric_display_mode_desc,
+                        type = ConfigType.MaskMultiSelect(
+                            defaultValue = ConfigKeys.LYRIC_DISPLAY_MODE_DEFAULT,
+                            options = LyricParser.DisplayMode.entries.map {
+                                ConfigType.MaskOption(
+                                    titleRes = it.toTitleRes(),
+                                    maskValue = it.mask,
+                                )
+                            }
                         )
-                    }
-                )
-            ),
-            ConfigItem(
-                key = ConfigKeys.LYRIC_PROVIDER,
-                titleRes = R.string.lyric_provider,
-                descriptionRes = R.string.lyric_provider_desc,
-                type = ConfigType.EnumSingleSelect(
-                    defaultValue = ConfigKeys.LYRIC_PROVIDER_DEFAULT,
-                    options = LyricProvider.entries.map {
-                        ConfigType.EnumOption(
-                            titleRes = it.titleRes,
-                            value = it.value,
+                    ),
+                    ConfigItem(
+                        key = ConfigKeys.LYRIC_PROVIDER,
+                        titleRes = R.string.lyric_provider,
+                        descriptionRes = R.string.lyric_provider_desc,
+                        type = ConfigType.EnumSingleSelect(
+                            defaultValue = ConfigKeys.LYRIC_PROVIDER_DEFAULT,
+                            options = LyricProvider.entries.map {
+                                ConfigType.EnumOption(
+                                    titleRes = it.titleRes,
+                                    value = it.value,
+                                )
+                            },
                         )
-                    },
-                )
-            ),
-            ConfigItem(
-                key = ConfigKeys.SUPER_LYRIC_DISPLAY_MODE,
-                titleRes = R.string.super_lyric_display_mode,
-                descriptionRes = R.string.super_lyric_display_mode_desc,
-                type = ConfigType.EnumSingleSelect(
-                    defaultValue = ConfigKeys.SUPER_LYRIC_DISPLAY_MODE_DEFAULT,
-                    options = listOf(
-                        LyricParser.DisplayMode.ORIGINAL,
-                        LyricParser.DisplayMode.TRANSLATION,
-                    ).map {
-                        ConfigType.EnumOption(
-                            titleRes = it.toTitleRes(),
-                            value = it.mask,
+                    ),
+                    ConfigItem(
+                        key = ConfigKeys.SUPER_LYRIC_DISPLAY_MODE,
+                        titleRes = R.string.super_lyric_display_mode,
+                        descriptionRes = R.string.super_lyric_display_mode_desc,
+                        type = ConfigType.EnumSingleSelect(
+                            defaultValue = ConfigKeys.SUPER_LYRIC_DISPLAY_MODE_DEFAULT,
+                            options = listOf(
+                                LyricParser.DisplayMode.ORIGINAL,
+                                LyricParser.DisplayMode.TRANSLATION,
+                            ).map {
+                                ConfigType.EnumOption(
+                                    titleRes = it.toTitleRes(),
+                                    value = it.mask,
+                                )
+                            },
                         )
-                    },
+                    )
                 )
             ),
             ConfigItem(

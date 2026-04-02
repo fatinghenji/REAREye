@@ -18,16 +18,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import hk.uwu.reareye.R
 import hk.uwu.reareye.ui.components.config.AppListSelectorScreen
@@ -49,6 +51,8 @@ import hk.uwu.reareye.ui.theme.rearAcrylicEffect
 import hk.uwu.reareye.ui.theme.rearAcrylicSource
 import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
 import hk.uwu.reareye.ui.theme.rememberAcrylicHazeStyle
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -66,8 +70,12 @@ private sealed interface ConfigRoute {
     data object BusinessExtraManager : ConfigRoute
 }
 
+private const val NAV_BAR_EXIT_DURATION_MS = 220L
+private const val OVERLAY_ROUTE_EXIT_DURATION_MS = 220L
+
 @Composable
 fun ConfigScreen(
+    bottomInnerPadding: Dp = 0.dp,
     onAppListModeChange: (Boolean) -> Unit = {},
     onThemeModeChange: (Int) -> Unit = {},
 ) {
@@ -83,6 +91,7 @@ fun ConfigScreen(
     val scrollBehavior = MiuixScrollBehavior()
     val hazeState = rememberAcrylicHazeState()
     val hazeStyle = rememberAcrylicHazeStyle()
+    val routeScope = rememberCoroutineScope()
 
     val handlePreferenceChanged = remember(prefsManager, onThemeModeChange) {
         { item: ConfigItem ->
@@ -97,12 +106,46 @@ fun ConfigScreen(
         }
     }
 
-    LaunchedEffect(isOverlayMode) {
-        onAppListModeChange(isOverlayMode)
+    BackHandler(enabled = routeStack.size > 1) {
+        if (isOverlayMode) {
+            routeScope.launch {
+                val newStack = routeStack.dropLast(1)
+                routeStack = newStack
+                delay(OVERLAY_ROUTE_EXIT_DURATION_MS)
+                if (newStack.last() !is ConfigRoute.AppList &&
+                    newStack.last() !is ConfigRoute.BusinessManager &&
+                    newStack.last() !is ConfigRoute.CardManager &&
+                    newStack.last() !is ConfigRoute.BusinessExtraManager
+                ) {
+                    onAppListModeChange(false)
+                }
+            }
+        } else {
+            routeStack = routeStack.dropLast(1)
+        }
     }
 
-    BackHandler(enabled = routeStack.size > 1) {
-        routeStack = routeStack.dropLast(1)
+    fun openOverlayRoute(route: ConfigRoute) {
+        routeScope.launch {
+            onAppListModeChange(true)
+            delay(NAV_BAR_EXIT_DURATION_MS)
+            routeStack = routeStack + route
+        }
+    }
+
+    fun closeOverlayRoute() {
+        routeScope.launch {
+            val newStack = routeStack.dropLast(1)
+            routeStack = newStack
+            delay(OVERLAY_ROUTE_EXIT_DURATION_MS)
+            if (newStack.last() !is ConfigRoute.AppList &&
+                newStack.last() !is ConfigRoute.BusinessManager &&
+                newStack.last() !is ConfigRoute.CardManager &&
+                newStack.last() !is ConfigRoute.BusinessExtraManager
+            ) {
+                onAppListModeChange(false)
+            }
+        }
     }
 
     Scaffold(
@@ -121,36 +164,40 @@ fun ConfigScreen(
         }
     ) { paddingValues ->
         AnimatedContent(
+            modifier = Modifier
+                .fillMaxWidth()
+                .graphicsLayer { clip = true },
             targetState = routeStack,
+            contentKey = { it.last() },
             transitionSpec = {
                 val forward = targetState.size >= initialState.size
 
-                (fadeIn(
+                fadeIn(
                     animationSpec = tween(
-                        durationMillis = 260,
-                        delayMillis = 40,
+                        durationMillis = 210,
+                        delayMillis = 50,
                         easing = LinearOutSlowInEasing,
                     )
                 ) + slideInHorizontally(
                     animationSpec = tween(
-                        durationMillis = 320,
+                        durationMillis = 280,
                         easing = FastOutSlowInEasing,
                     )
                 ) { fullWidth ->
-                    if (forward) fullWidth / 5 else -fullWidth / 5
-                }) togetherWith (
+                    if (forward) fullWidth / 9 else -fullWidth / 9
+                } togetherWith (
                         fadeOut(
                             animationSpec = tween(
-                                durationMillis = 180,
+                                durationMillis = 110,
                                 easing = FastOutLinearInEasing,
                             )
                         ) + slideOutHorizontally(
                             animationSpec = tween(
-                                durationMillis = 240,
+                                durationMillis = 190,
                                 easing = FastOutLinearInEasing,
                             )
                         ) { fullWidth ->
-                            if (forward) -fullWidth / 6 else fullWidth / 6
+                            if (forward) -fullWidth / 12 else fullWidth / 12
                         }
                         )
             },
@@ -160,27 +207,30 @@ fun ConfigScreen(
                 ConfigRoute.Root -> ConfigNodeList(
                     nodes = REAREyeConfig,
                     prefsManager = prefsManager,
-                    contentPadding = paddingValues,
+                    contentPadding = PaddingValues(
+                        top = paddingValues.calculateTopPadding(),
+                        bottom = paddingValues.calculateBottomPadding() + bottomInnerPadding,
+                    ),
                     scrollBehavior = scrollBehavior,
                     modifier = Modifier.rearAcrylicSource(hazeState),
                     onOpenCategory = { category ->
                         routeStack = routeStack + ConfigRoute.Category(category)
                     },
                     onOpenAppList = { item ->
-                        routeStack = routeStack + ConfigRoute.AppList(item)
+                        openOverlayRoute(ConfigRoute.AppList(item))
                     },
                     onOpenManager = { item ->
                         when ((item.type as? ConfigType.Manager)?.managerType) {
                             ConfigType.ManagerType.BUSINESS -> {
-                                routeStack = routeStack + ConfigRoute.BusinessManager
+                                openOverlayRoute(ConfigRoute.BusinessManager)
                             }
 
                             ConfigType.ManagerType.CARD -> {
-                                routeStack = routeStack + ConfigRoute.CardManager
+                                openOverlayRoute(ConfigRoute.CardManager)
                             }
 
                             ConfigType.ManagerType.BUSINESS_EXTRA -> {
-                                routeStack = routeStack + ConfigRoute.BusinessExtraManager
+                                openOverlayRoute(ConfigRoute.BusinessExtraManager)
                             }
 
                             null -> Unit
@@ -192,27 +242,30 @@ fun ConfigScreen(
                 is ConfigRoute.Category -> ConfigNodeList(
                     nodes = route.category.children,
                     prefsManager = prefsManager,
-                    contentPadding = paddingValues,
+                    contentPadding = PaddingValues(
+                        top = paddingValues.calculateTopPadding(),
+                        bottom = paddingValues.calculateBottomPadding() + bottomInnerPadding,
+                    ),
                     scrollBehavior = scrollBehavior,
                     modifier = Modifier.rearAcrylicSource(hazeState),
                     onOpenCategory = { category ->
                         routeStack = routeStack + ConfigRoute.Category(category)
                     },
                     onOpenAppList = { item ->
-                        routeStack = routeStack + ConfigRoute.AppList(item)
+                        openOverlayRoute(ConfigRoute.AppList(item))
                     },
                     onOpenManager = { item ->
                         when ((item.type as? ConfigType.Manager)?.managerType) {
                             ConfigType.ManagerType.BUSINESS -> {
-                                routeStack = routeStack + ConfigRoute.BusinessManager
+                                openOverlayRoute(ConfigRoute.BusinessManager)
                             }
 
                             ConfigType.ManagerType.CARD -> {
-                                routeStack = routeStack + ConfigRoute.CardManager
+                                openOverlayRoute(ConfigRoute.CardManager)
                             }
 
                             ConfigType.ManagerType.BUSINESS_EXTRA -> {
-                                routeStack = routeStack + ConfigRoute.BusinessExtraManager
+                                openOverlayRoute(ConfigRoute.BusinessExtraManager)
                             }
 
                             null -> Unit
@@ -224,23 +277,23 @@ fun ConfigScreen(
                 is ConfigRoute.AppList -> AppListSelectorScreen(
                     configItem = route.item,
                     prefsManager = prefsManager,
-                    onCancel = { routeStack = routeStack.dropLast(1) },
-                    onSave = { routeStack = routeStack.dropLast(1) }
+                    onCancel = { closeOverlayRoute() },
+                    onSave = { closeOverlayRoute() }
                 )
 
                 ConfigRoute.BusinessManager -> BusinessManagerScreen(
                     prefsManager = prefsManager,
-                    onBack = { routeStack = routeStack.dropLast(1) },
+                    onBack = { closeOverlayRoute() },
                 )
 
                 ConfigRoute.CardManager -> CardManagerScreen(
                     prefsManager = prefsManager,
-                    onBack = { routeStack = routeStack.dropLast(1) },
+                    onBack = { closeOverlayRoute() },
                 )
 
                 ConfigRoute.BusinessExtraManager -> BusinessExtraConfigManagerScreen(
                     prefsManager = prefsManager,
-                    onBack = { routeStack = routeStack.dropLast(1) },
+                    onBack = { closeOverlayRoute() },
                 )
             }
         }

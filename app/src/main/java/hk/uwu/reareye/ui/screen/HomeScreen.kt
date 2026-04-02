@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
@@ -81,9 +82,9 @@ import top.yukonga.miuix.kmp.basic.SpinnerEntry
 import top.yukonga.miuix.kmp.basic.SpinnerItemImpl
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
-import top.yukonga.miuix.kmp.extra.SuperListPopup
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.MoreCircle
+import top.yukonga.miuix.kmp.overlay.OverlayListPopup
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import top.yukonga.miuix.kmp.utils.overScrollVertical
@@ -127,7 +128,7 @@ private suspend fun fetchLatestCommitHashFromNetwork(): String? {
 
 @SuppressLint("LocalContextGetResourceValueCall")
 @Composable
-fun HomeScreen() {
+fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
     val isActivated = YukiHookAPI.Status.isModuleActive
     val showTopMenu = remember { mutableStateOf(false) }
     val scrollBehavior = MiuixScrollBehavior()
@@ -218,7 +219,7 @@ fun HomeScreen() {
                             )
                         }
 
-                        SuperListPopup(
+                        OverlayListPopup(
                             show = showTopMenu.value,
                             popupModifier = Modifier,
                             popupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
@@ -320,7 +321,7 @@ fun HomeScreen() {
                 .padding(horizontal = 12.dp),
             contentPadding = PaddingValues(
                 top = paddingValues.calculateTopPadding() + 12.dp,
-                bottom = paddingValues.calculateBottomPadding() + 12.dp,
+                bottom = paddingValues.calculateBottomPadding() + bottomInnerPadding + 12.dp,
             ),
             overscrollEffect = null,
         ) {

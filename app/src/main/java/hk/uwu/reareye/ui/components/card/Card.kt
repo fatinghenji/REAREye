@@ -1,5 +1,7 @@
 package hk.uwu.reareye.ui.components.card
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.runtime.Composable
@@ -26,7 +28,12 @@ fun SuperCard(
     enabled: Boolean = true,
 ) {
     BasicComponent(
-        modifier = modifier,
+        modifier = modifier.animateContentSize(
+            animationSpec = spring(
+                dampingRatio = 0.92f,
+                stiffness = 650f,
+            )
+        ),
         insideMargin = insideMargin,
         title = title,
         titleColor = titleColor,

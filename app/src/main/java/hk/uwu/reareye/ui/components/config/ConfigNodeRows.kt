@@ -1,8 +1,6 @@
 package hk.uwu.reareye.ui.components.config
 
 import android.annotation.SuppressLint
-import android.graphics.Canvas
-import android.graphics.drawable.BitmapDrawable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,24 +10,23 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.graphics.createBitmap
 import hk.uwu.reareye.R
+import hk.uwu.reareye.ui.components.rememberPackageIconBitmap
 import hk.uwu.reareye.ui.config.ConfigCategory
 import hk.uwu.reareye.ui.config.ConfigCategoryIcon
 import hk.uwu.reareye.ui.config.ConfigGroup
@@ -39,8 +36,7 @@ import hk.uwu.reareye.ui.config.ConfigNode
 import hk.uwu.reareye.ui.config.ConfigType
 import hk.uwu.reareye.ui.config.ModuleSettingsController
 import hk.uwu.reareye.ui.config.PrefsManager
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.ListPopupColumn
 import top.yukonga.miuix.kmp.basic.ListPopupDefaults
@@ -50,9 +46,9 @@ import top.yukonga.miuix.kmp.basic.SpinnerDefaults
 import top.yukonga.miuix.kmp.basic.SpinnerEntry
 import top.yukonga.miuix.kmp.basic.SpinnerItemImpl
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.extra.SuperArrow
-import top.yukonga.miuix.kmp.extra.SuperListPopup
-import top.yukonga.miuix.kmp.extra.SuperSwitch
+import top.yukonga.miuix.kmp.overlay.OverlayListPopup
+import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
@@ -84,7 +80,7 @@ fun ConfigNodeRow(
 
 @Composable
 fun ConfigCategoryNodeRow(category: ConfigCategory, onClick: () -> Unit) {
-    SuperArrow(
+    ArrowPreference(
         title = stringResource(category.titleRes),
         summary = category.descriptionRes?.let { stringResource(it) },
         startAction = category.icon?.let { icon ->
@@ -112,43 +108,20 @@ private fun ConfigCategoryStartIcon(icon: ConfigCategoryIcon) {
 
         is ConfigCategoryIcon.Package -> {
             val context = LocalContext.current
-            var imageBitmap by remember(icon.packageName) { mutableStateOf<ImageBitmap?>(null) }
-            var loadFinished by remember(icon.packageName) { mutableStateOf(false) }
-
-            LaunchedEffect(icon.packageName) {
-                val loadedBitmap = withContext(Dispatchers.IO) {
-                    runCatching {
-                        val drawable = context.packageManager.getApplicationIcon(icon.packageName)
-                        if (drawable is BitmapDrawable) {
-                            drawable.bitmap
-                        } else {
-                            val bmp = createBitmap(
-                                drawable.intrinsicWidth.takeIf { it > 0 } ?: 1,
-                                drawable.intrinsicHeight.takeIf { it > 0 } ?: 1
-                            )
-                            val canvas = Canvas(bmp)
-                            drawable.setBounds(0, 0, canvas.width, canvas.height)
-                            drawable.draw(canvas)
-                            bmp
-                        }
-                    }.getOrNull()?.asImageBitmap()
-                }
-
-                withContext(Dispatchers.Main) {
-                    imageBitmap = loadedBitmap
-                    loadFinished = true
-                }
-            }
+            val imageBitmap = rememberPackageIconBitmap(
+                packageManager = context.packageManager,
+                packageName = icon.packageName,
+            )
 
             if (imageBitmap != null) {
                 Box(modifier = Modifier.size(28.dp), contentAlignment = Alignment.Center) {
                     Image(
-                        bitmap = imageBitmap!!,
+                        bitmap = imageBitmap,
                         contentDescription = null,
                         modifier = Modifier.size(28.dp)
                     )
                 }
-            } else if (!loadFinished) {
+            } else {
                 Spacer(modifier = Modifier.size(28.dp))
             }
         }
@@ -184,7 +157,7 @@ fun BooleanConfigInput(
         mutableStateOf(prefsManager.getBoolean(item.key, defaultValue))
     }
 
-    SuperSwitch(
+    SwitchPreference(
         title = stringResource(item.titleRes),
         summary = item.descriptionRes?.let { stringResource(it) },
         checked = checked,
@@ -215,7 +188,7 @@ fun AppListConfigInput(
         "$description\n$selectedSummary"
     }
 
-    SuperArrow(
+    ArrowPreference(
         title = stringResource(item.titleRes),
         summary = summary,
         onClick = onClick
@@ -233,6 +206,7 @@ fun MaskMultiSelectConfigInput(
 ) {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
+    val popupScope = rememberCoroutineScope()
     var showModePopup by remember(item.key) { mutableStateOf(false) }
     var selectedMask by remember(item.key) {
         mutableIntStateOf(prefsManager.getInt(item.key, defaultValue))
@@ -261,14 +235,14 @@ fun MaskMultiSelectConfigInput(
         "$description\n$selectedSummary"
     }
 
-    SuperArrow(
+    ArrowPreference(
         title = stringResource(item.titleRes),
         summary = summary,
         holdDownState = showModePopup,
         onClick = { showModePopup = true }
     )
 
-    SuperListPopup(
+    OverlayListPopup(
         show = showModePopup,
         popupModifier = Modifier,
         popupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
@@ -288,9 +262,14 @@ fun MaskMultiSelectConfigInput(
                     index = index,
                     spinnerColors = SpinnerDefaults.spinnerColors(),
                     onSelectedIndexChange = {
-                        selectedMask = selectedMask xor option.maskValue
-                        prefsManager.putInt(item.key, selectedMask)
-                        onPreferenceChanged(item)
+                        val nextMask = selectedMask xor option.maskValue
+                        showModePopup = false
+                        popupScope.launch {
+                            withFrameNanos { }
+                            selectedMask = nextMask
+                            prefsManager.putInt(item.key, selectedMask)
+                            onPreferenceChanged(item)
+                        }
                     },
                 )
             }
@@ -309,6 +288,7 @@ fun EnumSingleSelectConfigInput(
 ) {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
+    val popupScope = rememberCoroutineScope()
     var showEnumPopup by remember(item.key) { mutableStateOf(false) }
     var selectedValue by remember(item.key) {
         mutableIntStateOf(prefsManager.getInt(item.key, defaultValue))
@@ -332,14 +312,14 @@ fun EnumSingleSelectConfigInput(
         "$description\n$selectedLabel"
     }
 
-    SuperArrow(
+    ArrowPreference(
         title = stringResource(item.titleRes),
         summary = summary,
         holdDownState = showEnumPopup,
         onClick = { showEnumPopup = true }
     )
 
-    SuperListPopup(
+    OverlayListPopup(
         show = showEnumPopup,
         popupModifier = Modifier,
         popupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
@@ -359,10 +339,13 @@ fun EnumSingleSelectConfigInput(
                     index = index,
                     spinnerColors = SpinnerDefaults.spinnerColors(),
                     onSelectedIndexChange = {
-                        selectedValue = option.value
-                        prefsManager.putInt(item.key, selectedValue)
-                        onPreferenceChanged(item)
                         showEnumPopup = false
+                        popupScope.launch {
+                            withFrameNanos { }
+                            selectedValue = option.value
+                            prefsManager.putInt(item.key, selectedValue)
+                            onPreferenceChanged(item)
+                        }
                     },
                 )
             }
@@ -445,7 +428,7 @@ fun FloatSliderConfigInput(
 
 @Composable
 fun ManagerConfigInput(item: ConfigItem, onClick: () -> Unit) {
-    SuperArrow(
+    ArrowPreference(
         title = stringResource(item.titleRes),
         summary = item.descriptionRes?.let { stringResource(it) },
         onClick = onClick,

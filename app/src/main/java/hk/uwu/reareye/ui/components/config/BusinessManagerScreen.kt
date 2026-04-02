@@ -4,14 +4,6 @@ import android.annotation.SuppressLint
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutLinearInEasing
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,12 +47,15 @@ import hk.uwu.reareye.ui.components.card.ModuleStyleDeleteAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleIconAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleManagerCard
 import hk.uwu.reareye.ui.components.card.SuperCard
+import hk.uwu.reareye.ui.components.motion.ArtRevealItem
+import hk.uwu.reareye.ui.components.motion.ArtStaggeredReveal
 import hk.uwu.reareye.ui.config.PrefsManager
 import hk.uwu.reareye.ui.theme.rearAcrylicEffect
 import hk.uwu.reareye.ui.theme.rearAcrylicSource
 import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
 import hk.uwu.reareye.ui.theme.rememberAcrylicHazeStyle
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -73,9 +68,9 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
-import top.yukonga.miuix.kmp.extra.SuperDialog
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
@@ -94,7 +89,7 @@ fun BusinessManagerScreen(
     val hazeStyle = rememberAcrylicHazeStyle()
     val widgets = remember { mutableStateListOf<RearBusinessConfig>() }
     var widgetsLoaded by remember { mutableStateOf(false) }
-    var contentVisible by remember { mutableStateOf(false) }
+    var dataCardsVisible by remember { mutableStateOf(false) }
 
     var showDialog by remember { mutableStateOf(false) }
     var editingId by remember { mutableStateOf<String?>(null) }
@@ -102,13 +97,17 @@ fun BusinessManagerScreen(
     var draftFilePath by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
-        contentVisible = true
+        widgetsLoaded = false
+        dataCardsVisible = false
+        delay(220)
         val loadedWidgets = withContext(Dispatchers.IO) {
             RearWidgetManagerRepository.loadBusinesses(prefsManager)
         }
         widgets.clear()
         widgets.addAll(loadedWidgets)
         widgetsLoaded = true
+        delay(90)
+        dataCardsVisible = true
         withContext(Dispatchers.IO) {
             RearWidgetManagerRepository.refreshRuntimeFromPrefs(context, prefsManager)
         }
@@ -244,67 +243,74 @@ fun BusinessManagerScreen(
             overscrollEffect = null,
         ) {
             item {
-                ManagerRevealItem(visible = contentVisible, delayMillis = 0) {
-                    if (widgetsLoaded) {
-                        Card(
-                            modifier = Modifier
-                                .padding(bottom = 12.dp)
-                                .fillMaxWidth()
-                        ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                SuperCard(
-                                    title = stringResource(R.string.rear_widget_business_file_mode_title),
-                                    summary = stringResource(
-                                        R.string.rear_widget_component_count,
-                                        widgets.size,
-                                    ) + "\n" + stringResource(R.string.rear_widget_business_file_mode_hint),
-                                    onClick = {},
-                                    bottomAction = {
-                                        Button(
-                                            onClick = { openCreateDialog() },
-                                            colors = ButtonDefaults.buttonColorsPrimary(),
-                                            modifier = Modifier.fillMaxWidth(),
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Add,
-                                                contentDescription = null,
-                                                modifier = Modifier.padding(end = 6.dp),
-                                            )
-                                            Text(text = stringResource(R.string.rear_widget_add_business))
-                                        }
-                                    }
-                                )
-                            }
-                        }
-                    } else {
-                        Card(
-                            modifier = Modifier
-                                .padding(bottom = 12.dp)
-                                .fillMaxWidth(),
-                            insideMargin = PaddingValues(vertical = 24.dp),
-                        ) {
-                            Box(
-                                modifier = Modifier.fillMaxWidth(),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    CircularProgressIndicator()
-                                    Text(text = stringResource(R.string.rear_widget_loading_data))
+                Card(
+                    modifier = Modifier
+                        .padding(bottom = 12.dp)
+                        .fillMaxWidth()
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SuperCard(
+                            title = stringResource(R.string.rear_widget_business_file_mode_title),
+                            summary = buildString {
+                                if (widgetsLoaded) {
+                                    append(
+                                        context.getString(
+                                            R.string.rear_widget_component_count,
+                                            widgets.size,
+                                        )
+                                    )
+                                    append('\n')
                                 }
+                                append(context.getString(R.string.rear_widget_business_file_mode_hint))
+                            },
+                            onClick = {},
+                            bottomAction = {
+                                Button(
+                                    onClick = { openCreateDialog() },
+                                    colors = ButtonDefaults.buttonColorsPrimary(),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Add,
+                                        contentDescription = null,
+                                        modifier = Modifier.padding(end = 6.dp),
+                                    )
+                                    Text(text = stringResource(R.string.rear_widget_add_business))
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+
+            if (!dataCardsVisible) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        insideMargin = PaddingValues(vertical = 24.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                CircularProgressIndicator()
+                                Text(text = stringResource(R.string.rear_widget_loading_data))
                             }
                         }
                     }
                 }
             }
 
-            if (widgetsLoaded) {
+            if (dataCardsVisible) {
                 itemsIndexed(widgets, key = { _, item -> item.id }) { index, item ->
-                    ManagerRevealItem(
-                        visible = contentVisible,
-                        delayMillis = (80 + index * 24).coerceAtMost(280),
+                    ArtStaggeredReveal(
+                        visible = true,
+                        revealKey = item.id,
+                        delayMillis = (36 + index * 18).coerceAtMost(150),
                     ) {
                         ModuleStyleManagerCard(
                             title = item.business,
@@ -332,19 +338,21 @@ fun BusinessManagerScreen(
             }
 
             item {
-                AnimatedVisibility(visible = widgetsLoaded && widgets.isEmpty()) {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = stringResource(R.string.rear_widget_empty_business),
-                            modifier = Modifier.padding(16.dp),
-                        )
+                if (dataCardsVisible && widgets.isEmpty()) {
+                    ArtRevealItem(visible = true, delayMillis = 40) {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = stringResource(R.string.rear_widget_empty_business),
+                                modifier = Modifier.padding(16.dp),
+                            )
+                        }
                     }
                 }
             }
         }
     }
 
-    SuperDialog(
+    OverlayDialog(
         show = showDialog,
         title = stringResource(
             if (editingId == null) R.string.rear_widget_add_business else R.string.rear_widget_edit_business,
@@ -398,37 +406,5 @@ fun BusinessManagerScreen(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun ManagerRevealItem(
-    visible: Boolean,
-    delayMillis: Int,
-    content: @Composable () -> Unit,
-) {
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(
-            animationSpec = tween(
-                durationMillis = 320,
-                delayMillis = delayMillis,
-                easing = LinearOutSlowInEasing,
-            )
-        ) + slideInVertically(
-            animationSpec = tween(
-                durationMillis = 420,
-                delayMillis = delayMillis,
-                easing = FastOutSlowInEasing,
-            )
-        ) { it / 8 },
-        exit = fadeOut(
-            animationSpec = tween(
-                durationMillis = 120,
-                easing = FastOutLinearInEasing,
-            )
-        ),
-    ) {
-        content()
     }
 }
