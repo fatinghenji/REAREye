@@ -25,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +54,7 @@ import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
 import hk.uwu.reareye.ui.theme.rememberAcrylicHazeStyle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -79,6 +81,7 @@ fun CardManagerScreen(
 ) {
     val context = LocalContext.current
     val layoutDirection = LocalLayoutDirection.current
+    val scope = rememberCoroutineScope()
     val scrollBehavior = MiuixScrollBehavior()
     val hazeState = rememberAcrylicHazeState()
     val hazeStyle = rememberAcrylicHazeStyle()
@@ -302,7 +305,14 @@ fun CardManagerScreen(
                                         val i = cards.indexOfFirst { it.id == item.id }
                                         if (i >= 0) {
                                             cards[i] = cards[i].copy(enabled = checked)
-                                            persist()
+                                            scope.launch(Dispatchers.IO) {
+                                                RearWidgetManagerRepository.setCardEnabled(
+                                                    context = context,
+                                                    prefsManager = prefsManager,
+                                                    cardId = item.id,
+                                                    enabled = checked,
+                                                )
+                                            }
                                         }
                                     },
                                 )

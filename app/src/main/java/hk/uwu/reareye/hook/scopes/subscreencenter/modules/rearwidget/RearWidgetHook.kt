@@ -19,8 +19,10 @@ import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
 import hk.uwu.reareye.actions.RearWidgetApi
+import hk.uwu.reareye.rearwidget.RearBusinessExtraConfigRepository.getShowTimeTipForBusiness
 import hk.uwu.reareye.rearwidget.RearWidgetConfigCodec
 import hk.uwu.reareye.ui.config.ConfigKeys
+import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
 import hk.uwu.reareye.widgetapi.IRearWidgetApiConnection
 import hk.uwu.reareye.widgetapi.IRearWidgetApiService
 import hk.uwu.reareye.widgetapi.RearWidgetApiContract
@@ -475,6 +477,42 @@ class RearWidgetHook : YukiBaseHooker() {
                 }.getOrNull()
                 if (!key.isNullOrBlank()) injectByCompositeKey(key)
             }
+
+            RearWidgetApi.Channel.OP_REMOVE -> {
+                val ticket = runCatching {
+                    val ticketObj = JSONObject(normalizedPayload).getJSONObject("ticket")
+                    RearWidgetApi.NoticeTicket(
+                        packageName = ticketObj.getString("packageName"),
+                        business = ticketObj.getString("business"),
+                        notificationId = ticketObj.getInt("notificationId"),
+                        compositeKey = ticketObj.getString("compositeKey"),
+                    )
+                }.getOrNull()
+                if (ticket != null) ejectByTicket(ticket)
+            }
+
+            RearWidgetApi.Channel.OP_DISABLE_DISPLAY -> {
+                runCatching {
+                    val obj = JSONObject(normalizedPayload)
+                    val pkg = obj.optString("packageName").trim()
+                        .takeUnless { it.isBlank() } ?: RearWidgetApi.defaultPackageName
+                    val biz = obj.getString("business").trim()
+                    if (biz.isNotBlank()) ejectBusinessDisplay(pkg, biz)
+                }
+            }
+
+            RearWidgetApi.Channel.OP_UNREGISTER -> {
+                // Safety net: eject any remaining widgets for the unregistered business.
+                // In normal usage disableBusinessDisplay precedes unregisterBusiness, but this
+                // ensures the manager is clean even if called in isolation.
+                runCatching {
+                    val obj = JSONObject(normalizedPayload)
+                    val pkg = obj.optString("packageName").trim()
+                        .takeUnless { it.isBlank() } ?: RearWidgetApi.defaultPackageName
+                    val biz = obj.getString("business").trim()
+                    if (biz.isNotBlank()) ejectBusinessDisplay(pkg, biz)
+                }
+            }
         }
         return ack
     }
@@ -492,6 +530,7 @@ class RearWidgetHook : YukiBaseHooker() {
         )
         val businesses = RearWidgetConfigCodec.parseBusinesses(businessRaw)
         val cards = RearWidgetConfigCodec.parseCards(cardRaw).filter { it.enabled }
+        val prefsManager = prefs.getPrefsManager()
         if (!force && businesses.isEmpty() && cards.isEmpty()) {
             debugLog("bootstrap init skipped: no config yet")
             return false
@@ -572,7 +611,7 @@ class RearWidgetHook : YukiBaseHooker() {
             val options = RearWidgetApi.NoticeOptions(
                 sticky = true,
                 disablePopup = true,
-                showTimeTip = true,
+                showTimeTip = prefsManager.getShowTimeTipForBusiness(card.business),
                 index = index,
                 priority = card.priority,
             )
@@ -730,6 +769,51 @@ class RearWidgetHook : YukiBaseHooker() {
         }
     }
 
+    private fun ejectByTicket(ticket: RearWidgetApi.NoticeTicket) {
+        val mgr = manager ?: return
+        val handler = mainHandler ?: return
+        runCatching {
+            handler.post {
+                runCatching {
+                    // Z1.d0.p(notifId, packageName, reason) — removes widget by notifId+pkg.
+                    // Iterates businesses from p2.a.c (set by applyRuntimeMaps) and matches
+                    // compositeKey format "pkg:biz:notifId" via p2.c.b, then calls u() to remove.
+                    mgr.asResolver().firstMethod {
+                        name = "p"
+                        parameterCount = 3
+                    }.invoke(ticket.notificationId, ticket.packageName, 0)
+                    debugLog("ejected ticket key=${ticket.compositeKey}")
+                }.onFailure {
+                    debugLog("eject failed key=${ticket.compositeKey} err=${it.message}")
+                }
+            }
+        }.onFailure {
+            debugLog("eject schedule failed key=${ticket.compositeKey} err=${it.message}")
+        }
+    }
+
+    private fun ejectBusinessDisplay(packageName: String, business: String) {
+        val mgr = manager ?: return
+        val handler = mainHandler ?: return
+        runCatching {
+            handler.post {
+                runCatching {
+                    // Z1.d0.v(packageName, business) — removes all widgets for a pkg:biz pair.
+                    // Parses compositeKey via p2.c.q and matches pkg+biz fields.
+                    mgr.asResolver().firstMethod {
+                        name = "v"
+                        parameterCount = 2
+                    }.invoke(packageName, business)
+                    debugLog("ejected business display pkg=$packageName biz=$business")
+                }.onFailure {
+                    debugLog("eject business display failed pkg=$packageName biz=$business err=${it.message}")
+                }
+            }
+        }.onFailure {
+            debugLog("eject schedule failed pkg=$packageName biz=$business err=${it.message}")
+        }
+    }
+
     private fun applyRuntimeMaps(force: Boolean) {
         if (!force && !RearWidgetApi.mapsDirty.get()) return
         if (!appliedOnce.compareAndSet(
@@ -854,7 +938,9 @@ class RearWidgetHook : YukiBaseHooker() {
     }
 
     private fun debugLog(message: String) {
-        YLog.debug("[$TAG] $message")
+        if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+            YLog.debug("[$TAG] $message")
+        }
     }
 
     private fun dumpRuntimeMaps(

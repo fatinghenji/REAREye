@@ -18,6 +18,10 @@ data class RearBusinessExtraConfig(
         return values.get(key)?.takeIf { it.isJsonPrimitive }?.asBoolean ?: defaultValue
     }
 
+    fun getShowTimeTipOrDefault(): Boolean {
+        return !getBoolean(RearBusinessExtraConfigFields.HIDE_TIME_TIP, false)
+    }
+
     fun withBoolean(key: String, value: Boolean): RearBusinessExtraConfig {
         val next = values.deepCopy()
         next.addProperty(key, value)
@@ -188,6 +192,12 @@ object RearBusinessExtraConfigRepository {
             }
         }
         return RearBusinessExtraConfig(normalized)
+    }
+
+    fun PrefsManager.getShowTimeTipForBusiness(business: String): Boolean {
+        val normalizedBusiness = business.trim()
+        if (normalizedBusiness.isBlank()) return true
+        return loadAllNormalized(this)[normalizedBusiness]?.getShowTimeTipOrDefault() ?: true
     }
 
     fun PrefsManager.getExtraConfig(business: String) = getConfigForBusiness(this, business)
