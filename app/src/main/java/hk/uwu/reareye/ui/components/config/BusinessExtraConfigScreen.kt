@@ -38,10 +38,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import hk.uwu.reareye.R
-import hk.uwu.reareye.rearwidget.RearBusinessExtraConfig
-import hk.uwu.reareye.rearwidget.RearBusinessExtraConfigEntry
-import hk.uwu.reareye.rearwidget.RearBusinessExtraConfigFields
-import hk.uwu.reareye.rearwidget.RearBusinessExtraConfigRepository
+import hk.uwu.reareye.repository.rearwidget.RearBusinessExtraConfig
+import hk.uwu.reareye.repository.rearwidget.RearBusinessExtraConfigEntry
+import hk.uwu.reareye.repository.rearwidget.RearBusinessExtraConfigFields
+import hk.uwu.reareye.repository.rearwidget.RearBusinessExtraConfigRepository
 import hk.uwu.reareye.ui.components.card.ModuleStyleDeleteAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleIconAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleManagerCard
@@ -424,8 +424,9 @@ fun BusinessExtraConfigScreen(
                 modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
                 color = Color.Transparent,
                 title = stringResource(R.string.rear_widget_business_extra_settings),
+                navigationIconPadding = 12.dp,
                 navigationIcon = {
-                    IconButton(modifier = Modifier.padding(start = 16.dp), onClick = onBack) {
+                    IconButton(onClick = onBack) {
                         Icon(
                             modifier = Modifier.graphicsLayer {
                                 if (layoutDirection == LayoutDirection.Rtl) scaleX = -1f

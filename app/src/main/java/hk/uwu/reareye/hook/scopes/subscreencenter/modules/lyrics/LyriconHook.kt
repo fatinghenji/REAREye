@@ -273,7 +273,29 @@ class LyriconHook : YukiBaseHooker() {
                     if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
                         YLog.debug("onSendText $text")
                     }
-                    if (text != null) updateFallbackLyric(text)
+                    val mode = prefs.getInt(
+                        ConfigKeys.SUPER_LYRIC_DISPLAY_MODE,
+                        ConfigKeys.SUPER_LYRIC_DISPLAY_MODE_DEFAULT
+                    )
+                    if (text != null) {
+                        val originalLines = text.split("\n")
+                        val lyric = when {
+                            LyricParser.DisplayMode.shouldShowTranslation(mode) -> {
+                                if (originalLines.size > 1) {
+                                    originalLines[1]
+                                } else {
+                                    text
+                                }
+                            }
+
+                            else -> {
+                                originalLines[0]
+                            }
+                        }
+                        if (lyric.isNotEmpty()) {
+                            updateFallbackLyric(lyric)
+                        }
+                    }
                 }.onFailure {
                     YLog.error(it)
                 }

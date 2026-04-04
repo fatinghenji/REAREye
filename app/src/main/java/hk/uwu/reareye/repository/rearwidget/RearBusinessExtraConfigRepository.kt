@@ -1,4 +1,4 @@
-package hk.uwu.reareye.rearwidget
+package hk.uwu.reareye.repository.rearwidget
 
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder

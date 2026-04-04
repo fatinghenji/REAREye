@@ -169,6 +169,7 @@ sealed class ConfigType {
     }
 
     enum class ManagerType {
+        REAR_WALLPAPER,
         BUSINESS,
         CARD,
         BUSINESS_EXTRA,

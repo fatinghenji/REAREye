@@ -21,6 +21,11 @@ object ConfigKeys {
     const val HOOK_MUSIC_CONTROLS_FORCE_UPDATE = "enable_music_controls_force_update"
     const val HOOK_VIDEO_LOOPING = "enable_video_looping"
 
+    const val CFG_REAR_WALLPAPER_MANAGER = "cfg_rear_wallpaper_manager"
+    const val REAR_WALLPAPER_SCHEDULE_ENABLED = "rear_wallpaper_schedule_enabled"
+    const val REAR_WALLPAPER_SCHEDULE_DATA = "rear_wallpaper_schedule_data"
+    const val REAR_WALLPAPER_SCHEDULE_NEXT_AT = "rear_wallpaper_schedule_next_at"
+
     const val CFG_REAR_WIDGET_BUSINESS_MANAGER = "cfg_rear_widget_business_manager"
     const val CFG_REAR_WIDGET_CARD_MANAGER = "cfg_rear_widget_card_manager"
     const val CFG_REAR_WIDGET_BUSINESS_EXTRA_MANAGER = "cfg_rear_widget_business_extra_manager"
@@ -194,6 +199,12 @@ val REAREyeConfig = listOf(
                         titleRes = R.string.rear_widget_card_manager,
                         descriptionRes = R.string.rear_widget_card_manager_desc,
                         type = ConfigType.Manager(ConfigType.ManagerType.CARD),
+                    ),
+                    ConfigItem(
+                        key = ConfigKeys.CFG_REAR_WALLPAPER_MANAGER,
+                        titleRes = R.string.rear_wallpaper_manager,
+                        descriptionRes = R.string.rear_wallpaper_manager_desc,
+                        type = ConfigType.Manager(ConfigType.ManagerType.REAR_WALLPAPER),
                     ),
                     ConfigItem(
                         key = ConfigKeys.CFG_REAR_WIDGET_BUSINESS_EXTRA_MANAGER,

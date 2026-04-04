@@ -38,9 +38,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import hk.uwu.reareye.R
-import hk.uwu.reareye.rearwidget.RearCardConfig
-import hk.uwu.reareye.rearwidget.RearWidgetConfigCodec
-import hk.uwu.reareye.rearwidget.RearWidgetManagerRepository
+import hk.uwu.reareye.repository.rearwidget.RearCardConfig
+import hk.uwu.reareye.repository.rearwidget.RearWidgetConfigCodec
+import hk.uwu.reareye.repository.rearwidget.RearWidgetManagerRepository
 import hk.uwu.reareye.ui.components.card.ModuleStyleDeleteAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleIconAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleManagerCard
@@ -181,8 +181,10 @@ fun CardManagerScreen(
                 modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
                 color = Color.Transparent,
                 title = stringResource(R.string.rear_widget_card_manager),
+                navigationIconPadding = 12.dp,
+                actionIconPadding = 12.dp,
                 navigationIcon = {
-                    IconButton(modifier = Modifier.padding(start = 16.dp), onClick = onBack) {
+                    IconButton(onClick = onBack) {
                         Icon(
                             modifier = Modifier.graphicsLayer {
                                 if (layoutDirection == LayoutDirection.Rtl) scaleX = -1f
@@ -194,7 +196,6 @@ fun CardManagerScreen(
                 },
                 actions = {
                     IconButton(
-                        modifier = Modifier.padding(end = 16.dp),
                         onClick = { if (cardsLoaded) openCreateDialog() }) {
                         Icon(imageVector = Icons.Filled.Add, contentDescription = null)
                     }

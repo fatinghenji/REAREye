@@ -707,8 +707,10 @@ fun AppListSelectorScreen(
                 TopAppBar(
                     color = Color.Transparent,
                     title = stringResource(configItem.titleRes),
+                    navigationIconPadding = 12.dp,
+                    actionIconPadding = 12.dp,
                     navigationIcon = {
-                        IconButton(modifier = Modifier.padding(start = 16.dp), onClick = onCancel) {
+                        IconButton(onClick = onCancel) {
                             Icon(
                                 modifier = Modifier.graphicsLayer {
                                     if (layoutDirection == LayoutDirection.Rtl) scaleX = -1f

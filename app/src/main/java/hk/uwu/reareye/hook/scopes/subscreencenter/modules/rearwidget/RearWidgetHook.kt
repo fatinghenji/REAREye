@@ -18,23 +18,28 @@ import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
-import hk.uwu.reareye.actions.RearWidgetApi
-import hk.uwu.reareye.rearwidget.RearBusinessExtraConfigRepository.getShowTimeTipForBusiness
-import hk.uwu.reareye.rearwidget.RearWidgetConfigCodec
+import hk.uwu.reareye.repository.rearwidget.RearBusinessExtraConfigRepository.getShowTimeTipForBusiness
+import hk.uwu.reareye.repository.rearwidget.RearWidgetConfigCodec
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
 import hk.uwu.reareye.widgetapi.IRearWidgetApiConnection
 import hk.uwu.reareye.widgetapi.IRearWidgetApiService
+import hk.uwu.reareye.widgetapi.RearWidgetActiveNotice
 import hk.uwu.reareye.widgetapi.RearWidgetApiContract
 import hk.uwu.reareye.widgetapi.RearWidgetNoticeOptions
 import hk.uwu.reareye.widgetapi.RearWidgetNoticeTicket
-import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 class RearWidgetHook : YukiBaseHooker() {
+
+    private data class OperationOutcome(
+        val injectCompositeKey: String? = null,
+        val ejectTicket: RearWidgetNoticeTicket? = null,
+        val ejectBusiness: Pair<String, String>? = null,
+    )
 
     companion object {
         private const val TAG = "REAREye-RearWidget"
@@ -44,7 +49,6 @@ class RearWidgetHook : YukiBaseHooker() {
 
     private val appliedOnce = AtomicBoolean(false)
     private val startupBootstrapped = AtomicBoolean(false)
-    private val channelBridgeRegistered = AtomicBoolean(false)
     private val bootstrapReceiverRegistered = AtomicBoolean(false)
     private val deployedBlobMetaCache = ConcurrentHashMap<String, String>()
     private val injectedCardSignatureCache = ConcurrentHashMap<String, String>()
@@ -59,12 +63,12 @@ class RearWidgetHook : YukiBaseHooker() {
     override fun onHook() {
         loadApp("com.xiaomi.subscreencenter") {
             debugLog("hook process=$processName")
-            RearWidgetApi.install(packageName)
-            registerChannelBridge()
+            RearWidgetRuntimeStore.install(packageName)
             debugLog("onHook start")
 
             val appRef = "com.xiaomi.subscreencenter.SubScreenCenterApp".toClass().resolve()
             val d0Ref = "Z1.d0".toClass().resolve()
+            val persistenceRef = "H.d".toClass().resolve()
             val p2cRef = "p2.c".toClass().resolve()
 
             appRef.firstMethod {
@@ -74,7 +78,14 @@ class RearWidgetHook : YukiBaseHooker() {
                 hostContext = (args[0] as? Context)?.applicationContext ?: (args[0] as? Context)
                 registerHookBootstrapReceiver()
                 applyRuntimeMaps(force = true)
-                debugLog("attachBaseContext applied runtime maps (defer bootstrap to manager init)")
+                debugLog("attachBaseContext applied runtime maps and waiting for preset release")
+            }
+
+            persistenceRef.firstConstructor {
+                parameterCount = 0
+            }.hook().after {
+                schedulePostPresetBootstrap(instance)
+                debugLog("PersistenceManager created, scheduled custom widget restore after preset release")
             }
 
             d0Ref.firstMethod {
@@ -96,7 +107,8 @@ class RearWidgetHook : YukiBaseHooker() {
                 if (!managerChanged && startupBootstrapped.get()) {
                     applyRuntimeMaps(force = true)
                     patchManagerAppGates(manager)
-                    debugLog("captured manager unchanged, skip bootstrap/reinject")
+                    scheduleInjectAllActiveNotices()
+                    debugLog("captured manager unchanged, skip bootstrap and reinject active notices")
                     return@after
                 }
 
@@ -121,7 +133,7 @@ class RearWidgetHook : YukiBaseHooker() {
             }.hook().after {
                 val pkg = args[0] as? String ?: return@after
                 if (result != null) return@after
-                val biz = RearWidgetApi.fallbackBusiness(pkg) ?: return@after
+                val biz = RearWidgetRuntimeStore.fallbackBusiness(pkg) ?: return@after
                 result = createU0b(biz, 0, 600)
                 debugLog("p2.c.r fallback pkg=$pkg -> business=$biz")
             }
@@ -133,7 +145,7 @@ class RearWidgetHook : YukiBaseHooker() {
                 val pkg = args[0] as? String ?: return@after
                 val biz = args[1] as? String ?: return@after
                 // business 文件映射是全局覆盖语义：只要注册了该 business 文件，就覆盖系统内置路径。
-                val path = RearWidgetApi.getBusinessFile(biz) ?: return@after
+                val path = RearWidgetRuntimeStore.getBusinessFile(biz) ?: return@after
                 result = path
                 debugLog("p2.c.i override path pkg=$pkg biz=$biz path=$path")
             }
@@ -143,7 +155,7 @@ class RearWidgetHook : YukiBaseHooker() {
                 parameterCount = 3
             }.hook().before {
                 val pkg = args[0] as? String ?: return@before
-                if (RearWidgetApi.allPkgBusinesses().containsKey(pkg)) {
+                if (RearWidgetRuntimeStore.allPkgBusinesses().containsKey(pkg)) {
                     result = true
                     debugLog("p2.c.k force pass pkg=$pkg")
                 }
@@ -156,26 +168,10 @@ class RearWidgetHook : YukiBaseHooker() {
                 applyRuntimeMaps(force = false)
                 val out = result as? Bundle ?: return@after
                 val key = out.getString("composite_key") ?: (args.getOrNull(1) as? String)
-                val notice = key?.let { RearWidgetApi.getNotice(it) } ?: return@after
-                out.putAll(RearWidgetApi.buildDecoratedExtras(notice.ticket))
+                val notice = key?.let { RearWidgetRuntimeStore.getNotice(it) } ?: return@after
+                out.putAll(RearWidgetRuntimeStore.buildDecoratedExtras(notice.ticket))
             }
         }
-    }
-
-    fun onChannelMessage(channelKey: String, payload: String): String {
-        val op = RearWidgetApi.opFromChannelKey(channelKey)
-            ?: return JSONObject().put("ok", false)
-                .put("message", "unknown channel key: $channelKey").toString()
-
-        clearInjectCacheByOperation(op, payload)
-
-        if (op == RearWidgetApi.Channel.OP_SYNC) {
-            bootstrapFromPrefsOnInit(force = true)
-        }
-
-        val ack = executeApiOperation(op, payload, applyMaps = true, injectNow = true)
-        debugLog("channel key=$channelKey op=$op ack=$ack")
-        return ack
     }
 
     private val hookBinder = object : IRearWidgetApiService.Stub() {
@@ -185,11 +181,14 @@ class RearWidgetHook : YukiBaseHooker() {
             val normalizedFilePath = filePath?.trim().orEmpty()
             if (normalizedBusiness.isBlank() || normalizedFilePath.isBlank()) return
             dispatchOperation(
-                op = RearWidgetApi.Channel.OP_REGISTER_FILE,
-                payload = RearWidgetApi.buildRegisterBusinessFilePayload(
-                    business = normalizedBusiness,
-                    filePath = normalizedFilePath,
-                ),
+                op = RearWidgetApiContract.Operation.REGISTER_FILE,
+                action = {
+                    val deployedPath =
+                        deployBusinessTemplate(normalizedBusiness, normalizedFilePath)
+                            ?: error("deploy template failed for business=$normalizedBusiness source=$normalizedFilePath")
+                    RearWidgetRuntimeStore.registerBusinessFile(normalizedBusiness, deployedPath)
+                    OperationOutcome()
+                }
             )
         }
 
@@ -198,8 +197,12 @@ class RearWidgetHook : YukiBaseHooker() {
             val normalizedBusiness = business?.trim().orEmpty()
             if (normalizedBusiness.isBlank()) return
             dispatchOperation(
-                op = RearWidgetApi.Channel.OP_UNREGISTER_FILE,
-                payload = RearWidgetApi.buildUnregisterBusinessFilePayload(normalizedBusiness),
+                op = RearWidgetApiContract.Operation.UNREGISTER_FILE,
+                action = {
+                    RearWidgetRuntimeStore.unregisterBusinessFile(normalizedBusiness)
+                    removeDeployedBusinessTemplate(normalizedBusiness)
+                    OperationOutcome()
+                }
             )
         }
 
@@ -215,14 +218,20 @@ class RearWidgetHook : YukiBaseHooker() {
             val normalizedFilePath = filePath?.trim().orEmpty()
             if (normalizedBusiness.isBlank() || normalizedFilePath.isBlank()) return
             dispatchOperation(
-                op = RearWidgetApi.Channel.OP_REGISTER,
-                payload = RearWidgetApi.buildRegisterBusinessPayload(
-                    packageName = normalizeTargetPackage(targetPackage),
-                    business = normalizedBusiness,
-                    filePath = normalizedFilePath,
-                    defaultIndex = defaultIndex,
-                    defaultPriority = defaultPriority,
-                ),
+                op = RearWidgetApiContract.Operation.REGISTER,
+                action = {
+                    val deployedPath =
+                        deployBusinessTemplate(normalizedBusiness, normalizedFilePath)
+                            ?: error("deploy template failed for business=$normalizedBusiness source=$normalizedFilePath")
+                    RearWidgetRuntimeStore.registerBusiness(
+                        packageName = normalizeTargetPackage(targetPackage),
+                        business = normalizedBusiness,
+                        filePath = deployedPath,
+                        defaultIndex = defaultIndex,
+                        defaultPriority = defaultPriority,
+                    )
+                    OperationOutcome()
+                }
             )
         }
 
@@ -236,13 +245,17 @@ class RearWidgetHook : YukiBaseHooker() {
             val normalizedBusiness = business?.trim().orEmpty()
             if (normalizedBusiness.isBlank()) return
             dispatchOperation(
-                op = RearWidgetApi.Channel.OP_REGISTER,
-                payload = RearWidgetApi.buildRegisterBusinessPayloadWithoutFile(
-                    packageName = normalizeTargetPackage(targetPackage),
-                    business = normalizedBusiness,
-                    defaultIndex = defaultIndex,
-                    defaultPriority = defaultPriority,
-                ),
+                op = RearWidgetApiContract.Operation.REGISTER,
+                action = {
+                    val registered = RearWidgetRuntimeStore.registerBusinessWithoutFile(
+                        packageName = normalizeTargetPackage(targetPackage),
+                        business = normalizedBusiness,
+                        defaultIndex = defaultIndex,
+                        defaultPriority = defaultPriority,
+                    )
+                    check(registered) { "filePath not found for business: $normalizedBusiness" }
+                    OperationOutcome()
+                }
             )
         }
 
@@ -250,12 +263,13 @@ class RearWidgetHook : YukiBaseHooker() {
             enforceCallerPermission()
             val normalizedBusiness = business?.trim().orEmpty()
             if (normalizedBusiness.isBlank()) return
+            val packageName = normalizeTargetPackage(targetPackage)
             dispatchOperation(
-                op = RearWidgetApi.Channel.OP_UNREGISTER,
-                payload = RearWidgetApi.buildUnregisterBusinessPayload(
-                    packageName = normalizeTargetPackage(targetPackage),
-                    business = normalizedBusiness,
-                ),
+                op = RearWidgetApiContract.Operation.UNREGISTER,
+                action = {
+                    RearWidgetRuntimeStore.unregisterBusiness(packageName, normalizedBusiness)
+                    OperationOutcome(ejectBusiness = packageName to normalizedBusiness)
+                }
             )
         }
 
@@ -263,12 +277,13 @@ class RearWidgetHook : YukiBaseHooker() {
             enforceCallerPermission()
             val normalizedBusiness = business?.trim().orEmpty()
             if (normalizedBusiness.isBlank()) return
+            val packageName = normalizeTargetPackage(targetPackage)
             dispatchOperation(
-                op = RearWidgetApi.Channel.OP_DISABLE_DISPLAY,
-                payload = RearWidgetApi.buildDisableBusinessDisplayPayload(
-                    packageName = normalizeTargetPackage(targetPackage),
-                    business = normalizedBusiness,
-                ),
+                op = RearWidgetApiContract.Operation.DISABLE_DISPLAY,
+                action = {
+                    RearWidgetRuntimeStore.disableBusinessDisplay(packageName, normalizedBusiness)
+                    OperationOutcome(ejectBusiness = packageName to normalizedBusiness)
+                }
             )
         }
 
@@ -283,21 +298,16 @@ class RearWidgetHook : YukiBaseHooker() {
             if (normalizedBusiness.isBlank()) return
             val noticeOptions = RearWidgetNoticeOptions.fromBundle(options)
             dispatchOperation(
-                op = RearWidgetApi.Channel.OP_POST,
-                payload = RearWidgetApi.buildPostNoticePayload(
-                    packageName = normalizeTargetPackage(targetPackage),
-                    business = normalizedBusiness,
-                    payload = payload ?: Bundle(),
-                    options = RearWidgetApi.NoticeOptions(
-                        sticky = noticeOptions.sticky,
-                        disablePopup = noticeOptions.disablePopup,
-                        forcePopup = noticeOptions.forcePopup,
-                        enableFloat = noticeOptions.enableFloat,
-                        showTimeTip = noticeOptions.showTimeTip,
-                        index = noticeOptions.index,
-                        priority = noticeOptions.priority,
-                    ),
-                ),
+                op = RearWidgetApiContract.Operation.POST,
+                action = {
+                    val ticket = RearWidgetRuntimeStore.postNotice(
+                        packageName = normalizeTargetPackage(targetPackage),
+                        business = normalizedBusiness,
+                        payload = payload ?: Bundle(),
+                        options = noticeOptions,
+                    )
+                    OperationOutcome(injectCompositeKey = ticket.compositeKey)
+                }
             )
         }
 
@@ -312,31 +322,16 @@ class RearWidgetHook : YukiBaseHooker() {
             val noticeTicket = RearWidgetNoticeTicket.fromBundle(ticket) ?: return
             val payloadArg = if (updatePayload) payload ?: Bundle() else null
             val optionsArg = if (updateOptions) {
-                val noticeOptions = RearWidgetNoticeOptions.fromBundle(options)
-                RearWidgetApi.NoticeOptions(
-                    sticky = noticeOptions.sticky,
-                    disablePopup = noticeOptions.disablePopup,
-                    forcePopup = noticeOptions.forcePopup,
-                    enableFloat = noticeOptions.enableFloat,
-                    showTimeTip = noticeOptions.showTimeTip,
-                    index = noticeOptions.index,
-                    priority = noticeOptions.priority,
-                )
+                RearWidgetNoticeOptions.fromBundle(options)
             } else {
                 null
             }
             dispatchOperation(
-                op = RearWidgetApi.Channel.OP_UPDATE,
-                payload = RearWidgetApi.buildUpdateNoticePayload(
-                    ticket = RearWidgetApi.NoticeTicket(
-                        packageName = noticeTicket.packageName,
-                        business = noticeTicket.business,
-                        notificationId = noticeTicket.notificationId,
-                        compositeKey = noticeTicket.compositeKey,
-                    ),
-                    payload = payloadArg,
-                    options = optionsArg,
-                ),
+                op = RearWidgetApiContract.Operation.UPDATE,
+                action = {
+                    RearWidgetRuntimeStore.updateNotice(noticeTicket, payloadArg, optionsArg)
+                    OperationOutcome(injectCompositeKey = noticeTicket.compositeKey)
+                }
             )
         }
 
@@ -344,24 +339,20 @@ class RearWidgetHook : YukiBaseHooker() {
             enforceCallerPermission()
             val noticeTicket = RearWidgetNoticeTicket.fromBundle(ticket) ?: return
             dispatchOperation(
-                op = RearWidgetApi.Channel.OP_REMOVE,
-                payload = RearWidgetApi.buildRemoveNoticePayload(
-                    ticket = RearWidgetApi.NoticeTicket(
-                        packageName = noticeTicket.packageName,
-                        business = noticeTicket.business,
-                        notificationId = noticeTicket.notificationId,
-                        compositeKey = noticeTicket.compositeKey,
-                    ),
-                ),
+                op = RearWidgetApiContract.Operation.REMOVE,
+                action = {
+                    RearWidgetRuntimeStore.removeNotice(noticeTicket)
+                    OperationOutcome(ejectTicket = noticeTicket)
+                }
             )
         }
 
         override fun syncState() {
             enforceCallerPermission()
-            dispatchOperation(
-                op = RearWidgetApi.Channel.OP_SYNC,
-                payload = RearWidgetApi.buildSyncPayload(),
-            )
+            bootstrapFromPrefsOnInit(force = true)
+            applyRuntimeMaps(force = true)
+            patchManagerAppGates(manager)
+            scheduleInjectAllActiveNotices()
         }
     }
 
@@ -410,11 +401,14 @@ class RearWidgetHook : YukiBaseHooker() {
         }
     }
 
-    private fun dispatchOperation(op: String, payload: String) {
-        val ack = executeApiOperation(op, payload, applyMaps = true, injectNow = true)
-        if (!isAckOk(ack)) {
-            throw IllegalStateException("rear widget op failed: $op ack=$ack")
-        }
+    private fun dispatchOperation(op: String, action: () -> OperationOutcome) {
+        val outcome = action()
+        clearInjectCache(op, outcome)
+        applyRuntimeMaps(force = true)
+        patchManagerAppGates(manager)
+        outcome.injectCompositeKey?.let { injectByCompositeKey(it) }
+        outcome.ejectTicket?.let { ejectByTicket(it) }
+        outcome.ejectBusiness?.let { (pkg, biz) -> ejectBusinessDisplay(pkg, biz) }
     }
 
     private fun enforceCallerPermission() {
@@ -438,83 +432,7 @@ class RearWidgetHook : YukiBaseHooker() {
 
     private fun normalizeTargetPackage(targetPackage: String?): String {
         return targetPackage?.trim().takeUnless { it.isNullOrBlank() }
-            ?: RearWidgetApi.defaultPackageName
-    }
-
-    private fun executeApiOperation(
-        op: String,
-        payload: String,
-        applyMaps: Boolean,
-        injectNow: Boolean,
-    ): String {
-        val normalizedPayload = runCatching {
-            normalizePayloadForHook(op, payload)
-        }.getOrElse {
-            return JSONObject()
-                .put("ok", false)
-                .put("op", op)
-                .put("message", it.message ?: "normalize payload failed")
-                .toString()
-        }
-        val ack = RearWidgetApi.handleChannelCommand(op, normalizedPayload)
-        if (applyMaps) {
-            applyRuntimeMaps(force = true)
-            patchManagerAppGates(manager)
-        }
-        if (!injectNow) return ack
-
-        when (op) {
-            RearWidgetApi.Channel.OP_POST -> {
-                val key = runCatching {
-                    JSONObject(ack).optJSONObject("data")?.optString("compositeKey")
-                }.getOrNull()
-                if (!key.isNullOrBlank()) injectByCompositeKey(key)
-            }
-
-            RearWidgetApi.Channel.OP_UPDATE -> {
-                val key = runCatching {
-                    JSONObject(normalizedPayload).optJSONObject("ticket")?.optString("compositeKey")
-                }.getOrNull()
-                if (!key.isNullOrBlank()) injectByCompositeKey(key)
-            }
-
-            RearWidgetApi.Channel.OP_REMOVE -> {
-                val ticket = runCatching {
-                    val ticketObj = JSONObject(normalizedPayload).getJSONObject("ticket")
-                    RearWidgetApi.NoticeTicket(
-                        packageName = ticketObj.getString("packageName"),
-                        business = ticketObj.getString("business"),
-                        notificationId = ticketObj.getInt("notificationId"),
-                        compositeKey = ticketObj.getString("compositeKey"),
-                    )
-                }.getOrNull()
-                if (ticket != null) ejectByTicket(ticket)
-            }
-
-            RearWidgetApi.Channel.OP_DISABLE_DISPLAY -> {
-                runCatching {
-                    val obj = JSONObject(normalizedPayload)
-                    val pkg = obj.optString("packageName").trim()
-                        .takeUnless { it.isBlank() } ?: RearWidgetApi.defaultPackageName
-                    val biz = obj.getString("business").trim()
-                    if (biz.isNotBlank()) ejectBusinessDisplay(pkg, biz)
-                }
-            }
-
-            RearWidgetApi.Channel.OP_UNREGISTER -> {
-                // Safety net: eject any remaining widgets for the unregistered business.
-                // In normal usage disableBusinessDisplay precedes unregisterBusiness, but this
-                // ensures the manager is clean even if called in isolation.
-                runCatching {
-                    val obj = JSONObject(normalizedPayload)
-                    val pkg = obj.optString("packageName").trim()
-                        .takeUnless { it.isBlank() } ?: RearWidgetApi.defaultPackageName
-                    val biz = obj.getString("business").trim()
-                    if (biz.isNotBlank()) ejectBusinessDisplay(pkg, biz)
-                }
-            }
-        }
-        return ack
+            ?: RearWidgetRuntimeStore.defaultPackageName
     }
 
     private fun bootstrapFromPrefsOnInit(force: Boolean = false): Boolean {
@@ -537,22 +455,14 @@ class RearWidgetHook : YukiBaseHooker() {
         }
 
         val businessPathMap = LinkedHashMap<String, String>()
-        var allOk = true
         businesses.forEach { item ->
-            businessPathMap[item.business] = item.filePath
-            val ack = executeApiOperation(
-                op = RearWidgetApi.Channel.OP_REGISTER_FILE,
-                payload = RearWidgetApi.buildRegisterBusinessFilePayload(
-                    item.business,
-                    item.filePath
-                ),
-                applyMaps = false,
-                injectNow = false,
-            )
-            if (!isAckOk(ack)) {
-                allOk = false
-                debugLog("bootstrap register_file failed business=${item.business} ack=$ack")
-            }
+            val deployedPath = deployBusinessTemplate(item.business, item.filePath)
+                ?: run {
+                    debugLog("bootstrap register_file failed business=${item.business} deploy failed")
+                    return false
+                }
+            businessPathMap[item.business] = deployedPath
+            RearWidgetRuntimeStore.registerBusinessFile(item.business, deployedPath)
         }
 
         val uniquePairs = LinkedHashSet<Pair<String, String>>()
@@ -560,45 +470,28 @@ class RearWidgetHook : YukiBaseHooker() {
 
         // 重放前先清掉目标业务的旧展示，保证重复 bootstrap 不会叠加出重复卡片。
         uniquePairs.forEach { (pkg, biz) ->
-            val ack = executeApiOperation(
-                op = RearWidgetApi.Channel.OP_DISABLE_DISPLAY,
-                payload = RearWidgetApi.buildDisableBusinessDisplayPayload(
-                    business = biz,
-                    packageName = pkg,
-                ),
-                applyMaps = false,
-                injectNow = false,
-            )
-            if (!isAckOk(ack)) {
-                allOk = false
-                debugLog("bootstrap disable_display failed pkg=$pkg biz=$biz ack=$ack")
-            }
+            RearWidgetRuntimeStore.disableBusinessDisplay(pkg, biz)
         }
 
         uniquePairs.forEach { (pkg, biz) ->
-            val payload = businessPathMap[biz]?.let { path ->
-                RearWidgetApi.buildRegisterBusinessPayload(
+            val ok = businessPathMap[biz]?.let { path ->
+                RearWidgetRuntimeStore.registerBusiness(
+                    packageName = pkg,
                     business = biz,
                     filePath = path,
-                    packageName = pkg,
                     defaultIndex = 0,
                     defaultPriority = 500,
                 )
-            } ?: RearWidgetApi.buildRegisterBusinessPayloadWithoutFile(
-                business = biz,
+                true
+            } ?: RearWidgetRuntimeStore.registerBusinessWithoutFile(
                 packageName = pkg,
+                business = biz,
                 defaultIndex = 0,
                 defaultPriority = 500,
             )
-            val ack = executeApiOperation(
-                op = RearWidgetApi.Channel.OP_REGISTER,
-                payload = payload,
-                applyMaps = false,
-                injectNow = false,
-            )
-            if (!isAckOk(ack)) {
-                allOk = false
-                debugLog("bootstrap register failed pkg=$pkg biz=$biz ack=$ack")
+            if (!ok) {
+                debugLog("bootstrap register failed pkg=$pkg biz=$biz")
+                return false
             }
         }
 
@@ -608,37 +501,31 @@ class RearWidgetHook : YukiBaseHooker() {
                 putString("business", card.business)
                 putString("__rear_card_id__", card.id)
             }
-            val options = RearWidgetApi.NoticeOptions(
+            val options = RearWidgetNoticeOptions(
                 sticky = true,
                 disablePopup = true,
                 showTimeTip = prefsManager.getShowTimeTipForBusiness(card.business),
                 index = index,
                 priority = card.priority,
             )
-            val ack = executeApiOperation(
-                op = RearWidgetApi.Channel.OP_POST,
-                payload = RearWidgetApi.buildPostNoticePayload(
+            runCatching {
+                RearWidgetRuntimeStore.postNotice(
                     business = card.business,
                     packageName = card.packageName,
                     payload = payload,
                     options = options,
-                ),
-                applyMaps = false,
-                injectNow = false,
-            )
-            if (!isAckOk(ack)) {
-                allOk = false
-                debugLog("bootstrap post failed pkg=${card.packageName} biz=${card.business} cardId=${card.id} ack=$ack")
+                )
+            }.onFailure {
+                debugLog("bootstrap post failed pkg=${card.packageName} biz=${card.business} cardId=${card.id} err=${it.message}")
+                return false
             }
         }
 
         applyRuntimeMaps(force = true)
-        if (allOk) {
-            startupBootstrapped.set(true)
-            bootstrapRetryCount.set(0)
-        }
-        debugLog("bootstrap init replay businesses=${businesses.size} enabledCards=${cards.size} force=$force ok=$allOk")
-        return allOk
+        startupBootstrapped.set(true)
+        bootstrapRetryCount.set(0)
+        debugLog("bootstrap init replay businesses=${businesses.size} enabledCards=${cards.size} force=$force ok=true")
+        return true
     }
 
     private fun scheduleBootstrapRetry() {
@@ -658,12 +545,8 @@ class RearWidgetHook : YukiBaseHooker() {
         debugLog("bootstrap retry scheduled count=$retry delay=${delay}ms")
     }
 
-    private fun isAckOk(ack: String): Boolean {
-        return runCatching { JSONObject(ack).optBoolean("ok", false) }.getOrDefault(false)
-    }
-
     private fun injectAllActiveNotices() {
-        RearWidgetApi.listNotices().forEach { notice ->
+        RearWidgetRuntimeStore.listNotices().forEach { notice ->
             injectByCompositeKey(notice.ticket.compositeKey, true)
         }
     }
@@ -681,52 +564,25 @@ class RearWidgetHook : YukiBaseHooker() {
         }, 2800L)
     }
 
-    private fun normalizePayloadForHook(op: String, payload: String): String {
-        val obj = runCatching { JSONObject(payload) }.getOrNull() ?: return payload
+    private fun schedulePostPresetBootstrap(persistenceManager: Any?) {
+        val handler = runCatching {
+            persistenceManager?.asResolver()?.firstField { name = "c" }?.get() as? Handler
+        }.getOrNull() ?: return
 
-        if (op == RearWidgetApi.Channel.OP_REGISTER_FILE || op == RearWidgetApi.Channel.OP_REGISTER) {
-            val business = obj.optString("business").trim()
-            val filePath = obj.optString("filePath").trim()
-            if (business.isNotBlank() && filePath.isNotBlank()) {
-                val deployedPath = deployBusinessTemplate(business, filePath)
-                    ?: error("deploy template failed for business=$business source=$filePath")
-                obj.put("filePath", deployedPath)
+        handler.post {
+            runCatching {
+                bootstrapFromPrefsOnInit(force = true)
+                applyRuntimeMaps(force = true)
+                patchManagerAppGates(manager)
+                debugLog("restored custom widget templates after preset release")
+            }.onFailure {
+                debugLog("post-preset bootstrap failed err=${it.message}")
             }
         }
-
-        if (op == RearWidgetApi.Channel.OP_UNREGISTER_FILE) {
-            val business = obj.optString("business").trim()
-            if (business.isNotBlank()) {
-                removeDeployedBusinessTemplate(business)
-            }
-        }
-        return obj.toString()
-    }
-
-    private fun registerChannelBridge() {
-        if (!channelBridgeRegistered.compareAndSet(false, true)) return
-        val keys = listOf(
-            RearWidgetApi.Channel.KEY_REGISTER_BUSINESS_FILE,
-            RearWidgetApi.Channel.KEY_UNREGISTER_BUSINESS_FILE,
-            RearWidgetApi.Channel.KEY_REGISTER_BUSINESS,
-            RearWidgetApi.Channel.KEY_UNREGISTER_BUSINESS,
-            RearWidgetApi.Channel.KEY_DISABLE_BUSINESS_DISPLAY,
-            RearWidgetApi.Channel.KEY_POST_NOTICE,
-            RearWidgetApi.Channel.KEY_UPDATE_NOTICE,
-            RearWidgetApi.Channel.KEY_REMOVE_NOTICE,
-            RearWidgetApi.Channel.KEY_SYNC_STATE,
-        )
-        keys.forEach { key ->
-            dataChannel.wait<String>(key) { payload ->
-                val ack = onChannelMessage(key, payload)
-                dataChannel.put(RearWidgetApi.Channel.KEY_ACK, ack)
-            }
-        }
-        debugLog("registered dataChannel bridge keys=${keys.joinToString()}")
     }
 
     private fun injectByCompositeKey(compositeKey: String, force: Boolean = false) {
-        val notice = RearWidgetApi.getNotice(compositeKey) ?: return
+        val notice = RearWidgetRuntimeStore.getNotice(compositeKey) ?: return
         val mgr = manager ?: return
         val handler = mainHandler ?: return
 
@@ -751,7 +607,7 @@ class RearWidgetHook : YukiBaseHooker() {
         }
 
         runCatching {
-            val extras = RearWidgetApi.buildDecoratedExtras(notice.ticket)
+            val extras = RearWidgetRuntimeStore.buildDecoratedExtras(notice.ticket)
             val runnable = "Z1.m".toClass().resolve().firstConstructor {
                 parameterCount = 5
             }.create(
@@ -769,7 +625,7 @@ class RearWidgetHook : YukiBaseHooker() {
         }
     }
 
-    private fun ejectByTicket(ticket: RearWidgetApi.NoticeTicket) {
+    private fun ejectByTicket(ticket: RearWidgetNoticeTicket) {
         val mgr = manager ?: return
         val handler = mainHandler ?: return
         runCatching {
@@ -795,6 +651,9 @@ class RearWidgetHook : YukiBaseHooker() {
     private fun ejectBusinessDisplay(packageName: String, business: String) {
         val mgr = manager ?: return
         val handler = mainHandler ?: return
+        val prefix = "$packageName:$business:"
+        injectedCardSignatureCache.keys.removeIf { it.startsWith(prefix) }
+        injectedCompositeAt.keys.removeIf { it.startsWith(prefix) }
         runCatching {
             handler.post {
                 runCatching {
@@ -815,16 +674,16 @@ class RearWidgetHook : YukiBaseHooker() {
     }
 
     private fun applyRuntimeMaps(force: Boolean) {
-        if (!force && !RearWidgetApi.mapsDirty.get()) return
+        if (!force && !RearWidgetRuntimeStore.mapsDirty.get()) return
         if (!appliedOnce.compareAndSet(
                 false,
                 true
-            ) && !force && !RearWidgetApi.mapsDirty.get()
+            ) && !force && !RearWidgetRuntimeStore.mapsDirty.get()
         ) return
 
-        val pkgBiz = RearWidgetApi.allPkgBusinesses()
-        val pkgPrimary = RearWidgetApi.primaryBusinessByPkg()
-        val bizPath = RearWidgetApi.allBusinessPath()
+        val pkgBiz = RearWidgetRuntimeStore.allPkgBusinesses()
+        val pkgPrimary = RearWidgetRuntimeStore.primaryBusinessByPkg()
+        val bizPath = RearWidgetRuntimeStore.allBusinessPath()
 
         replaceStaticMap("p2.a", "a") { map ->
             pkgPrimary.forEach { (pkg, biz) -> if (biz.isNotBlank()) map[pkg] = biz }
@@ -842,13 +701,13 @@ class RearWidgetHook : YukiBaseHooker() {
             bizPath.keys.forEach { biz -> if (!list.contains(biz)) list.add(biz) }
         }
 
-        RearWidgetApi.mapsDirty.set(false)
+        RearWidgetRuntimeStore.mapsDirty.set(false)
         dumpRuntimeMaps(bizPath)
     }
 
     private fun patchManagerAppGates(target: Any?) {
         val instance = target ?: return
-        val pkgBiz = RearWidgetApi.allPkgBusinesses()
+        val pkgBiz = RearWidgetRuntimeStore.allPkgBusinesses()
         if (pkgBiz.isEmpty()) return
 
         runCatching {
@@ -1066,27 +925,24 @@ class RearWidgetHook : YukiBaseHooker() {
         file.parentFile?.setExecutable(true, false)
     }
 
-    private fun clearInjectCacheByOperation(op: String, payload: String) {
+    private fun clearInjectCache(op: String, outcome: OperationOutcome) {
         when (op) {
-            RearWidgetApi.Channel.OP_DISABLE_DISPLAY,
-            RearWidgetApi.Channel.OP_UNREGISTER -> {
-                val obj = runCatching { JSONObject(payload) }.getOrNull() ?: return
-                val pkg = obj.optString("packageName").trim()
-                val biz = obj.optString("business").trim()
-                if (pkg.isBlank() || biz.isBlank()) return
+            RearWidgetApiContract.Operation.DISABLE_DISPLAY,
+            RearWidgetApiContract.Operation.UNREGISTER -> {
+                val (pkg, biz) = outcome.ejectBusiness ?: return
                 val prefix = "$pkg:$biz:"
                 injectedCardSignatureCache.keys.removeIf { it.startsWith(prefix) }
+                injectedCompositeAt.keys.removeIf { it.startsWith(prefix) }
             }
 
-            RearWidgetApi.Channel.OP_REMOVE -> {
-                val obj = runCatching { JSONObject(payload) }.getOrNull() ?: return
-                val composite = obj.optJSONObject("ticket")?.optString("compositeKey").orEmpty()
+            RearWidgetApiContract.Operation.REMOVE -> {
+                val composite = outcome.ejectTicket?.compositeKey.orEmpty()
                 if (composite.isNotBlank()) injectedCompositeAt.remove(composite)
             }
         }
     }
 
-    private fun buildInjectSignature(notice: RearWidgetApi.ActiveNotice): String {
+    private fun buildInjectSignature(notice: RearWidgetActiveNotice): String {
         val payload = notice.payload
         return buildString {
             append(notice.ticket.compositeKey)

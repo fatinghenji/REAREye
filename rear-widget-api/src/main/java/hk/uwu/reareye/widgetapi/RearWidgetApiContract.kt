@@ -11,6 +11,17 @@ object RearWidgetApiContract {
         const val FORCE_SYNC = "forceSync"
     }
 
+    object Operation {
+        const val REGISTER_FILE = "register_file"
+        const val UNREGISTER_FILE = "unregister_file"
+        const val REGISTER = "register"
+        const val UNREGISTER = "unregister"
+        const val DISABLE_DISPLAY = "disable_display"
+        const val POST = "post"
+        const val UPDATE = "update"
+        const val REMOVE = "remove"
+    }
+
     object BundleKeys {
         const val PACKAGE_NAME = "packageName"
         const val BUSINESS = "business"

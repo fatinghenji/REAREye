@@ -18,6 +18,8 @@ class UnmuteVideoWallpaperHook : YukiBaseHooker() {
             }.hook().replaceAny {
                 val input = args(0).cast<File>()!!
                 val output = args(1).cast<File>()!!
+                YLog.debug("Input path: ${input.absolutePath} length: ${input.length() / 1024.0}")
+                YLog.debug("Output path: $output")
                 if (input.absolutePath.contains("rear")) {
                     YLog.debug("Patch rear screen video wallpaper")
                     Files.copy(input.toPath(), output.toPath(), StandardCopyOption.REPLACE_EXISTING)

@@ -1,4 +1,4 @@
-package hk.uwu.reareye.rearwidget
+package hk.uwu.reareye.repository.rearwidget
 
 import org.json.JSONArray
 import org.json.JSONObject

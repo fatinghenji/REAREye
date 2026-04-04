@@ -15,6 +15,13 @@ repositories {
 }
 
 dependencies {
-    implementation("hk.uwu.reareye:rear-widget-api:1.0.0")
+    implementation("hk.uwu.reareye:rear-widget-api:1.0.1")
 }
+```
+
+## 注册权限
+
+```xml
+
+<uses-permission android:name="hk.uwu.reareye.permission.ACCESS_REAR_WIDGET_API" />
 ```

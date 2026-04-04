@@ -2,6 +2,14 @@ package hk.uwu.reareye.widgetapi
 
 import android.os.Bundle
 
+data class RearWidgetBusinessSpec(
+    val packageName: String,
+    val business: String,
+    val filePath: String,
+    val defaultIndex: Int = 0,
+    val defaultPriority: Int = 500,
+)
+
 data class RearWidgetNoticeOptions(
     val sticky: Boolean = false,
     val disablePopup: Boolean = true,
@@ -86,3 +94,10 @@ data class RearWidgetNoticeTicket(
         }
     }
 }
+
+data class RearWidgetActiveNotice(
+    val ticket: RearWidgetNoticeTicket,
+    val payload: Bundle,
+    val options: RearWidgetNoticeOptions,
+    val createdAt: Long = System.currentTimeMillis(),
+)

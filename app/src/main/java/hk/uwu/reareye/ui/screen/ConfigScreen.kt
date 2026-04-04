@@ -37,6 +37,7 @@ import hk.uwu.reareye.ui.components.config.BusinessExtraConfigManagerScreen
 import hk.uwu.reareye.ui.components.config.BusinessManagerScreen
 import hk.uwu.reareye.ui.components.config.CardManagerScreen
 import hk.uwu.reareye.ui.components.config.ConfigNodeRow
+import hk.uwu.reareye.ui.components.config.RearWallpaperManagerScreen
 import hk.uwu.reareye.ui.config.ConfigCategory
 import hk.uwu.reareye.ui.config.ConfigGroup
 import hk.uwu.reareye.ui.config.ConfigItem
@@ -65,6 +66,7 @@ private sealed interface ConfigRoute {
     data object Root : ConfigRoute
     data class Category(val category: ConfigCategory) : ConfigRoute
     data class AppList(val item: ConfigItem) : ConfigRoute
+    data object RearWallpaperManager : ConfigRoute
     data object BusinessManager : ConfigRoute
     data object CardManager : ConfigRoute
     data object BusinessExtraManager : ConfigRoute
@@ -85,6 +87,7 @@ fun ConfigScreen(
     var routeStack by remember { mutableStateOf(listOf<ConfigRoute>(ConfigRoute.Root)) }
     val currentRoute = routeStack.last()
     val isOverlayMode = currentRoute is ConfigRoute.AppList ||
+            currentRoute is ConfigRoute.RearWallpaperManager ||
             currentRoute is ConfigRoute.BusinessManager ||
             currentRoute is ConfigRoute.CardManager ||
             currentRoute is ConfigRoute.BusinessExtraManager
@@ -113,6 +116,7 @@ fun ConfigScreen(
                 routeStack = newStack
                 delay(OVERLAY_ROUTE_EXIT_DURATION_MS)
                 if (newStack.last() !is ConfigRoute.AppList &&
+                    newStack.last() !is ConfigRoute.RearWallpaperManager &&
                     newStack.last() !is ConfigRoute.BusinessManager &&
                     newStack.last() !is ConfigRoute.CardManager &&
                     newStack.last() !is ConfigRoute.BusinessExtraManager
@@ -139,6 +143,7 @@ fun ConfigScreen(
             routeStack = newStack
             delay(OVERLAY_ROUTE_EXIT_DURATION_MS)
             if (newStack.last() !is ConfigRoute.AppList &&
+                newStack.last() !is ConfigRoute.RearWallpaperManager &&
                 newStack.last() !is ConfigRoute.BusinessManager &&
                 newStack.last() !is ConfigRoute.CardManager &&
                 newStack.last() !is ConfigRoute.BusinessExtraManager
@@ -221,6 +226,10 @@ fun ConfigScreen(
                     },
                     onOpenManager = { item ->
                         when ((item.type as? ConfigType.Manager)?.managerType) {
+                            ConfigType.ManagerType.REAR_WALLPAPER -> {
+                                openOverlayRoute(ConfigRoute.RearWallpaperManager)
+                            }
+
                             ConfigType.ManagerType.BUSINESS -> {
                                 openOverlayRoute(ConfigRoute.BusinessManager)
                             }
@@ -256,6 +265,10 @@ fun ConfigScreen(
                     },
                     onOpenManager = { item ->
                         when ((item.type as? ConfigType.Manager)?.managerType) {
+                            ConfigType.ManagerType.REAR_WALLPAPER -> {
+                                openOverlayRoute(ConfigRoute.RearWallpaperManager)
+                            }
+
                             ConfigType.ManagerType.BUSINESS -> {
                                 openOverlayRoute(ConfigRoute.BusinessManager)
                             }
@@ -279,6 +292,11 @@ fun ConfigScreen(
                     prefsManager = prefsManager,
                     onCancel = { closeOverlayRoute() },
                     onSave = { closeOverlayRoute() }
+                )
+
+                ConfigRoute.RearWallpaperManager -> RearWallpaperManagerScreen(
+                    prefsManager = prefsManager,
+                    onBack = { closeOverlayRoute() },
                 )
 
                 ConfigRoute.BusinessManager -> BusinessManagerScreen(

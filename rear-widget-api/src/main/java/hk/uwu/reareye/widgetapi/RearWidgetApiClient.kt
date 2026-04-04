@@ -7,19 +7,32 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 class RearWidgetApiClient(
-    private val context: Context,
     private val hookHostPackage: String = RearWidgetApiContract.HOOK_HOST_PACKAGE,
 ) {
     @Volatile
     private var remote: IRearWidgetApiService? = null
 
-    fun bind(onConnected: (() -> Unit)? = null, onDisconnected: (() -> Unit)? = null): Boolean {
-        // Hook binder has no disconnect callback; keep signature for API compatibility.
-        onDisconnected
+    fun bind(
+        context: Context,
+        onConnected: (() -> Unit)? = null
+    ): Boolean {
         remote?.let {
             onConnected?.invoke()
             return true
         }
+
+        val appContext = context.applicationContext
+        if (bindOnce(appContext, forceSync = false, timeoutMs = 1500L) ||
+            bindOnce(appContext, forceSync = true, timeoutMs = 2500L)
+        ) {
+            onConnected?.invoke()
+            return true
+        }
+        return false
+    }
+
+    private fun bindOnce(context: Context, forceSync: Boolean, timeoutMs: Long): Boolean {
+        remote?.let { return true }
 
         val latch = CountDownLatch(1)
         val callback = object : IRearWidgetApiConnection.Stub() {
@@ -29,14 +42,9 @@ class RearWidgetApiClient(
             }
         }
 
-        requestHookServiceBootstrap(callback = callback, forceSync = false)
-        val connected = runCatching { latch.await(1500L, TimeUnit.MILLISECONDS) }
+        requestHookServiceBootstrap(context = context, callback = callback, forceSync = forceSync)
+        return runCatching { latch.await(timeoutMs, TimeUnit.MILLISECONDS) }
             .getOrDefault(false) && remote != null
-        if (connected) {
-            onConnected?.invoke()
-            return true
-        }
-        return false
     }
 
     fun unbind() {
@@ -127,6 +135,7 @@ class RearWidgetApiClient(
     }
 
     private fun requestHookServiceBootstrap(
+        context: Context,
         callback: IRearWidgetApiConnection,
         forceSync: Boolean,
     ) {

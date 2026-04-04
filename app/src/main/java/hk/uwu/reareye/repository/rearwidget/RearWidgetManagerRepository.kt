@@ -1,23 +1,25 @@
-package hk.uwu.reareye.rearwidget
+package hk.uwu.reareye.repository.rearwidget
 
 import android.content.Context
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.util.Base64
-import com.highcapable.yukihookapi.hook.factory.dataChannel
-import hk.uwu.reareye.actions.RearWidgetApi
-import hk.uwu.reareye.rearwidget.RearBusinessExtraConfigRepository.getShowTimeTipForBusiness
+import hk.uwu.reareye.repository.rearwidget.RearBusinessExtraConfigRepository.getShowTimeTipForBusiness
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.PrefsManager
 import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
+import hk.uwu.reareye.widgetapi.RearWidgetApiClient
+import hk.uwu.reareye.widgetapi.RearWidgetNoticeOptions
 import java.io.File
 import java.security.MessageDigest
 
 object RearWidgetManagerRepository {
 
-    private const val TARGET_HOOK_PACKAGE = "com.xiaomi.subscreencenter"
     private const val BUSINESS_TEMPLATE_DIR = "rear_widget_business"
+
+    @Volatile
+    private var remoteClient: RearWidgetApiClient? = null
 
     fun loadBusinesses(prefsManager: PrefsManager): List<RearBusinessConfig> {
         val raw = prefsManager.getString(
@@ -151,19 +153,11 @@ object RearWidgetManagerRepository {
 
         val staleBusinesses = oldByBusiness.keys - newByBusiness.keys
         staleBusinesses.forEach { business ->
-            sendChannel(
-                context,
-                RearWidgetApi.Channel.KEY_UNREGISTER_BUSINESS_FILE,
-                RearWidgetApi.buildUnregisterBusinessFilePayload(business),
-            )
+            unregisterBusinessFile(context, business)
         }
 
         newBusinesses.forEach { item ->
-            sendChannel(
-                context,
-                RearWidgetApi.Channel.KEY_REGISTER_BUSINESS_FILE,
-                RearWidgetApi.buildRegisterBusinessFilePayload(item.business, item.filePath),
-            )
+            registerBusinessFile(context, item.business, item.filePath)
         }
     }
 
@@ -185,11 +179,7 @@ object RearWidgetManagerRepository {
 
         // 先清空受影响业务显示，避免残留旧卡片。
         allPairs.forEach { (pkg, biz) ->
-            sendChannel(
-                context,
-                RearWidgetApi.Channel.KEY_DISABLE_BUSINESS_DISPLAY,
-                RearWidgetApi.buildDisableBusinessDisplayPayload(business = biz, packageName = pkg),
-            )
+            disableBusinessDisplay(context, pkg, biz)
         }
 
         val enabledCards = newCards.filter { it.enabled }
@@ -198,40 +188,24 @@ object RearWidgetManagerRepository {
         enabledPairs.forEach { (pkg, biz) ->
             val filePath = businessPathByName[biz]
             if (!filePath.isNullOrBlank()) {
-                sendChannel(
-                    context,
-                    RearWidgetApi.Channel.KEY_REGISTER_BUSINESS,
-                    RearWidgetApi.buildRegisterBusinessPayload(
-                        business = biz,
-                        filePath = filePath,
-                        packageName = pkg,
-                        defaultIndex = 0,
-                        defaultPriority = 500,
-                    ),
+                registerBusiness(
+                    context = context,
+                    packageName = pkg,
+                    business = biz,
+                    filePath = filePath,
                 )
             } else {
-                sendChannel(
-                    context,
-                    RearWidgetApi.Channel.KEY_REGISTER_BUSINESS,
-                    RearWidgetApi.buildRegisterBusinessPayloadWithoutFile(
-                        business = biz,
-                        packageName = pkg,
-                        defaultIndex = 0,
-                        defaultPriority = 500,
-                    ),
+                registerBusiness(
+                    context = context,
+                    packageName = pkg,
+                    business = biz,
+                    filePath = null,
                 )
             }
         }
 
         (allPairs - enabledPairs).forEach { (pkg, biz) ->
-            sendChannel(
-                context,
-                RearWidgetApi.Channel.KEY_UNREGISTER_BUSINESS,
-                RearWidgetApi.buildUnregisterBusinessPayload(
-                    business = biz,
-                    packageName = pkg,
-                ),
-            )
+            unregisterBusiness(context, pkg, biz)
         }
 
         enabledCards.forEachIndexed { index, card ->
@@ -240,22 +214,19 @@ object RearWidgetManagerRepository {
                 putString("business", card.business)
                 putString("__rear_card_id__", card.id)
             }
-            val options = RearWidgetApi.NoticeOptions(
+            val options = RearWidgetNoticeOptions(
                 sticky = true,
                 disablePopup = true,
                 showTimeTip = prefsManager.getShowTimeTipForBusiness(card.business),
                 index = index,
                 priority = card.priority,
             )
-            sendChannel(
-                context,
-                RearWidgetApi.Channel.KEY_POST_NOTICE,
-                RearWidgetApi.buildPostNoticePayload(
-                    business = card.business,
-                    packageName = card.packageName,
-                    payload = payload,
-                    options = options,
-                ),
+            postNotice(
+                context = context,
+                packageName = card.packageName,
+                business = card.business,
+                payload = payload,
+                options = options,
             )
         }
     }
@@ -319,23 +290,26 @@ object RearWidgetManagerRepository {
         business: String,
         filePath: String?,
     ) {
-        val payload = if (!filePath.isNullOrBlank()) {
-            RearWidgetApi.buildRegisterBusinessPayload(
-                business = business,
-                filePath = filePath,
-                packageName = packageName,
-                defaultIndex = 0,
-                defaultPriority = 500,
-            )
-        } else {
-            RearWidgetApi.buildRegisterBusinessPayloadWithoutFile(
-                business = business,
-                packageName = packageName,
-                defaultIndex = 0,
-                defaultPriority = 500,
-            )
+        runCatching {
+            withApiClient(context) { client ->
+                if (!filePath.isNullOrBlank()) {
+                    client.registerBusiness(
+                        packageName,
+                        business,
+                        filePath,
+                        0,
+                        500,
+                    )
+                } else {
+                    client.registerBusinessWithoutFile(
+                        packageName,
+                        business,
+                        0,
+                        500,
+                    )
+                }
+            }
         }
-        sendChannel(context, RearWidgetApi.Channel.KEY_REGISTER_BUSINESS, payload)
     }
 
     private fun disableBusinessDisplay(
@@ -343,14 +317,11 @@ object RearWidgetManagerRepository {
         packageName: String,
         business: String,
     ) {
-        sendChannel(
-            context,
-            RearWidgetApi.Channel.KEY_DISABLE_BUSINESS_DISPLAY,
-            RearWidgetApi.buildDisableBusinessDisplayPayload(
-                business = business,
-                packageName = packageName,
-            ),
-        )
+        runCatching {
+            withApiClient(context) { client ->
+                client.disableBusinessDisplay(packageName, business)
+            }
+        }
     }
 
     private fun unregisterBusiness(
@@ -358,14 +329,11 @@ object RearWidgetManagerRepository {
         packageName: String,
         business: String,
     ) {
-        sendChannel(
-            context,
-            RearWidgetApi.Channel.KEY_UNREGISTER_BUSINESS,
-            RearWidgetApi.buildUnregisterBusinessPayload(
-                business = business,
-                packageName = packageName,
-            ),
-        )
+        runCatching {
+            withApiClient(context) { client ->
+                client.unregisterBusiness(packageName, business)
+            }
+        }
     }
 
     private fun postCard(
@@ -379,29 +347,65 @@ object RearWidgetManagerRepository {
             putString("business", card.business)
             putString("__rear_card_id__", card.id)
         }
-        val options = RearWidgetApi.NoticeOptions(
+        val options = RearWidgetNoticeOptions(
             sticky = true,
             disablePopup = true,
             showTimeTip = prefsManager.getShowTimeTipForBusiness(card.business),
             index = index,
             priority = card.priority,
         )
-        sendChannel(
-            context,
-            RearWidgetApi.Channel.KEY_POST_NOTICE,
-            RearWidgetApi.buildPostNoticePayload(
-                business = card.business,
-                packageName = card.packageName,
-                payload = payload,
-                options = options,
-            ),
+        postNotice(
+            context = context,
+            packageName = card.packageName,
+            business = card.business,
+            payload = payload,
+            options = options,
         )
     }
 
-    private fun sendChannel(context: Context, key: String, payload: String) {
+    private fun registerBusinessFile(context: Context, business: String, filePath: String) {
         runCatching {
-            context.dataChannel(TARGET_HOOK_PACKAGE).put(key, payload)
+            withApiClient(context) { client ->
+                client.registerBusinessFile(business, filePath)
+            }
         }
+    }
+
+    private fun unregisterBusinessFile(context: Context, business: String) {
+        runCatching {
+            withApiClient(context) { client ->
+                client.unregisterBusinessFile(business)
+            }
+        }
+    }
+
+    private fun postNotice(
+        context: Context,
+        packageName: String,
+        business: String,
+        payload: Bundle,
+        options: RearWidgetNoticeOptions,
+    ) {
+        runCatching {
+            withApiClient(context) { client ->
+                client.postNotice(packageName, business, payload, options)
+            }
+        }
+    }
+
+    private fun <T> withApiClient(
+        context: Context,
+        block: (RearWidgetApiClient) -> T,
+    ): T {
+        val appContext = context.applicationContext
+        val client = remoteClient ?: RearWidgetApiClient().also { remoteClient = it }
+        runCatching {
+            if (client.isConnected() || client.bind(appContext)) return block(client)
+            throw IllegalStateException("RearWidget API service is not connected")
+        }.onFailure {
+            client.unbind()
+            if (remoteClient === client) remoteClient = null
+        }.getOrThrow()
     }
 
     private fun cleanupStaleManagedFiles(
