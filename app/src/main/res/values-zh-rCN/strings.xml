@@ -31,6 +31,11 @@
     <string name="category_module_settings_desc">REAREye 模块自身设置</string>
     <string name="module_theme_mode">主题样式</string>
     <string name="module_theme_mode_desc">在 Miuix 与 Monet 的跟随系统、浅色、深色主题之间切换</string>
+    <string name="module_navigation_bar_mode">导航栏样式</string>
+    <string name="module_navigation_bar_mode_desc">在普通、悬浮、悬浮液态玻璃三种导航栏模式之间切换</string>
+    <string name="module_navigation_bar_mode_normal">普通</string>
+    <string name="module_navigation_bar_mode_floating">悬浮</string>
+    <string name="module_navigation_bar_mode_floating_glass">悬浮液态玻璃</string>
     <string name="module_theme_mode_miuix_system">Miuix 跟随系统</string>
     <string name="module_theme_mode_miuix_light">Miuix 浅色</string>
     <string name="module_theme_mode_miuix_dark">Miuix 深色</string>

@@ -134,6 +134,8 @@ dependencies {
     implementation(libs.miuix.preference)
     implementation(libs.miuix.icons)
     implementation(libs.haze)
+    implementation(libs.backdrop)
+    implementation(libs.capsule)
     implementation(libs.okhttp)
     implementation(libs.gson)
     implementation(libs.lyricon.provider)

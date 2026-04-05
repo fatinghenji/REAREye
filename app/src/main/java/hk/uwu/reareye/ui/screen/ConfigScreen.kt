@@ -44,6 +44,7 @@ import hk.uwu.reareye.ui.config.ConfigItem
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.ConfigNode
 import hk.uwu.reareye.ui.config.ConfigType
+import hk.uwu.reareye.ui.config.ModuleNavigationBarMode
 import hk.uwu.reareye.ui.config.PrefsManager
 import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
 import hk.uwu.reareye.ui.config.REAREyeConfig
@@ -80,6 +81,7 @@ fun ConfigScreen(
     bottomInnerPadding: Dp = 0.dp,
     onAppListModeChange: (Boolean) -> Unit = {},
     onThemeModeChange: (Int) -> Unit = {},
+    onNavigationBarModeChange: (Int) -> Unit = {},
 ) {
     val context = LocalContext.current
     val prefsManager = remember { context.getPrefsManager() }
@@ -96,15 +98,30 @@ fun ConfigScreen(
     val hazeStyle = rememberAcrylicHazeStyle()
     val routeScope = rememberCoroutineScope()
 
-    val handlePreferenceChanged = remember(prefsManager, onThemeModeChange) {
+    val handlePreferenceChanged = remember(
+        prefsManager,
+        onThemeModeChange,
+        onNavigationBarModeChange,
+    ) {
         { item: ConfigItem ->
-            if (item.key == ConfigKeys.MODULE_THEME_MODE) {
-                onThemeModeChange(
-                    prefsManager.getInt(
-                        ConfigKeys.MODULE_THEME_MODE,
-                        AppThemeMode.default.value,
+            when (item.key) {
+                ConfigKeys.MODULE_THEME_MODE -> {
+                    onThemeModeChange(
+                        prefsManager.getInt(
+                            ConfigKeys.MODULE_THEME_MODE,
+                            AppThemeMode.default.value,
+                        )
                     )
-                )
+                }
+
+                ConfigKeys.MODULE_NAVIGATION_BAR_MODE -> {
+                    onNavigationBarModeChange(
+                        prefsManager.getInt(
+                            ConfigKeys.MODULE_NAVIGATION_BAR_MODE,
+                            ModuleNavigationBarMode.default.value,
+                        )
+                    )
+                }
             }
         }
     }

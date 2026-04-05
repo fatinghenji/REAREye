@@ -30,6 +30,11 @@
     <string name="category_module_settings_desc">Settings for REAREye itself</string>
     <string name="module_theme_mode">Theme Style</string>
     <string name="module_theme_mode_desc">Switch between Miuix and Monet theme variants, including follow-system, light, and dark modes</string>
+    <string name="module_navigation_bar_mode">Navigation Bar Style</string>
+    <string name="module_navigation_bar_mode_desc">Choose between the standard layout, floating layout, and floating liquid-glass layout</string>
+    <string name="module_navigation_bar_mode_normal">Standard</string>
+    <string name="module_navigation_bar_mode_floating">Floating</string>
+    <string name="module_navigation_bar_mode_floating_glass">Floating Liquid Glass</string>
     <string name="module_theme_mode_miuix_system">Miuix Follow System</string>
     <string name="module_theme_mode_miuix_light">Miuix Light</string>
     <string name="module_theme_mode_miuix_dark">Miuix Dark</string>

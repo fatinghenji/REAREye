@@ -19,11 +19,6 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cottage
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -32,16 +27,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import hk.uwu.reareye.R
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import hk.uwu.reareye.ui.components.navigation.RearNavigationBar
 import hk.uwu.reareye.ui.config.ConfigKeys
+import hk.uwu.reareye.ui.config.ModuleNavigationBarMode
 import hk.uwu.reareye.ui.config.ModuleSettingsController
 import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
 import hk.uwu.reareye.ui.screen.AboutScreen
@@ -49,14 +45,8 @@ import hk.uwu.reareye.ui.screen.ConfigScreen
 import hk.uwu.reareye.ui.screen.HomeScreen
 import hk.uwu.reareye.ui.theme.AppTheme
 import hk.uwu.reareye.ui.theme.AppThemeMode
-import hk.uwu.reareye.ui.theme.rearAcrylicEffect
-import hk.uwu.reareye.ui.theme.rearAcrylicSource
-import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
-import hk.uwu.reareye.ui.theme.rememberAcrylicHazeStyle
-import top.yukonga.miuix.kmp.basic.NavigationBar
-import top.yukonga.miuix.kmp.basic.NavigationBarDisplayMode
-import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -66,17 +56,15 @@ class MainActivity : ComponentActivity() {
             val permissionInfo = applicationContext.packageManager
                 .getPermissionInfo("com.android.permission.GET_INSTALLED_APPS", 0)
             if (permissionInfo != null && permissionInfo.packageName == "com.lbe.security.miui") {
-                //MIUI 系统支持动态申请该权限
                 if (ContextCompat.checkSelfPermission(
                         applicationContext,
                         "com.android.permission.GET_INSTALLED_APPS"
                     ) != PackageManager.PERMISSION_GRANTED
                 ) {
-                    //没有权限，需要申请
                     ActivityCompat.requestPermissions(
                         this@MainActivity,
                         arrayOf("com.android.permission.GET_INSTALLED_APPS"),
-                        999
+                        999,
                     )
                 }
             }
@@ -99,6 +87,14 @@ class MainActivity : ComponentActivity() {
                     )
                 )
             }
+            var navigationBarModeValue by remember {
+                mutableIntStateOf(
+                    prefsManager.getInt(
+                        ConfigKeys.MODULE_NAVIGATION_BAR_MODE,
+                        ModuleNavigationBarMode.default.value,
+                    )
+                )
+            }
             var currentScreen by remember { mutableStateOf("home") }
             var navBarVisible by remember { mutableStateOf(false) }
             var configInAppListMode by remember { mutableStateOf(false) }
@@ -109,13 +105,20 @@ class MainActivity : ComponentActivity() {
             }
 
             AppTheme(themeMode = AppThemeMode.fromValue(themeModeValue)) {
-                val navigationHazeState = rememberAcrylicHazeState()
-                val navigationHazeStyle = rememberAcrylicHazeStyle()
+                val navigationBarMode = ModuleNavigationBarMode.fromValue(navigationBarModeValue)
+                val enableFloatingGlass =
+                    navigationBarMode == ModuleNavigationBarMode.FLOATING_GLASS
                 val showNavigation =
                     navBarVisible && !(currentScreen == "config" && configInAppListMode)
                 val density = LocalDensity.current
+                val surfaceColor = MiuixTheme.colorScheme.surface
+                val backdrop = rememberLayerBackdrop {
+                    drawRect(surfaceColor)
+                    drawContent()
+                }
                 var stableBottomInset by remember { mutableStateOf(0.dp) }
-                Scaffold { paddingValues ->
+
+                Scaffold { _ ->
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -124,7 +127,13 @@ class MainActivity : ComponentActivity() {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .rearAcrylicSource(navigationHazeState)
+                                .then(
+                                    if (enableFloatingGlass) {
+                                        Modifier.layerBackdrop(backdrop)
+                                    } else {
+                                        Modifier
+                                    }
+                                )
                         ) {
                             AnimatedContent(
                                 targetState = currentScreen,
@@ -176,6 +185,9 @@ class MainActivity : ComponentActivity() {
                                             configInAppListMode = it
                                         },
                                         onThemeModeChange = { themeModeValue = it },
+                                        onNavigationBarModeChange = {
+                                            navigationBarModeValue = it
+                                        },
                                     )
 
                                     "about" -> AboutScreen(bottomInnerPadding = stableBottomInset)
@@ -209,44 +221,21 @@ class MainActivity : ComponentActivity() {
                                 )
                             ) { it / 3 }
                         ) {
-                            NavigationBar(
+                            RearNavigationBar(
                                 modifier = Modifier
-                                    .fillMaxWidth()
                                     .onGloballyPositioned { coordinates ->
                                         val totalHeight = with(density) {
                                             coordinates.size.height.toDp()
                                         }
-                                        if (totalHeight > stableBottomInset) {
+                                        if (totalHeight != stableBottomInset) {
                                             stableBottomInset = totalHeight
                                         }
-                                    }
-                                    .rearAcrylicEffect(
-                                        navigationHazeState,
-                                        navigationHazeStyle,
-                                        blurRadius = 8.dp,
-                                    ),
-                                color = Color.Transparent,
-                                mode = NavigationBarDisplayMode.IconAndText
-                            ) {
-                                NavigationBarItem(
-                                    selected = currentScreen == "home",
-                                    onClick = { currentScreen = "home" },
-                                    icon = Icons.Filled.Cottage,
-                                    label = stringResource(R.string.home_navigation)
-                                )
-                                NavigationBarItem(
-                                    selected = currentScreen == "config",
-                                    onClick = { currentScreen = "config" },
-                                    icon = Icons.Filled.Settings,
-                                    label = stringResource(R.string.configuration_navigation)
-                                )
-                                NavigationBarItem(
-                                    selected = currentScreen == "about",
-                                    onClick = { currentScreen = "about" },
-                                    icon = Icons.Filled.Info,
-                                    label = stringResource(R.string.about_navigation)
-                                )
-                            }
+                                    },
+                                currentScreen = currentScreen,
+                                navigationBarMode = navigationBarMode,
+                                backdrop = backdrop,
+                                onScreenSelected = { currentScreen = it },
+                            )
                         }
                     }
                 }

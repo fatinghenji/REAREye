@@ -1,5 +1,6 @@
 package hk.uwu.reareye.ui.config
 
+import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Tune
 import hk.uwu.reareye.R
@@ -10,6 +11,7 @@ import kotlin.math.roundToInt
 object ConfigKeys {
     const val MODULE_HIDE_LAUNCHER_ENTRY = "module_hide_launcher_entry"
     const val MODULE_THEME_MODE = "module_theme_mode"
+    const val MODULE_NAVIGATION_BAR_MODE = "module_navigation_bar_mode"
 
     const val HOOK_ACTIVITIES_WHITELIST = "enable_activities_whitelist_hook"
     const val ACTIVITIES_WHITELIST_APPS = "activities_whitelist_apps"
@@ -63,6 +65,37 @@ object ConfigKeys {
     const val MORE_DEBUG = "enable_more_debug_logging"
 }
 
+enum class ModuleNavigationBarMode(
+    val value: Int,
+    @param:StringRes val titleRes: Int,
+) {
+    NORMAL(
+        value = 0,
+        titleRes = R.string.module_navigation_bar_mode_normal,
+    ),
+    FLOATING(
+        value = 1,
+        titleRes = R.string.module_navigation_bar_mode_floating,
+    ),
+    FLOATING_GLASS(
+        value = 2,
+        titleRes = R.string.module_navigation_bar_mode_floating_glass,
+    );
+
+    companion object {
+        val default = NORMAL
+        val selectableEntries = listOf(
+            NORMAL,
+            FLOATING,
+            FLOATING_GLASS,
+        )
+
+        fun fromValue(value: Int): ModuleNavigationBarMode {
+            return entries.firstOrNull { it.value == value } ?: default
+        }
+    }
+}
+
 enum class LyricProvider(val value: Int, val titleRes: Int) {
     LYRICON(value = 0, titleRes = R.string.lyric_provider_lyricon),
     SUPER_LYRIC(value = 1, titleRes = R.string.lyric_provider_superlyric);
@@ -95,6 +128,20 @@ val REAREyeConfig = listOf(
                 type = ConfigType.EnumSingleSelect(
                     defaultValue = AppThemeMode.default.value,
                     options = AppThemeMode.selectableEntries.map {
+                        ConfigType.EnumOption(
+                            titleRes = it.titleRes,
+                            value = it.value,
+                        )
+                    },
+                ),
+            ),
+            ConfigItem(
+                key = ConfigKeys.MODULE_NAVIGATION_BAR_MODE,
+                titleRes = R.string.module_navigation_bar_mode,
+                descriptionRes = R.string.module_navigation_bar_mode_desc,
+                type = ConfigType.EnumSingleSelect(
+                    defaultValue = ModuleNavigationBarMode.default.value,
+                    options = ModuleNavigationBarMode.selectableEntries.map {
                         ConfigType.EnumOption(
                             titleRes = it.titleRes,
                             value = it.value,
