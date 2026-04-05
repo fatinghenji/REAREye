@@ -226,4 +226,7 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="subcategory_lyrics_desc">Manage lyrics options</string>
     <string name="credits_docs">Documentation</string>
     <string name="credits_docs_desc">User Guide and Troubleshooting</string>
+    <string name="home_easter_egg_easter">Easter</string>
+    <string name="home_easter_egg_easter_working">Module is being revived</string>
+    <string name="home_easter_egg_easter_activated">The module is dead</string>
 </resources>

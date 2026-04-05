@@ -337,7 +337,7 @@ fun RearWallpaperManagerScreen(
                                                 pickerMode = WallpaperPickerMode.ADD_TO_SCHEDULE
                                             },
                                             colors = ButtonDefaults.buttonColorsPrimary(),
-                                            modifier = Modifier.weight(1f),
+                                            modifier = Modifier.fillMaxWidth(),
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Filled.Add,
@@ -345,22 +345,6 @@ fun RearWallpaperManagerScreen(
                                                 modifier = Modifier.padding(end = 6.dp),
                                             )
                                             Text(stringResource(R.string.rear_wallpaper_add_sheet_trigger))
-                                        }
-                                        Button(
-                                            onClick = {
-                                                if (!refreshing) refreshCatalog(
-                                                    showSuccessToast = true
-                                                )
-                                            },
-                                            colors = ButtonDefaults.buttonColors(),
-                                            modifier = Modifier.weight(1f),
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Rounded.Refresh,
-                                                contentDescription = null,
-                                                modifier = Modifier.padding(end = 6.dp),
-                                            )
-                                            Text(stringResource(R.string.rear_wallpaper_refresh))
                                         }
                                     }
                                 },
@@ -526,7 +510,9 @@ fun RearWallpaperManagerScreen(
                 if (!loading && wallpapers.isEmpty()) {
                     item {
                         Card(modifier = Modifier.fillMaxWidth()) {
-                            Text(text = stringResource(R.string.rear_wallpaper_catalog_empty))
+                            SuperCard(
+                                title = stringResource(R.string.rear_wallpaper_catalog_empty)
+                            )
                         }
                     }
                 }

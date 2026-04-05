@@ -7,7 +7,8 @@ import java.util.Calendar
 enum class EasterEggType {
     NONE,
     NEW_YEAR,
-    APRIL_FOOLS
+    APRIL_FOOLS,
+    EASTER
 }
 
 enum class EasterEggDisableScope {
@@ -45,7 +46,11 @@ object EasterEggManager {
 
     private val easterEggs = listOf(
         EasterEggDefinition(EasterEggType.NEW_YEAR, EasterEggTrigger.Annual(month = 1, day = 1)),
-        EasterEggDefinition(EasterEggType.APRIL_FOOLS, EasterEggTrigger.Annual(month = 4, day = 1))
+        EasterEggDefinition(EasterEggType.APRIL_FOOLS, EasterEggTrigger.Annual(month = 4, day = 1)),
+        EasterEggDefinition(
+            EasterEggType.EASTER,
+            EasterEggTrigger.ExactDate(year = 2026, month = 4, day = 5)
+        )
     )
 
     fun getCurrentEasterEggType(context: Context): EasterEggType {

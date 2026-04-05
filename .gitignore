@@ -17,3 +17,8 @@ local.properties
 .claude
 .tmp-ref
 rear-widget-api/build
+**/.project
+.project
+.settings
+**/.settings
+**/.classpath
