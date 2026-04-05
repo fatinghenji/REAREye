@@ -1,6 +1,8 @@
 package hk.uwu.reareye.repository.contributor
 
+import android.util.Log
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -14,9 +16,13 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 
 data class ContributorProfile(
+    @SerializedName("name")
     val name: String,
+    @SerializedName("description")
     val description: String,
+    @SerializedName("link")
     val link: String? = null,
+    @SerializedName("avatar")
     val avatar: String? = null,
 )
 
@@ -28,6 +34,7 @@ sealed interface ContributorLoadState {
 }
 
 private data class ContributorResponse(
+    @SerializedName("contributors")
     val contributors: List<ContributorProfile> = emptyList(),
 )
 
@@ -82,6 +89,8 @@ object ContributorRepository {
                 val payload = gson.fromJson(body, ContributorResponse::class.java)
                 payload.contributors.mapNotNull(::normalizeContributor)
             }
+        }.onFailure {
+            Log.d("Contributor", "fetch error", it)
         }.getOrNull()
     }
 
