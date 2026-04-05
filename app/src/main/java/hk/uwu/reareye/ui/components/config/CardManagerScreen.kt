@@ -71,6 +71,7 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
@@ -112,6 +113,7 @@ fun CardManagerScreen(
     var draftPackageName by remember { mutableStateOf("hk.uwu.reareye") }
     var draftBusiness by remember { mutableStateOf("") }
     var draftPriorityText by remember { mutableStateOf("500") }
+    var draftSticky by remember { mutableStateOf(true) }
 
     fun persist() {
         RearWidgetManagerRepository.saveCards(context, prefsManager, cards.toList())
@@ -123,6 +125,7 @@ fun CardManagerScreen(
         draftPackageName = "hk.uwu.reareye"
         draftBusiness = ""
         draftPriorityText = "500"
+        draftSticky = true
         showDialog = true
     }
 
@@ -132,6 +135,7 @@ fun CardManagerScreen(
         draftPackageName = item.packageName
         draftBusiness = item.business
         draftPriorityText = item.priority.toString()
+        draftSticky = item.sticky
         showDialog = true
     }
 
@@ -156,6 +160,7 @@ fun CardManagerScreen(
             packageName = pkg,
             business = widget,
             enabled = enabled,
+            sticky = draftSticky,
             priority = draftPriorityText.toIntOrNull() ?: 500,
         )
 
@@ -298,6 +303,16 @@ fun CardManagerScreen(
                                     item.business,
                                     item.priority,
                                 ),
+                                stringResource(
+                                    R.string.rear_widget_card_sticky_summary,
+                                    stringResource(
+                                        if (item.sticky) {
+                                            R.string.rear_wallpaper_schedule_on
+                                        } else {
+                                            R.string.rear_wallpaper_schedule_off
+                                        }
+                                    ),
+                                ),
                             ),
                             trailing = {
                                 Switch(
@@ -396,6 +411,12 @@ fun CardManagerScreen(
                 modifier = Modifier.fillMaxWidth(),
                 label = stringResource(R.string.rear_widget_default_priority),
                 singleLine = true,
+            )
+            SwitchPreference(
+                title = stringResource(R.string.rear_widget_card_sticky),
+                summary = stringResource(R.string.rear_widget_card_sticky_desc),
+                checked = draftSticky,
+                onCheckedChange = { draftSticky = it },
             )
             Column(
                 modifier = Modifier.fillMaxWidth(),

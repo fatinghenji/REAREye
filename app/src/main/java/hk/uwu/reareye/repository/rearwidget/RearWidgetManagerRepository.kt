@@ -83,22 +83,13 @@ object RearWidgetManagerRepository {
         val newCards = oldCards.toMutableList().apply {
             this[targetIndex] = oldCard.copy(enabled = enabled)
         }
-        val newCard = newCards[targetIndex]
 
         prefsManager.putString(
             ConfigKeys.REAR_WIDGET_CARD_DATA,
             RearWidgetConfigCodec.encodeCards(newCards),
         )
 
-        syncCardEnabledViaApi(
-            context = context,
-            prefsManager = prefsManager,
-            oldCards = oldCards,
-            newCards = newCards,
-            oldCard = oldCard,
-            newCard = newCard,
-            businesses = loadBusinesses(prefsManager),
-        )
+        applyCardsViaApi(context, oldCards, newCards, loadBusinesses(prefsManager))
     }
 
     fun refreshRuntimeFromPrefs(context: Context, prefsManager: PrefsManager) {
@@ -208,80 +199,16 @@ object RearWidgetManagerRepository {
             unregisterBusiness(context, pkg, biz)
         }
 
-        enabledCards.forEachIndexed { index, card ->
-            val payload = Bundle().apply {
-                putString("title", card.title.ifBlank { card.business })
-                putString("business", card.business)
-                putString("__rear_card_id__", card.id)
+        enabledCards
+            .filter { it.sticky }
+            .forEachIndexed { index, card ->
+                postCard(
+                    context = context,
+                    prefsManager = prefsManager,
+                    card = card,
+                    index = index,
+                )
             }
-            val options = RearWidgetNoticeOptions(
-                sticky = true,
-                disablePopup = true,
-                showTimeTip = prefsManager.getShowTimeTipForBusiness(card.business),
-                index = index,
-                priority = card.priority,
-            )
-            postNotice(
-                context = context,
-                packageName = card.packageName,
-                business = card.business,
-                payload = payload,
-                options = options,
-            )
-        }
-    }
-
-    private fun syncCardEnabledViaApi(
-        context: Context,
-        prefsManager: PrefsManager,
-        oldCards: List<RearCardConfig>,
-        newCards: List<RearCardConfig>,
-        oldCard: RearCardConfig,
-        newCard: RearCardConfig,
-        businesses: List<RearBusinessConfig>,
-    ) {
-        val businessPathByName = businesses.associate { it.business to it.filePath }
-        oldCard.packageName to oldCard.business
-        val newEnabledCards = newCards.filter { it.enabled }
-        val oldEnabledIndexById = oldCards.filter { it.enabled }
-            .mapIndexed { index, card -> card.id to index }
-            .toMap()
-        val newEnabledIndexById = newEnabledCards
-            .mapIndexed { index, card -> card.id to index }
-            .toMap()
-
-        if (!newCard.enabled) {
-            disableBusinessDisplay(context, oldCard.packageName, oldCard.business)
-            if (newEnabledCards.none { it.packageName == oldCard.packageName && it.business == oldCard.business }) {
-                unregisterBusiness(context, oldCard.packageName, oldCard.business)
-            }
-        }
-
-        val cardsToPost = LinkedHashMap<String, RearCardConfig>()
-        newEnabledCards.forEach { card ->
-            val indexChanged = oldEnabledIndexById[card.id] != newEnabledIndexById[card.id]
-            val needsRestoreAfterDisable = !newCard.enabled &&
-                    card.packageName == oldCard.packageName &&
-                    card.business == oldCard.business
-            val isNewlyEnabled = card.id == newCard.id && newCard.enabled
-            if (indexChanged || needsRestoreAfterDisable || isNewlyEnabled) {
-                cardsToPost[card.id] = card
-            }
-        }
-
-        val registeredPairs = LinkedHashSet<Pair<String, String>>()
-        cardsToPost.values.forEach { card ->
-            val pair = card.packageName to card.business
-            if (registeredPairs.add(pair)) {
-                registerBusiness(context, pair.first, pair.second, businessPathByName[pair.second])
-            }
-            postCard(
-                context = context,
-                prefsManager = prefsManager,
-                card = card,
-                index = newEnabledIndexById[card.id] ?: 0,
-            )
-        }
     }
 
     private fun registerBusiness(
@@ -342,13 +269,15 @@ object RearWidgetManagerRepository {
         card: RearCardConfig,
         index: Int,
     ) {
+        if (!card.sticky) return
+
         val payload = Bundle().apply {
             putString("title", card.title.ifBlank { card.business })
             putString("business", card.business)
             putString("__rear_card_id__", card.id)
         }
         val options = RearWidgetNoticeOptions(
-            sticky = true,
+            sticky = card.sticky,
             disablePopup = true,
             showTimeTip = prefsManager.getShowTimeTipForBusiness(card.business),
             index = index,

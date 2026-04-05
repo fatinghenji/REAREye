@@ -69,6 +69,8 @@
     <string name="lyric_display_mode_translation">翻译</string>
     <string name="lyric_display_mode_romanization">罗马音</string>
     <string name="lyric_display_mode_none">未选择任何显示模式</string>
+    <string name="lyric_show_artist_before_first_line">首句前显示歌手名</string>
+    <string name="lyric_show_artist_before_first_line_desc">仅对静态歌词 LRC 生效</string>
     <string name="lyric_provider">歌词提供器</string>
     <string name="lyric_provider_desc">选择使用的歌词来源后端</string>
     <string name="lyric_provider_lyricon">Lyricon (词幕)</string>
@@ -118,6 +120,8 @@
     <string name="rear_widget_business_extra_manager_desc">手动添加需要额外显示选项的组件</string>
     <string name="rear_widget_card_manager">卡片管理器</string>
     <string name="rear_widget_card_manager_desc">管理常驻卡片、显示顺序与启用状态</string>
+    <string name="allow_rear_focus_notices">允许焦点通知在背屏显示</string>
+    <string name="allow_rear_focus_notices_desc">必须先存在该焦点通知对应的组件或模板，否则系统仍会拒绝显示</string>
     <string name="rear_widget_target_package">目标包名</string>
     <string name="rear_widget_business_name">组件名称（Widget）</string>
     <string name="rear_widget_business_file_mode_title">组件模板映射</string>
@@ -129,7 +133,7 @@
     <string name="rear_widget_card_summary">%1$s
 组件：%2$s · 优先级：%3$d</string>
     <string name="rear_widget_card_dialog_hint_title">卡片显示设置</string>
-    <string name="rear_widget_card_dialog_hint">通过对话框新增或编辑卡片，启用后会常驻显示在背屏</string>
+    <string name="rear_widget_card_dialog_hint">通过对话框新增或编辑卡片，启用后可选择是否常驻显示在背屏</string>
     <string name="rear_widget_empty_business">暂无已注册组件模板</string>
     <string name="rear_widget_empty_card">暂无已配置卡片</string>
     <string name="rear_widget_loading_data">正在加载数据…</string>
@@ -149,6 +153,9 @@
     <string name="rear_widget_business_extra_settings_target">当前组件：%1$s</string>
     <string name="rear_widget_business_hide_time_tip">关闭显示时间</string>
     <string name="rear_widget_business_hide_time_tip_desc">关闭该组件通知中的时间显示</string>
+    <string name="rear_widget_card_sticky">常驻卡片</string>
+    <string name="rear_widget_card_sticky_desc">关闭后仅保存卡片配置，不发布常驻背屏显示</string>
+    <string name="rear_widget_card_sticky_summary">常驻卡片：%1$s</string>
     <string name="rear_widget_add_card">新增卡片</string>
     <string name="rear_widget_edit_card">编辑卡片</string>
     <string name="rear_widget_action_delete">删除</string>
@@ -225,6 +232,12 @@
     <string name="subcategory_lyrics_desc">管理歌词配置</string>
     <string name="credits_docs">文档</string>
     <string name="credits_docs_desc">使用教程和疑难解惑</string>
+    <string name="credits_contributors_title">鸣谢人员</string>
+    <string name="credits_contributors_desc">查看参与项目开发、测试与支持的人员名单</string>
+    <string name="credits_contributors_loading">正在加载鸣谢人员名单…</string>
+    <string name="credits_contributors_load_failed">获取鸣谢人员名单失败，请稍后重试</string>
+    <string name="credits_contributors_retry">重试</string>
+    <string name="credits_contributors_empty">暂无鸣谢人员信息</string>
     <string name="home_easter_egg_easter">复活节</string>
     <string name="home_easter_egg_easter_working">模块复活中</string>
     <string name="home_easter_egg_easter_activated">模块已死亡</string>

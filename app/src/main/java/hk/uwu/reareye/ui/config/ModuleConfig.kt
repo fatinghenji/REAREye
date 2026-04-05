@@ -32,6 +32,7 @@ object ConfigKeys {
     const val REAR_WIDGET_BUSINESS_DATA = "rear_widget_business_data"
     const val REAR_WIDGET_CARD_DATA = "rear_widget_card_data"
     const val REAR_WIDGET_BUSINESS_EXTRA_CONFIG_DATA = "rear_widget_business_extra_config_data"
+    const val HOOK_ALLOW_REAR_FOCUS_NOTICES = "enable_allow_rear_focus_notices"
 
     const val HOOK_BACKGROUND_WHITELIST = "enable_background_whitelist_hook"
     const val BACKGROUND_WHITELIST_APPS = "background_whitelist_apps"
@@ -49,6 +50,7 @@ object ConfigKeys {
     val LYRIC_DISPLAY_MODE_DEFAULT = LyricParser.DisplayMode.ORIGINAL.mask or
             LyricParser.DisplayMode.TRANSLATION.mask or
             LyricParser.DisplayMode.ROMANIZATION.mask
+    const val LYRIC_SHOW_ARTIST_BEFORE_FIRST_LINE = "lyric_show_artist_before_first_line"
 
     const val LYRIC_PROVIDER = "lyric_provider"
     val LYRIC_PROVIDER_DEFAULT = LyricProvider.LYRICON.value
@@ -212,6 +214,12 @@ val REAREyeConfig = listOf(
                         descriptionRes = R.string.rear_widget_business_extra_manager_desc,
                         type = ConfigType.Manager(ConfigType.ManagerType.BUSINESS_EXTRA),
                     ),
+                    ConfigItem(
+                        key = ConfigKeys.HOOK_ALLOW_REAR_FOCUS_NOTICES,
+                        titleRes = R.string.allow_rear_focus_notices,
+                        descriptionRes = R.string.allow_rear_focus_notices_desc,
+                        type = ConfigType.BooleanVal(defaultValue = false),
+                    ),
                 ),
             ),
             ConfigCategory(
@@ -258,6 +266,12 @@ val REAREyeConfig = listOf(
                                 )
                             }
                         )
+                    ),
+                    ConfigItem(
+                        key = ConfigKeys.LYRIC_SHOW_ARTIST_BEFORE_FIRST_LINE,
+                        titleRes = R.string.lyric_show_artist_before_first_line,
+                        descriptionRes = R.string.lyric_show_artist_before_first_line_desc,
+                        type = ConfigType.BooleanVal(defaultValue = false)
                     ),
                     ConfigItem(
                         key = ConfigKeys.LYRIC_PROVIDER,

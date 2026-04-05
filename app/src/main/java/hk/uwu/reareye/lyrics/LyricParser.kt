@@ -9,6 +9,7 @@ class LyricParser {
 
     private companion object {
         private const val MIUI_LRC_LINE_ENDING = "\r\n"
+        private const val ARTIST_SEPARATOR = "/"
     }
 
     enum class DisplayMode(val mask: Int) {
@@ -28,9 +29,16 @@ class LyricParser {
         }
     }
 
-    fun toLrc(song: Song?, displayMode: Int): String {
+    fun toLrc(
+        song: Song?,
+        displayMode: Int,
+        showArtistBeforeFirstLine: Boolean = false,
+    ): String {
         if (song == null) return ""
         val builder = StringBuilder()
+        val sortedLyrics = song.lyrics
+            ?.sortedBy { it.begin }
+            .orEmpty()
 
         appendLrcTag(builder, "ti", song.name)
         appendLrcTag(builder, "ar", song.artist)
@@ -40,20 +48,53 @@ class LyricParser {
         }
         if (builder.isNotEmpty()) builder.append(MIUI_LRC_LINE_ENDING)
 
-        song.lyrics
-            ?.sortedBy { it.begin }
-            ?.forEach { line ->
-                val timestamp = formatTimestamp(line.begin)
-                line.toLrcTexts(displayMode).forEach { text ->
-                    builder.append('[')
-                        .append(timestamp)
-                        .append(']')
-                        .append(text)
-                        .append(MIUI_LRC_LINE_ENDING)
-                }
+        if (showArtistBeforeFirstLine) {
+            appendArtistLeadIn(builder, song.artist, sortedLyrics.firstOrNull()?.begin ?: 0L)
+        }
+
+        sortedLyrics.forEach { line ->
+            val timestamp = formatTimestamp(line.begin)
+            line.toLrcTexts(displayMode).forEach { text ->
+                builder.append('[')
+                    .append(timestamp)
+                    .append(']')
+                    .append(text)
+                    .append(MIUI_LRC_LINE_ENDING)
             }
+        }
 
         return builder.toString().removeSuffix(MIUI_LRC_LINE_ENDING)
+    }
+
+    private fun appendArtistLeadIn(
+        builder: StringBuilder,
+        rawArtist: String?,
+        firstLineBegin: Long
+    ) {
+        if (firstLineBegin <= 0L) return
+
+        val artists = rawArtist
+            ?.split(ARTIST_SEPARATOR)
+            .orEmpty()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+        if (artists.isEmpty()) return
+
+        val artistPrefix = if (Locale.getDefault().language == Locale.CHINESE.language) {
+            "歌手："
+        } else {
+            "Artist: "
+        }
+
+        artists.forEachIndexed { index, artist ->
+            val timestamp = formatTimestamp(firstLineBegin * index / artists.size)
+            builder.append('[')
+                .append(timestamp)
+                .append(']')
+                .append(artistPrefix)
+                .append(artist)
+                .append(MIUI_LRC_LINE_ENDING)
+        }
     }
 
     private fun RichLyricLine.toLrcTexts(displayMode: Int): List<String> {

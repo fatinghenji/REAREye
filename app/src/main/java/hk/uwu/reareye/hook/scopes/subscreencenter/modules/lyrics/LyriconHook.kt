@@ -241,11 +241,15 @@ class LyriconHook : YukiBaseHooker() {
             override fun onSongChanged(song: Song?) {
                 runCatching {
                     val lrc = lyricParser.toLrc(
-                        song,
-                        prefs.getInt(
+                        song = song,
+                        displayMode = prefs.getInt(
                             ConfigKeys.LYRIC_DISPLAY_MODE,
                             ConfigKeys.LYRIC_DISPLAY_MODE_DEFAULT,
-                        )
+                        ),
+                        showArtistBeforeFirstLine = prefs.getBoolean(
+                            ConfigKeys.LYRIC_SHOW_ARTIST_BEFORE_FIRST_LINE,
+                            false,
+                        ),
                     )
                     latestLyricLrc = normalizeForMiuiParser(lrc)
                     YLog.debug("REAREye getSongLRC $latestLyricLrc")

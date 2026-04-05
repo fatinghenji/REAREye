@@ -70,6 +70,7 @@ class RearWidgetHook : YukiBaseHooker() {
             val d0Ref = "Z1.d0".toClass().resolve()
             val persistenceRef = "H.d".toClass().resolve()
             val p2cRef = "p2.c".toClass().resolve()
+            val z1mRef = "Z1.m".toClass().resolve()
 
             appRef.firstMethod {
                 name = "attachBaseContext"
@@ -144,7 +145,7 @@ class RearWidgetHook : YukiBaseHooker() {
             }.hook().after {
                 val pkg = args[0] as? String ?: return@after
                 val biz = args[1] as? String ?: return@after
-                // business 文件映射是全局覆盖语义：只要注册了该 business 文件，就覆盖系统内置路径。
+                // business 文件映射是全局覆盖 只要注册了该 business 文件 就覆盖系统内置路径
                 val path = RearWidgetRuntimeStore.getBusinessFile(biz) ?: return@after
                 result = path
                 debugLog("p2.c.i override path pkg=$pkg biz=$biz path=$path")
@@ -159,6 +160,13 @@ class RearWidgetHook : YukiBaseHooker() {
                     result = true
                     debugLog("p2.c.k force pass pkg=$pkg")
                 }
+            }
+
+            z1mRef.firstMethod {
+                name = "run"
+                parameterCount = 0
+            }.hook().before {
+                allowSelfDescribedNotificationPackage(instance)
             }
 
             p2cRef.firstMethod {
@@ -448,6 +456,7 @@ class RearWidgetHook : YukiBaseHooker() {
         )
         val businesses = RearWidgetConfigCodec.parseBusinesses(businessRaw)
         val cards = RearWidgetConfigCodec.parseCards(cardRaw).filter { it.enabled }
+        val stickyCards = cards.filter { it.sticky }
         val prefsManager = prefs.getPrefsManager()
         if (!force && businesses.isEmpty() && cards.isEmpty()) {
             debugLog("bootstrap init skipped: no config yet")
@@ -468,7 +477,7 @@ class RearWidgetHook : YukiBaseHooker() {
         val uniquePairs = LinkedHashSet<Pair<String, String>>()
         cards.forEach { uniquePairs += (it.packageName to it.business) }
 
-        // 重放前先清掉目标业务的旧展示，保证重复 bootstrap 不会叠加出重复卡片。
+        // 重放前先清掉目标业务的旧展示 保证重复 bootstrap 不会叠加出重复卡片
         uniquePairs.forEach { (pkg, biz) ->
             RearWidgetRuntimeStore.disableBusinessDisplay(pkg, biz)
         }
@@ -495,14 +504,14 @@ class RearWidgetHook : YukiBaseHooker() {
             }
         }
 
-        cards.forEachIndexed { index, card ->
+        stickyCards.forEachIndexed { index, card ->
             val payload = Bundle().apply {
                 putString("title", card.title.ifBlank { card.business })
                 putString("business", card.business)
                 putString("__rear_card_id__", card.id)
             }
             val options = RearWidgetNoticeOptions(
-                sticky = true,
+                sticky = card.sticky,
                 disablePopup = true,
                 showTimeTip = prefsManager.getShowTimeTipForBusiness(card.business),
                 index = index,
@@ -524,7 +533,7 @@ class RearWidgetHook : YukiBaseHooker() {
         applyRuntimeMaps(force = true)
         startupBootstrapped.set(true)
         bootstrapRetryCount.set(0)
-        debugLog("bootstrap init replay businesses=${businesses.size} enabledCards=${cards.size} force=$force ok=true")
+        debugLog("bootstrap init replay businesses=${businesses.size} enabledCards=${cards.size} stickyCards=${stickyCards.size} force=$force ok=true")
         return true
     }
 
@@ -631,9 +640,6 @@ class RearWidgetHook : YukiBaseHooker() {
         runCatching {
             handler.post {
                 runCatching {
-                    // Z1.d0.p(notifId, packageName, reason) — removes widget by notifId+pkg.
-                    // Iterates businesses from p2.a.c (set by applyRuntimeMaps) and matches
-                    // compositeKey format "pkg:biz:notifId" via p2.c.b, then calls u() to remove.
                     mgr.asResolver().firstMethod {
                         name = "p"
                         parameterCount = 3
@@ -657,8 +663,6 @@ class RearWidgetHook : YukiBaseHooker() {
         runCatching {
             handler.post {
                 runCatching {
-                    // Z1.d0.v(packageName, business) — removes all widgets for a pkg:biz pair.
-                    // Parses compositeKey via p2.c.q and matches pkg+biz fields.
                     mgr.asResolver().firstMethod {
                         name = "v"
                         parameterCount = 2
@@ -727,6 +731,91 @@ class RearWidgetHook : YukiBaseHooker() {
                 }
             }
             debugLog("patched manager app gates packages=${pkgBiz.keys}")
+        }
+    }
+
+    private fun allowSelfDescribedNotificationPackage(runnable: Any) {
+        val ref = runnable.asResolver()
+        val owner = runCatching {
+            ref.firstField { name = "c" }.get<Any>()
+        }.getOrNull() ?: return
+        if (owner.javaClass.name != "Z1.d0") return
+
+        val packageName = runCatching {
+            ref.firstField { name = "d" }.get<String>()
+        }.getOrNull()?.trim().orEmpty()
+        if (packageName.isBlank()) return
+
+        val extras = runCatching {
+            ref.firstField { name = "f" }.get<Bundle>()
+        }.getOrNull() ?: return
+        if (extras.isEmpty) return
+
+        val business = parseBusinessFromParams(packageName, extras) ?: return
+        logNoWidgetPathIfNeeded(packageName, business, extras)
+
+        if (!prefs.getBoolean(ConfigKeys.HOOK_ALLOW_REAR_FOCUS_NOTICES, false)) return
+
+        runCatching {
+            @Suppress("UNCHECKED_CAST")
+            val rSet = owner.asResolver().firstField { name = "r" }
+                .get() as ConcurrentHashMap.KeySetView<String, *>
+
+            @Suppress("UNCHECKED_CAST")
+            val qMap = owner.asResolver().firstField { name = "q" }
+                .get() as ConcurrentHashMap<String, Boolean>
+
+            rSet.add(packageName)
+            qMap[packageName] = true
+            qMap["${packageName}_$business"] = true
+            debugLog("dynamic allow pkg=$packageName biz=$business")
+        }.onFailure {
+            debugLog("dynamic allow failed pkg=$packageName biz=$business err=${it.message}")
+        }
+    }
+
+    private fun parseBusinessFromParams(packageName: String, extras: Bundle): String? {
+        val parser = runCatching {
+            "L1.a".toClass().resolve().firstMethod {
+                name = "y"
+                parameterCount = 1
+            }.invoke(extras)
+        }.getOrNull() ?: return null
+
+        val parsed = runCatching {
+            "p2.c".toClass().resolve().firstMethod {
+                name = "r"
+                parameterCount = 2
+            }.invoke(packageName, parser)
+        }.getOrNull() ?: return null
+
+        return runCatching {
+            parsed.asResolver().firstField { name = "c" }.get<String>()
+        }.getOrNull()?.trim()?.ifBlank { null }
+    }
+
+    private fun logNoWidgetPathIfNeeded(packageName: String, business: String, extras: Bundle) {
+        val hasRemoteView =
+            extras.containsKey("miui.rear.rv") || extras.containsKey("miui.rear.rvAOD")
+        if (hasRemoteView) return
+
+        val builtInSupported = runCatching {
+            "p2.a".toClass().resolve().firstMethod {
+                name = "d"
+                parameterCount = 2
+            }.invoke<Boolean>(packageName, business) ?: false
+        }.getOrDefault(false)
+        if (builtInSupported) return
+
+        val widgetPath = runCatching {
+            "p2.c".toClass().resolve().firstMethod {
+                name = "i"
+                parameterCount = 2
+            }.invoke<String>(packageName, business)
+        }.getOrNull()
+
+        if (widgetPath.isNullOrBlank()) {
+            YLog.debug("[$TAG] No widget path pkg=$packageName business=$business")
         }
     }
 

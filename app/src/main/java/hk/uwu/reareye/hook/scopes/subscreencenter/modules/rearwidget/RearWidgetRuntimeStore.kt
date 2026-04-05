@@ -185,8 +185,12 @@ object RearWidgetRuntimeStore {
             putBoolean("show_time_tip", options.showTimeTip)
             putBoolean("__x_sticky__", options.sticky)
 
-            putString("miui.rear.param", buildRearParamJson(ticket.business, options))
-            putString("miui.focus.param", buildFocusParamJson(ticket.business, options))
+            if (getString("miui.rear.param").isNullOrBlank()) {
+                putString("miui.rear.param", buildRearParamJson(ticket.business, options))
+            }
+            if (getString("miui.focus.param").isNullOrBlank()) {
+                putString("miui.focus.param", buildFocusParamJson(ticket.business, options))
+            }
             putString("__xposed_origin__", ticket.packageName)
         }
     }

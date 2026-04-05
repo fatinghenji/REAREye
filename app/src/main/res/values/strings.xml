@@ -68,6 +68,8 @@
     <string name="lyric_display_mode_translation">Translation</string>
     <string name="lyric_display_mode_romanization">Romanization</string>
     <string name="lyric_display_mode_none">No display mode selected</string>
+    <string name="lyric_show_artist_before_first_line">Show artist before first line</string>
+    <string name="lyric_show_artist_before_first_line_desc">Only for static LRC lyrics</string>
     <string name="lyric_provider">Lyric Provider</string>
     <string name="lyric_provider_desc">Choose which lyric source backend to use</string>
     <string name="lyric_provider_lyricon">Lyricon</string>
@@ -117,6 +119,8 @@
     <string name="rear_widget_business_extra_manager_desc">Manually add widgets that need extra display options</string>
     <string name="rear_widget_card_manager">Card Manager</string>
     <string name="rear_widget_card_manager_desc">Manage resident cards, display order, and enabled state</string>
+    <string name="allow_rear_focus_notices">Allow focus notices on rear screen</string>
+    <string name="allow_rear_focus_notices_desc">Allow notifications that already carry valid focus/rear params to pass the rear-screen whitelist. The matching widget business/component must already exist, otherwise the system will still reject it.</string>
     <string name="rear_widget_target_package">Target Package</string>
     <string name="rear_widget_business_name">Widget Name</string>
     <string name="rear_widget_business_file_mode_title">Widget Template Mapping</string>
@@ -128,7 +132,7 @@
     <string name="rear_widget_card_summary">%1$s
 Widget: %2$s · Priority: %3$d</string>
     <string name="rear_widget_card_dialog_hint_title">Card Display Settings</string>
-    <string name="rear_widget_card_dialog_hint">Use dialogs to add or edit cards. Enabled cards will stay resident on the rear screen</string>
+    <string name="rear_widget_card_dialog_hint">Use dialogs to add or edit cards. Enabled cards can optionally stay resident on the rear screen</string>
     <string name="rear_widget_empty_business">No widget template registered</string>
     <string name="rear_widget_empty_card">No card configured</string>
     <string name="rear_widget_loading_data">Loading data…</string>
@@ -148,6 +152,9 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="rear_widget_business_extra_settings_target">Current Component: %1$s</string>
     <string name="rear_widget_business_hide_time_tip">Hide time tip</string>
     <string name="rear_widget_business_hide_time_tip_desc">Disable timestamp display for this component\'s notices</string>
+    <string name="rear_widget_card_sticky">Resident card</string>
+    <string name="rear_widget_card_sticky_desc">Turn off to save the card without publishing a resident rear-screen notice</string>
+    <string name="rear_widget_card_sticky_summary">Resident card: %1$s</string>
     <string name="rear_widget_add_card">Add Card</string>
     <string name="rear_widget_edit_card">Edit Card</string>
     <string name="rear_widget_action_delete">Delete</string>
@@ -226,6 +233,12 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="subcategory_lyrics_desc">Manage lyrics options</string>
     <string name="credits_docs">Documentation</string>
     <string name="credits_docs_desc">User Guide and Troubleshooting</string>
+    <string name="credits_contributors_title">Contributors</string>
+    <string name="credits_contributors_desc">View the people who helped develop, test, and support this project</string>
+    <string name="credits_contributors_loading">Loading contributors…</string>
+    <string name="credits_contributors_load_failed">Failed to load contributors. Please try again later</string>
+    <string name="credits_contributors_retry">Retry</string>
+    <string name="credits_contributors_empty">No contributor information available</string>
     <string name="home_easter_egg_easter">Easter</string>
     <string name="home_easter_egg_easter_working">Module is being revived</string>
     <string name="home_easter_egg_easter_activated">The module is dead</string>
