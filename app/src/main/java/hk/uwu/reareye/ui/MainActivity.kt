@@ -5,17 +5,15 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -47,6 +45,8 @@ import hk.uwu.reareye.ui.theme.AppTheme
 import hk.uwu.reareye.ui.theme.AppThemeMode
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+private val MainScreenOrder = listOf("home", "config", "about")
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -98,7 +98,6 @@ class MainActivity : ComponentActivity() {
             var currentScreen by remember { mutableStateOf("home") }
             var navBarVisible by remember { mutableStateOf(false) }
             var configInAppListMode by remember { mutableStateOf(false) }
-            val screenOrder = remember { listOf("home", "config", "about") }
 
             LaunchedEffect(Unit) {
                 navBarVisible = true
@@ -140,9 +139,9 @@ class MainActivity : ComponentActivity() {
                                 contentKey = { it },
                                 transitionSpec = {
                                     val initialIndex =
-                                        screenOrder.indexOf(initialState).coerceAtLeast(0)
+                                        MainScreenOrder.indexOf(initialState).coerceAtLeast(0)
                                     val targetIndex =
-                                        screenOrder.indexOf(targetState).coerceAtLeast(0)
+                                        MainScreenOrder.indexOf(targetState).coerceAtLeast(0)
                                     val forward = targetIndex >= initialIndex
 
                                     fadeIn(
@@ -195,34 +194,41 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        AnimatedVisibility(
-                            modifier = Modifier.align(Alignment.BottomCenter),
-                            visible = showNavigation,
-                            enter = fadeIn(
-                                animationSpec = tween(
-                                    durationMillis = 260,
-                                    easing = LinearOutSlowInEasing,
-                                )
-                            ) + slideInVertically(
-                                animationSpec = tween(
-                                    durationMillis = 380,
-                                    easing = FastOutSlowInEasing,
-                                )
-                            ) { it / 3 },
-                            exit = fadeOut(
-                                animationSpec = tween(
-                                    durationMillis = 180,
-                                    easing = FastOutLinearInEasing,
-                                )
-                            ) + slideOutVertically(
-                                animationSpec = tween(
-                                    durationMillis = 240,
-                                    easing = FastOutLinearInEasing,
-                                )
-                            ) { it / 3 }
-                        ) {
+                        val navAlphaProgress by animateFloatAsState(
+                            targetValue = if (showNavigation) 1f else 0f,
+                            animationSpec = tween(
+                                durationMillis = if (showNavigation) 260 else 180,
+                                easing = if (showNavigation) {
+                                    LinearOutSlowInEasing
+                                } else {
+                                    FastOutLinearInEasing
+                                },
+                            ),
+                            label = "NavigationAlphaProgress",
+                        )
+                        val navSlideProgress by animateFloatAsState(
+                            targetValue = if (showNavigation) 1f else 0f,
+                            animationSpec = tween(
+                                durationMillis = if (showNavigation) 380 else 240,
+                                easing = if (showNavigation) {
+                                    FastOutSlowInEasing
+                                } else {
+                                    FastOutLinearInEasing
+                                },
+                            ),
+                            label = "NavigationSlideProgress",
+                        )
+                        if (showNavigation || navAlphaProgress > 0.001f || navSlideProgress > 0.001f) {
+                            val hiddenOffsetPx = with(density) {
+                                ((if (stableBottomInset > 0.dp) stableBottomInset else 84.dp) / 3).toPx()
+                            }
                             RearNavigationBar(
                                 modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .graphicsLayer {
+                                        alpha = navAlphaProgress
+                                        translationY = (1f - navSlideProgress) * hiddenOffsetPx
+                                    }
                                     .onGloballyPositioned { coordinates ->
                                         val totalHeight = with(density) {
                                             coordinates.size.height.toDp()
@@ -234,6 +240,7 @@ class MainActivity : ComponentActivity() {
                                 currentScreen = currentScreen,
                                 navigationBarMode = navigationBarMode,
                                 backdrop = backdrop,
+                                shadowVisibilityProgress = navSlideProgress,
                                 onScreenSelected = { currentScreen = it },
                             )
                         }

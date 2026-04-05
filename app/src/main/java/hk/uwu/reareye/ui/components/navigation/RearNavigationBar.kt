@@ -13,6 +13,7 @@ import androidx.compose.material.icons.rounded.Cottage
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -30,37 +31,48 @@ import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
+@Immutable
 private data class NavigationDestination(
     val route: String,
     val label: String,
     val icon: ImageVector,
 )
 
+private const val HOME_ROUTE = "home"
+private const val CONFIG_ROUTE = "config"
+private const val ABOUT_ROUTE = "about"
+
 @Composable
 fun RearNavigationBar(
+    modifier: Modifier = Modifier,
     currentScreen: String,
     navigationBarMode: ModuleNavigationBarMode,
     backdrop: Backdrop,
+    shadowVisibilityProgress: Float = 1f,
     onScreenSelected: (String) -> Unit,
-    modifier: Modifier = Modifier,
 ) {
-    val items = listOf(
-        NavigationDestination(
-            route = "home",
-            label = stringResource(R.string.home_navigation),
-            icon = Icons.Rounded.Cottage,
-        ),
-        NavigationDestination(
-            route = "config",
-            label = stringResource(R.string.configuration_navigation),
-            icon = Icons.Rounded.Settings,
-        ),
-        NavigationDestination(
-            route = "about",
-            label = stringResource(R.string.about_navigation),
-            icon = Icons.Rounded.Info,
-        ),
-    )
+    val homeLabel = stringResource(R.string.home_navigation)
+    val configLabel = stringResource(R.string.configuration_navigation)
+    val aboutLabel = stringResource(R.string.about_navigation)
+    val items = remember(homeLabel, configLabel, aboutLabel) {
+        listOf(
+            NavigationDestination(
+                route = HOME_ROUTE,
+                label = homeLabel,
+                icon = Icons.Rounded.Cottage,
+            ),
+            NavigationDestination(
+                route = CONFIG_ROUTE,
+                label = configLabel,
+                icon = Icons.Rounded.Settings,
+            ),
+            NavigationDestination(
+                route = ABOUT_ROUTE,
+                label = aboutLabel,
+                icon = Icons.Rounded.Info,
+            ),
+        )
+    }
 
     if (navigationBarMode == ModuleNavigationBarMode.NORMAL) {
         NavigationBar(
@@ -100,6 +112,7 @@ fun RearNavigationBar(
         backdrop = backdrop,
         tabsCount = items.size,
         isBlurEnabled = enableGlass,
+        shadowVisibilityProgress = shadowVisibilityProgress,
     ) {
         items.forEachIndexed { index, item ->
             FloatingBottomBarItem(

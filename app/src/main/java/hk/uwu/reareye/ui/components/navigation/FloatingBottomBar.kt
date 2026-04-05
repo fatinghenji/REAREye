@@ -102,6 +102,7 @@ fun FloatingBottomBar(
     backdrop: Backdrop,
     tabsCount: Int,
     isBlurEnabled: Boolean = true,
+    shadowVisibilityProgress: Float = 1f,
     content: @Composable RowScope.() -> Unit,
 ) {
     val isInLightTheme = MiuixTheme.colorScheme.surface.luminance() >= 0.5f
@@ -112,7 +113,7 @@ fun FloatingBottomBar(
         MiuixTheme.colorScheme.surface
     }
 
-    val tabsBackdrop = rememberLayerBackdrop()
+    val tabsBackdrop = if (isBlurEnabled) rememberLayerBackdrop() else null
     val density = LocalDensity.current
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
     val animationScope = rememberCoroutineScope()
@@ -198,17 +199,21 @@ fun FloatingBottomBar(
         }
     }
 
-    val interactiveHighlight = remember(animationScope, tabWidthPx) {
-        InteractiveHighlight(
-            animationScope = animationScope,
-            position = { size, _ ->
-                Offset(
-                    if (isLtr) (dampedDragAnimation.value + 0.5f) * tabWidthPx + panelOffset
-                    else size.width - (dampedDragAnimation.value + 0.5f) * tabWidthPx + panelOffset,
-                    size.height / 2f,
-                )
-            },
-        )
+    val interactiveHighlight = if (isBlurEnabled) {
+        remember(animationScope, tabWidthPx) {
+            InteractiveHighlight(
+                animationScope = animationScope,
+                position = { size, _ ->
+                    Offset(
+                        if (isLtr) (dampedDragAnimation.value + 0.5f) * tabWidthPx + panelOffset
+                        else size.width - (dampedDragAnimation.value + 0.5f) * tabWidthPx + panelOffset,
+                        size.height / 2f,
+                    )
+                },
+            )
+        }
+    } else {
+        null
     }
 
     Box(
@@ -244,6 +249,7 @@ fun FloatingBottomBar(
                     shadow = {
                         Shadow.Default.copy(
                             color = Color.Black.copy(if (isInLightTheme) 0.1f else 0.2f),
+                            alpha = shadowVisibilityProgress,
                         )
                     },
                     layerBlock = {
@@ -256,49 +262,47 @@ fun FloatingBottomBar(
                     },
                     onDrawSurface = { drawRect(containerColor) },
                 )
-                .then(if (isBlurEnabled) interactiveHighlight.modifier else Modifier)
+                .then(interactiveHighlight?.modifier ?: Modifier)
                 .height(64.dp)
                 .padding(4.dp),
             verticalAlignment = Alignment.CenterVertically,
             content = content,
         )
 
-        CompositionLocalProvider(
-            LocalFloatingBottomBarTabScale provides {
-                if (isBlurEnabled) lerp(1f, 1.2f, dampedDragAnimation.pressProgress) else 1f
-            }
-        ) {
-            Row(
-                Modifier
-                    .clearAndSetSemantics {}
-                    .alpha(0f)
-                    .layerBackdrop(tabsBackdrop)
-                    .graphicsLayer { translationX = panelOffset }
-                    .drawBackdrop(
-                        backdrop = backdrop,
-                        shape = { ContinuousCapsule },
-                        effects = {
-                            if (isBlurEnabled) {
+        if (isBlurEnabled) {
+            CompositionLocalProvider(
+                LocalFloatingBottomBarTabScale provides {
+                    lerp(1f, 1.2f, dampedDragAnimation.pressProgress)
+                }
+            ) {
+                Row(
+                    Modifier
+                        .clearAndSetSemantics {}
+                        .alpha(0f)
+                        .layerBackdrop(tabsBackdrop!!)
+                        .graphicsLayer { translationX = panelOffset }
+                        .drawBackdrop(
+                            backdrop = backdrop,
+                            shape = { ContinuousCapsule },
+                            effects = {
                                 val progress = dampedDragAnimation.pressProgress
                                 vibrancy()
                                 blur(8f.dp.toPx())
                                 lens(24f.dp.toPx() * progress, 24f.dp.toPx() * progress)
-                            }
-                        },
-                        highlight = {
-                            Highlight.Default.copy(
-                                alpha = if (isBlurEnabled) dampedDragAnimation.pressProgress else 0f,
-                            )
-                        },
-                        onDrawSurface = { drawRect(containerColor) },
-                    )
-                    .then(if (isBlurEnabled) interactiveHighlight.modifier else Modifier)
-                    .height(56.dp)
-                    .padding(horizontal = 4.dp)
-                    .graphicsLayer(colorFilter = ColorFilter.tint(accentColor)),
-                verticalAlignment = Alignment.CenterVertically,
-                content = content,
-            )
+                            },
+                            highlight = {
+                                Highlight.Default.copy(alpha = dampedDragAnimation.pressProgress)
+                            },
+                            onDrawSurface = { drawRect(containerColor) },
+                        )
+                        .then(interactiveHighlight!!.modifier)
+                        .height(56.dp)
+                        .padding(horizontal = 4.dp)
+                        .graphicsLayer(colorFilter = ColorFilter.tint(accentColor)),
+                    verticalAlignment = Alignment.CenterVertically,
+                    content = content,
+                )
+            }
         }
 
         if (tabWidthPx > 0f) {
@@ -316,10 +320,14 @@ fun FloatingBottomBar(
                             -progressOffset + panelOffset
                         }
                     }
-                    .then(if (isBlurEnabled) interactiveHighlight.gestureModifier else Modifier)
+                    .then(interactiveHighlight?.gestureModifier ?: Modifier)
                     .then(dampedDragAnimation.modifier)
                     .drawBackdrop(
-                        backdrop = rememberCombinedBackdrop(backdrop, tabsBackdrop),
+                        backdrop = if (isBlurEnabled) {
+                            rememberCombinedBackdrop(backdrop, tabsBackdrop!!)
+                        } else {
+                            backdrop
+                        },
                         shape = { ContinuousCapsule },
                         effects = {
                             if (isBlurEnabled) {
@@ -333,7 +341,13 @@ fun FloatingBottomBar(
                             )
                         },
                         shadow = {
-                            Shadow(alpha = if (isBlurEnabled) dampedDragAnimation.pressProgress else 0f)
+                            Shadow(
+                                alpha = if (isBlurEnabled) {
+                                    dampedDragAnimation.pressProgress * shadowVisibilityProgress
+                                } else {
+                                    0f
+                                }
+                            )
                         },
                         innerShadow = {
                             InnerShadow(

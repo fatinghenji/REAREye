@@ -76,6 +76,19 @@ private sealed interface ConfigRoute {
 private const val NAV_BAR_EXIT_DURATION_MS = 220L
 private const val OVERLAY_ROUTE_EXIT_DURATION_MS = 220L
 
+private data class ConfigAnimatedRoute(
+    val route: ConfigRoute,
+    val depth: Int,
+)
+
+private fun ConfigRoute.isOverlayRoute(): Boolean {
+    return this is ConfigRoute.AppList ||
+            this is ConfigRoute.RearWallpaperManager ||
+            this is ConfigRoute.BusinessManager ||
+            this is ConfigRoute.CardManager ||
+            this is ConfigRoute.BusinessExtraManager
+}
+
 @Composable
 fun ConfigScreen(
     bottomInnerPadding: Dp = 0.dp,
@@ -88,11 +101,13 @@ fun ConfigScreen(
 
     var routeStack by remember { mutableStateOf(listOf<ConfigRoute>(ConfigRoute.Root)) }
     val currentRoute = routeStack.last()
-    val isOverlayMode = currentRoute is ConfigRoute.AppList ||
-            currentRoute is ConfigRoute.RearWallpaperManager ||
-            currentRoute is ConfigRoute.BusinessManager ||
-            currentRoute is ConfigRoute.CardManager ||
-            currentRoute is ConfigRoute.BusinessExtraManager
+    val isOverlayMode = currentRoute.isOverlayRoute()
+    val animatedRoute = remember(currentRoute, routeStack.size) {
+        ConfigAnimatedRoute(
+            route = currentRoute,
+            depth = routeStack.size,
+        )
+    }
     val scrollBehavior = MiuixScrollBehavior()
     val hazeState = rememberAcrylicHazeState()
     val hazeStyle = rememberAcrylicHazeStyle()
@@ -132,12 +147,7 @@ fun ConfigScreen(
                 val newStack = routeStack.dropLast(1)
                 routeStack = newStack
                 delay(OVERLAY_ROUTE_EXIT_DURATION_MS)
-                if (newStack.last() !is ConfigRoute.AppList &&
-                    newStack.last() !is ConfigRoute.RearWallpaperManager &&
-                    newStack.last() !is ConfigRoute.BusinessManager &&
-                    newStack.last() !is ConfigRoute.CardManager &&
-                    newStack.last() !is ConfigRoute.BusinessExtraManager
-                ) {
+                if (!newStack.last().isOverlayRoute()) {
                     onAppListModeChange(false)
                 }
             }
@@ -159,12 +169,7 @@ fun ConfigScreen(
             val newStack = routeStack.dropLast(1)
             routeStack = newStack
             delay(OVERLAY_ROUTE_EXIT_DURATION_MS)
-            if (newStack.last() !is ConfigRoute.AppList &&
-                newStack.last() !is ConfigRoute.RearWallpaperManager &&
-                newStack.last() !is ConfigRoute.BusinessManager &&
-                newStack.last() !is ConfigRoute.CardManager &&
-                newStack.last() !is ConfigRoute.BusinessExtraManager
-            ) {
+            if (!newStack.last().isOverlayRoute()) {
                 onAppListModeChange(false)
             }
         }
@@ -179,6 +184,7 @@ fun ConfigScreen(
                     title = when (currentRoute) {
                         ConfigRoute.Root -> stringResource(R.string.configuration_title)
                         is ConfigRoute.Category -> stringResource(currentRoute.category.titleRes)
+                        else -> stringResource(R.string.configuration_title)
                     },
                     scrollBehavior = scrollBehavior
                 )
@@ -189,10 +195,10 @@ fun ConfigScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .graphicsLayer { clip = true },
-            targetState = routeStack,
-            contentKey = { it.last() },
+            targetState = animatedRoute,
+            contentKey = { it.route },
             transitionSpec = {
-                val forward = targetState.size >= initialState.size
+                val forward = targetState.depth >= initialState.depth
 
                 fadeIn(
                     animationSpec = tween(
@@ -224,8 +230,8 @@ fun ConfigScreen(
                         )
             },
             label = "ConfigRouteTransition"
-        ) { stack ->
-            when (val route = stack.last()) {
+        ) { target ->
+            when (val route = target.route) {
                 ConfigRoute.Root -> ConfigNodeList(
                     nodes = REAREyeConfig,
                     prefsManager = prefsManager,

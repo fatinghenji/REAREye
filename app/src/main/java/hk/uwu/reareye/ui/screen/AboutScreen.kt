@@ -100,6 +100,17 @@ import java.util.concurrent.ConcurrentHashMap
 
 private val contributorAvatarHttpClient = OkHttpClient()
 
+private object AppLogoCache {
+    @Volatile
+    private var cachedImage: ImageBitmap? = null
+
+    fun peek(): ImageBitmap? = cachedImage
+
+    fun store(image: ImageBitmap) {
+        cachedImage = image
+    }
+}
+
 private object ContributorAvatarCache {
     private val cache = ConcurrentHashMap<String, ImageBitmap>()
 
@@ -147,6 +158,21 @@ private data class CreditEntry(
     val summaryRes: Int,
     val url: String,
 )
+
+@Composable
+private fun rememberSkeletonPulseAlpha(label: String): Float {
+    val infiniteTransition = rememberInfiniteTransition(label = label)
+    val alpha = infiniteTransition.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 0.9f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 850),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "$label-alpha",
+    )
+    return alpha.value
+}
 
 @Composable
 fun AboutScreen(bottomInnerPadding: Dp = 0.dp) {
@@ -360,7 +386,11 @@ private fun AboutRootContent(
         }
 
         item {
-            ArtRevealItem(visible = true, delayMillis = 36) {
+            ArtStaggeredReveal(
+                visible = true,
+                revealKey = "contributors",
+                delayMillis = 36,
+            ) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -421,6 +451,8 @@ private fun ContributorListContent(
     hazeState: HazeState,
     state: ContributorLoadState,
 ) {
+    val avatarPlaceholderAlpha = rememberSkeletonPulseAlpha("contributor-avatar-skeleton")
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -502,7 +534,10 @@ private fun ContributorListContent(
                             revealKey = revealKey,
                             delayMillis = (36 + index * 18).coerceAtMost(150),
                         ) {
-                            ContributorCard(item = item)
+                            ContributorCard(
+                                item = item,
+                                avatarPlaceholderAlpha = avatarPlaceholderAlpha,
+                            )
                         }
                     }
                 }
@@ -512,7 +547,10 @@ private fun ContributorListContent(
 }
 
 @Composable
-private fun ContributorCard(item: ContributorProfile) {
+private fun ContributorCard(
+    item: ContributorProfile,
+    avatarPlaceholderAlpha: Float,
+) {
     val context = LocalContext.current
     val link = item.link?.takeIf { it.isNotBlank() }
     val hasLink = link != null
@@ -524,6 +562,7 @@ private fun ContributorCard(item: ContributorProfile) {
             startAction = {
                 ContributorAvatar(
                     avatarUrl = item.avatar,
+                    placeholderAlpha = avatarPlaceholderAlpha,
                 )
             },
             onClick = link?.let { targetLink ->
@@ -552,6 +591,7 @@ private fun rememberVersionText(): String {
 @Composable
 private fun ContributorAvatar(
     avatarUrl: String?,
+    placeholderAlpha: Float,
     modifier: Modifier = Modifier,
 ) {
     var imageBitmap by remember(avatarUrl) {
@@ -576,33 +616,26 @@ private fun ContributorAvatar(
                 .clip(CircleShape),
         )
     } else {
-        val infiniteTransition = rememberInfiniteTransition(label = "contributor-avatar-skeleton")
-        val alpha = infiniteTransition.animateFloat(
-            initialValue = 0.45f,
-            targetValue = 0.9f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 850),
-                repeatMode = RepeatMode.Reverse,
-            ),
-            label = "contributor-avatar-skeleton-alpha",
-        )
-
         Box(
             modifier = modifier
                 .size(42.dp)
                 .clip(CircleShape)
-                .background(colorScheme.secondaryContainer.copy(alpha = alpha.value)),
+                .background(colorScheme.secondaryContainer.copy(alpha = placeholderAlpha)),
         )
     }
 }
 
 @Composable
 private fun AppLogo(modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    var imageBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    val context = LocalContext.current.applicationContext
+    var imageBitmap by remember { mutableStateOf(AppLogoCache.peek()) }
 
     LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) {
+        if (imageBitmap != null) {
+            return@LaunchedEffect
+        }
+
+        val loadedBitmap = withContext(Dispatchers.IO) {
             runCatching {
                 val drawable = context.packageManager.getApplicationIcon(context.packageName)
                 val bitmap = if (drawable is BitmapDrawable) {
@@ -617,8 +650,13 @@ private fun AppLogo(modifier: Modifier = Modifier) {
                     drawable.draw(canvas)
                     bmp
                 }
-                imageBitmap = bitmap.asImageBitmap()
+                bitmap.asImageBitmap()
             }
+        }.getOrNull()
+
+        if (loadedBitmap != null) {
+            AppLogoCache.store(loadedBitmap)
+            imageBitmap = loadedBitmap
         }
     }
 

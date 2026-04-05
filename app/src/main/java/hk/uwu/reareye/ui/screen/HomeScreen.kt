@@ -91,6 +91,8 @@ import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
+private val updateInfoHttpClient = OkHttpClient()
+
 private object UpdateInfoCache {
     val lock = Mutex()
     var latestCommitHash: String? = null
@@ -117,7 +119,7 @@ private suspend fun fetchLatestCommitHashFromNetwork(): String? {
             val request = Request.Builder()
                 .url("https://api.github.com/repos/$owner/$repo/commits/$branch")
                 .build()
-            val response = OkHttpClient().newCall(request).execute()
+            val response = updateInfoHttpClient.newCall(request).execute()
             if (response.isSuccessful) {
                 JSONObject(response.body.string()).optString("sha", "").take(7).ifBlank { null }
             } else {
