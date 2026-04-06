@@ -77,6 +77,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Prepare Changelog for Xposed Repo
+        run: |
+          echo "https://github.com/killerprojecte/REAREye/releases/tag/${{ github.ref_name }}" > changelog_xposed.md
+          cat changelog.md >> changelog_xposed.md
+
       - name: Publish to Xposed Modules Repo
         uses: softprops/action-gh-release@v2
         with:
@@ -85,5 +90,5 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
           generate_release_notes: false
-          body: "https://github.com/killerprojecte/REAREye/releases/tag/${{ github.ref_name }}"
+          body_path: changelog_xposed.md
           files: app/build/outputs/apk/release/*.apk
