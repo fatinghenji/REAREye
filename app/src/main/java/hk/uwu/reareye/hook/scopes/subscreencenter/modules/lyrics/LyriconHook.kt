@@ -190,28 +190,46 @@ class LyriconHook : YukiBaseHooker() {
                 name = "onClientMetadataUpdate"
                 returnType = Void.TYPE
                 parameters(MediaMetadata::class.java)
-            }.hook().after {
-                val i = instance.asResolver().firstField {
-                    name = "this$0"
-                }.get() ?: return@after
-                val iRef = i.asResolver()
-                val mLyric = iRef.firstField { name = "mLyric" }.get()
-                val lrc = XposedHelpers.getAdditionalInstanceField(i, "TEMP_LRC") as? String
-                if (mLyric == null) {
-                    if (lrc != null || latestLyricLrc.isNotEmpty()) {
-                        YLog.debug("onUpdateLrc $mLyric ${lrc == null} ${latestLyricLrc.isEmpty()}")
-                        forceUpdateLyric(i, lrc ?: latestLyricLrc)
-                        return@after
+            }.hook {
+                before {
+                    if (prefs.getBoolean(ConfigKeys.HOOK_REMOVE_NATIVE_LYRIC_SUPPORT, false)) {
+                        val metadataArg = args(0)
+                        val metadata = args(0).cast<MediaMetadata>()
+                        val builder = MediaMetadata.Builder(metadata)
+                        builder.putString(XIAOMI_LYRIC_METADATA, null)
+                        metadataArg.set(builder.build())
+                        if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+                            YLog.debug("Force removed native lyric data")
+                        }
                     }
-                    val line =
-                        XposedHelpers.getAdditionalInstanceField(i, "TEMP_LYRIC_LINE") as? String
-                    val mLyricCurrentVar =
-                        iRef.firstField { name = "mLyricCurrentVar" }.get() ?: return@after
-                    val currentLyric =
-                        mLyricCurrentVar.asResolver().firstMethod { name = "get" }.invoke()
-                    if (line != null && currentLyric == null) {
-                        YLog.debug("onUpdateLine $line")
-                        updateFallbackLine(i, line)
+                }
+
+                after {
+                    val i = instance.asResolver().firstField {
+                        name = "this$0"
+                    }.get() ?: return@after
+                    val iRef = i.asResolver()
+                    val mLyric = iRef.firstField { name = "mLyric" }.get()
+                    val lrc = XposedHelpers.getAdditionalInstanceField(i, "TEMP_LRC") as? String
+                    if (mLyric == null) {
+                        if (lrc != null || latestLyricLrc.isNotEmpty()) {
+                            YLog.debug("onUpdateLrc $mLyric ${lrc == null} ${latestLyricLrc.isEmpty()}")
+                            forceUpdateLyric(i, lrc ?: latestLyricLrc)
+                            return@after
+                        }
+                        val line =
+                            XposedHelpers.getAdditionalInstanceField(
+                                i,
+                                "TEMP_LYRIC_LINE"
+                            ) as? String
+                        val mLyricCurrentVar =
+                            iRef.firstField { name = "mLyricCurrentVar" }.get() ?: return@after
+                        val currentLyric =
+                            mLyricCurrentVar.asResolver().firstMethod { name = "get" }.invoke()
+                        if (line != null && currentLyric == null) {
+                            YLog.debug("onUpdateLine $line")
+                            updateFallbackLine(i, line)
+                        }
                     }
                 }
             }
@@ -366,5 +384,6 @@ class LyriconHook : YukiBaseHooker() {
 
     private companion object {
         private const val TARGET_LYRICON_PACKAGE = "io.github.proify.lyricon"
+        private const val XIAOMI_LYRIC_METADATA = "android.media.metadata.LYRIC"
     }
 }

@@ -250,4 +250,6 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="home_easter_egg_mifans">Xiaomi Fans Festival</string>
     <string name="home_easter_egg_mifans_working">Lei Jun！Jin Fan！</string>
     <string name="home_easter_egg_mifans_activated">I\'m truly impressed by Xiaomi</string>
+    <string name="lyric_remove_native_lyrics">Remove lyrics provided by the native API</string>
+    <string name="lyric_remove_native_lyrics_desc">Lyrics information provided through Xiaomi lyrics metadata will be removed</string>
 </resources>

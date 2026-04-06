@@ -249,4 +249,6 @@
     <string name="home_easter_egg_mifans">米粉节</string>
     <string name="home_easter_egg_mifans_working">雷军！金凡！</string>
     <string name="home_easter_egg_mifans_activated">我真的是服了小米了</string>
+    <string name="lyric_remove_native_lyrics">移除由原生API提供的歌词</string>
+    <string name="lyric_remove_native_lyrics_desc">将会移除掉通过小米歌词元数据提供的歌词信息</string>
 </resources>
