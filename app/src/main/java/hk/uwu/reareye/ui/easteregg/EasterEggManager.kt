@@ -8,7 +8,8 @@ enum class EasterEggType {
     NONE,
     NEW_YEAR,
     APRIL_FOOLS,
-    EASTER
+    EASTER,
+    MI_FANS
 }
 
 enum class EasterEggDisableScope {
@@ -50,6 +51,10 @@ object EasterEggManager {
         EasterEggDefinition(
             EasterEggType.EASTER,
             EasterEggTrigger.ExactDate(year = 2026, month = 4, day = 5)
+        ),
+        EasterEggDefinition(
+            EasterEggType.MI_FANS,
+            EasterEggTrigger.Annual(month = 4, day = 6)
         )
     )
 

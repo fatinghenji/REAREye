@@ -247,4 +247,7 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="home_easter_egg_easter">Easter</string>
     <string name="home_easter_egg_easter_working">Module is being revived</string>
     <string name="home_easter_egg_easter_activated">The module is dead</string>
+    <string name="home_easter_egg_mifans">Xiaomi Fans Festival</string>
+    <string name="home_easter_egg_mifans_working">Lei Jun！Jin Fan！</string>
+    <string name="home_easter_egg_mifans_activated">I\'m truly impressed by Xiaomi</string>
 </resources>

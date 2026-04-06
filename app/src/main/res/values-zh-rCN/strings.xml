@@ -246,4 +246,7 @@
     <string name="home_easter_egg_easter">复活节</string>
     <string name="home_easter_egg_easter_working">模块复活中</string>
     <string name="home_easter_egg_easter_activated">模块已死亡</string>
+    <string name="home_easter_egg_mifans">米粉节</string>
+    <string name="home_easter_egg_mifans_working">雷军！金凡！</string>
+    <string name="home_easter_egg_mifans_activated">我真的是服了小米了</string>
 </resources>

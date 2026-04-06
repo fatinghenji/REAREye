@@ -31,6 +31,7 @@ import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.CrueltyFree
 import androidx.compose.material.icons.outlined.DoNotDisturb
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.runtime.Composable
@@ -178,6 +179,7 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
         when (easterEggType) {
             EasterEggType.APRIL_FOOLS -> androidx.compose.ui.res.stringResource(R.string.home_easter_egg_april_fools_working)
             EasterEggType.EASTER -> androidx.compose.ui.res.stringResource(R.string.home_easter_egg_easter_working)
+            EasterEggType.MI_FANS -> androidx.compose.ui.res.stringResource(R.string.home_easter_egg_mifans_working)
             else -> androidx.compose.ui.res.stringResource(R.string.home_status_working)
         }
     } else {
@@ -193,16 +195,19 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
     val appTitle = when (easterEggType) {
         EasterEggType.APRIL_FOOLS -> "FOOLEye"
         EasterEggType.EASTER -> "BUNNYEgg"
+        EasterEggType.MI_FANS -> "JINFan"
         else -> "REAREye"
     }
     val moduleVersion = when (easterEggType) {
         EasterEggType.APRIL_FOOLS -> "4.1.0-41f001u-r${AppProperties.BUILD_NUMBER}-fool"
         EasterEggType.EASTER -> "7.7.7-holyegg-r${AppProperties.BUILD_NUMBER}-rebirth"
+        EasterEggType.MI_FANS -> "本彩蛋仅为娱乐用途\n不代表开发者或任何组织的立场或观点"
         else -> "${AppProperties.PROJECT_APP_VERSION_NAME}-${AppProperties.GIT_HASH}-r${AppProperties.BUILD_NUMBER}-${AppProperties.BUILD_CHANNEL}"
     }
     val releaseChannel = when (easterEggType) {
         EasterEggType.APRIL_FOOLS -> "Oops"
         EasterEggType.EASTER -> "Respawn Entertainment"
+        EasterEggType.MI_FANS -> "HyperOS Beta"
         else -> AppProperties.BUILD_CHANNEL
     }
 
@@ -397,11 +402,13 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
                             currentHash = when (easterEggType) {
                                 EasterEggType.APRIL_FOOLS -> "41f001u"
                                 EasterEggType.EASTER -> "holyegg"
+                                EasterEggType.MI_FANS -> "leijun"
                                 else -> AppProperties.GIT_HASH
                             },
                             latestHash = when (easterEggType) {
                                 EasterEggType.APRIL_FOOLS if AppProperties.GIT_HASH == latestCommitHash -> "41f001u"
                                 EasterEggType.EASTER if AppProperties.GIT_HASH == latestCommitHash -> "candies"
+                                EasterEggType.MI_FANS if AppProperties.GIT_HASH == latestCommitHash -> "jinfan"
                                 else -> latestCommitHash
                             },
                             checking = isCheckingUpdate,
@@ -531,6 +538,12 @@ private fun WorkingStatusCard(
             Color(0xFF4CA66B),
         )
 
+        easterEggType == EasterEggType.MI_FANS -> listOf(
+            Color(0xFFFFF2E0),
+            Color(0xFFFF6900),
+            Color(0xFFB34700),
+            Color(0xFF8C6239),
+        )
 
         else -> listOf(
             Color(0xFFDFFAE4),
@@ -545,6 +558,7 @@ private fun WorkingStatusCard(
 
         easterEggType == EasterEggType.APRIL_FOOLS -> Icons.Outlined.BugReport
         easterEggType == EasterEggType.EASTER -> Icons.Outlined.CrueltyFree
+        easterEggType == EasterEggType.MI_FANS -> Icons.Outlined.Lock
 
         else -> Icons.Outlined.CheckCircle
     }
@@ -598,6 +612,7 @@ private fun EasterEggType.toTitleRes(): Int {
         EasterEggType.NEW_YEAR -> R.string.home_easter_egg_new_year
         EasterEggType.APRIL_FOOLS -> R.string.home_easter_egg_april_fools
         EasterEggType.EASTER -> R.string.home_easter_egg_easter
+        EasterEggType.MI_FANS -> R.string.home_easter_egg_mifans
     }
 }
 
@@ -723,6 +738,9 @@ private fun ModuleInfoCard(
                 )
                 easterEggType == EasterEggType.EASTER -> androidx.compose.ui.res.stringResource(
                     R.string.home_easter_egg_easter_activated
+                )
+                easterEggType == EasterEggType.MI_FANS -> androidx.compose.ui.res.stringResource(
+                    R.string.home_easter_egg_mifans_activated
                 )
 
                 else -> androidx.compose.ui.res.stringResource(R.string.module_is_activated)
