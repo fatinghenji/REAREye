@@ -23,8 +23,14 @@ fun runGitCommand(vararg args: String): String? = runCatching {
 }.getOrNull()
 
 android {
+    buildToolsVersion = gropify.project.android.buildToolsVersion
     namespace = gropify.project.app.packageName
-    compileSdk = gropify.project.android.compileSdk
+    compileSdk {
+        version =
+            release(gropify.project.android.compileSdk) {
+                minorApiLevel = gropify.project.android.compileSdkMinor
+            }
+    }
 
     val baseVersionName = gropify.project.app.versionName.replace("\"", "")
     val buildSuffix = project.findProperty("buildSuffix") as? String ?: "dev"
@@ -102,6 +108,8 @@ tasks.withType<KotlinJvmCompile>().configureEach {
 }
 
 dependencies {
+    implementation(project(":rear-widget-api"))
+
     compileOnly(libs.rovo89.xposed.api)
     ksp(libs.yukihookapi.ksp.xposed)
     implementation(libs.yukihookapi)
@@ -122,7 +130,15 @@ dependencies {
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
-    implementation(libs.miuix)
+    implementation(libs.miuix.ui)
+    implementation(libs.miuix.preference)
     implementation(libs.miuix.icons)
+    implementation(libs.haze)
+    implementation(libs.backdrop)
+    implementation(libs.capsule)
     implementation(libs.okhttp)
+    implementation(libs.gson)
+    implementation(libs.lyricon.provider)
+    implementation(libs.lyricon.central)
+    implementation(libs.superlyric)
 }

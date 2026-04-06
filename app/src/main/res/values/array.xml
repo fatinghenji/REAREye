@@ -4,5 +4,6 @@
         <item>android</item>
         <item>com.xiaomi.subscreencenter</item>
         <item>com.android.thememanager</item>
+        <item>com.android.systemui</item>
     </string-array>
 </resources>

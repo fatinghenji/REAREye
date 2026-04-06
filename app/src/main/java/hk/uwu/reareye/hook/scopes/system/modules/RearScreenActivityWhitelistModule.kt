@@ -3,7 +3,7 @@ package hk.uwu.reareye.hook.scopes.system.modules
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import de.robv.android.xposed.XposedBridge
+import com.highcapable.yukihookapi.hook.log.YLog
 import hk.uwu.reareye.ui.config.ConfigKeys
 
 class RearScreenActivityWhitelistModule : YukiBaseHooker() {
@@ -26,7 +26,7 @@ class RearScreenActivityWhitelistModule : YukiBaseHooker() {
                     set.clear()
                     set.add("com.retroarch")
                     set.addAll(whitelist)
-                    XposedBridge.log("Injected Activities Whitelist")
+                    YLog.debug("Injected Activities Whitelist")
                 }
 
                 after {
@@ -55,7 +55,7 @@ class RearScreenActivityWhitelistModule : YukiBaseHooker() {
                     }.get<String>()
                     if (whitelist.contains(packageName)) {
                         resultTrue()
-                        XposedBridge.log("Allow starting $packageName while rear screen is locked")
+                        YLog.debug("Allow starting $packageName while rear screen is locked")
                     }
                 }
             }

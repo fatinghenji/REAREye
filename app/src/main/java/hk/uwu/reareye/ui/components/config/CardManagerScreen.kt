@@ -2,10 +2,11 @@ package hk.uwu.reareye.ui.components.config
 
 import android.annotation.SuppressLint
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -24,8 +25,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
@@ -34,17 +38,28 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import hk.uwu.reareye.R
-import hk.uwu.reareye.rearwidget.RearCardConfig
-import hk.uwu.reareye.rearwidget.RearWidgetConfigCodec
-import hk.uwu.reareye.rearwidget.RearWidgetManagerRepository
+import hk.uwu.reareye.repository.rearwidget.RearCardConfig
+import hk.uwu.reareye.repository.rearwidget.RearWidgetConfigCodec
+import hk.uwu.reareye.repository.rearwidget.RearWidgetManagerRepository
 import hk.uwu.reareye.ui.components.card.ModuleStyleDeleteAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleIconAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleManagerCard
 import hk.uwu.reareye.ui.components.card.SuperCard
+import hk.uwu.reareye.ui.components.motion.ArtRevealItem
+import hk.uwu.reareye.ui.components.motion.ArtStaggeredReveal
 import hk.uwu.reareye.ui.config.PrefsManager
+import hk.uwu.reareye.ui.theme.rearAcrylicEffect
+import hk.uwu.reareye.ui.theme.rearAcrylicSource
+import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
+import hk.uwu.reareye.ui.theme.rememberAcrylicHazeStyle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
@@ -53,9 +68,10 @@ import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
-import top.yukonga.miuix.kmp.extra.SuperDialog
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
@@ -66,15 +82,29 @@ fun CardManagerScreen(
 ) {
     val context = LocalContext.current
     val layoutDirection = LocalLayoutDirection.current
+    val scope = rememberCoroutineScope()
     val scrollBehavior = MiuixScrollBehavior()
-    val cards = remember {
-        mutableStateListOf<RearCardConfig>().apply {
-            addAll(RearWidgetManagerRepository.loadCards(prefsManager))
-        }
-    }
+    val hazeState = rememberAcrylicHazeState()
+    val hazeStyle = rememberAcrylicHazeStyle()
+    val cards = remember { mutableStateListOf<RearCardConfig>() }
+    var cardsLoaded by remember { mutableStateOf(false) }
+    var dataCardsVisible by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        RearWidgetManagerRepository.refreshRuntimeFromPrefs(context, prefsManager)
+        cardsLoaded = false
+        dataCardsVisible = false
+        delay(220)
+        val loadedCards = withContext(Dispatchers.IO) {
+            RearWidgetManagerRepository.loadCards(prefsManager)
+        }
+        cards.clear()
+        cards.addAll(loadedCards)
+        cardsLoaded = true
+        delay(90)
+        dataCardsVisible = true
+        withContext(Dispatchers.IO) {
+            RearWidgetManagerRepository.refreshRuntimeFromPrefs(context, prefsManager)
+        }
     }
 
     var showDialog by remember { mutableStateOf(false) }
@@ -83,6 +113,7 @@ fun CardManagerScreen(
     var draftPackageName by remember { mutableStateOf("hk.uwu.reareye") }
     var draftBusiness by remember { mutableStateOf("") }
     var draftPriorityText by remember { mutableStateOf("500") }
+    var draftSticky by remember { mutableStateOf(true) }
 
     fun persist() {
         RearWidgetManagerRepository.saveCards(context, prefsManager, cards.toList())
@@ -94,6 +125,7 @@ fun CardManagerScreen(
         draftPackageName = "hk.uwu.reareye"
         draftBusiness = ""
         draftPriorityText = "500"
+        draftSticky = true
         showDialog = true
     }
 
@@ -103,6 +135,7 @@ fun CardManagerScreen(
         draftPackageName = item.packageName
         draftBusiness = item.business
         draftPriorityText = item.priority.toString()
+        draftSticky = item.sticky
         showDialog = true
     }
 
@@ -127,6 +160,7 @@ fun CardManagerScreen(
             packageName = pkg,
             business = widget,
             enabled = enabled,
+            sticky = draftSticky,
             priority = draftPriorityText.toIntOrNull() ?: 500,
         )
 
@@ -149,9 +183,13 @@ fun CardManagerScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
+                color = Color.Transparent,
                 title = stringResource(R.string.rear_widget_card_manager),
+                navigationIconPadding = 12.dp,
+                actionIconPadding = 12.dp,
                 navigationIcon = {
-                    IconButton(modifier = Modifier.padding(start = 16.dp), onClick = onBack) {
+                    IconButton(onClick = onBack) {
                         Icon(
                             modifier = Modifier.graphicsLayer {
                                 if (layoutDirection == LayoutDirection.Rtl) scaleX = -1f
@@ -163,8 +201,7 @@ fun CardManagerScreen(
                 },
                 actions = {
                     IconButton(
-                        modifier = Modifier.padding(end = 16.dp),
-                        onClick = { openCreateDialog() }) {
+                        onClick = { if (cardsLoaded) openCreateDialog() }) {
                         Icon(imageVector = Icons.Filled.Add, contentDescription = null)
                     }
                 },
@@ -178,6 +215,7 @@ fun CardManagerScreen(
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .scrollEndHaptic()
                 .overScrollVertical()
+                .rearAcrylicSource(hazeState)
                 .padding(horizontal = 12.dp),
             contentPadding = PaddingValues(
                 top = paddingValues.calculateTopPadding() + 12.dp,
@@ -195,10 +233,18 @@ fun CardManagerScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         SuperCard(
                             title = stringResource(R.string.rear_widget_card_dialog_hint_title),
-                            summary = stringResource(
-                                R.string.rear_widget_card_count,
-                                cards.size,
-                            ) + "\n" + stringResource(R.string.rear_widget_card_dialog_hint),
+                            summary = buildString {
+                                if (cardsLoaded) {
+                                    append(
+                                        stringResource(
+                                            R.string.rear_widget_card_count,
+                                            cards.size,
+                                        )
+                                    )
+                                    append('\n')
+                                }
+                                append(stringResource(R.string.rear_widget_card_dialog_hint))
+                            },
                             onClick = {},
                             bottomAction = {
                                 Button(
@@ -219,63 +265,112 @@ fun CardManagerScreen(
                 }
             }
 
-            itemsIndexed(cards, key = { _, item -> item.id }) { _, item ->
-                ModuleStyleManagerCard(
-                    title = item.title,
-                    summaryLines = listOf(
-                        stringResource(
-                            R.string.rear_widget_card_summary,
-                            item.packageName,
-                            item.business,
-                            item.priority,
-                        ),
-                    ),
-                    trailing = {
-                        Switch(
-                            checked = item.enabled,
-                            onCheckedChange = { checked ->
-                                val i = cards.indexOfFirst { it.id == item.id }
-                                if (i >= 0) {
-                                    cards[i] = cards[i].copy(enabled = checked)
-                                    persist()
-                                }
+            if (!dataCardsVisible) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        insideMargin = PaddingValues(vertical = 24.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                CircularProgressIndicator()
+                                Text(text = stringResource(R.string.rear_widget_loading_data))
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (dataCardsVisible) {
+                itemsIndexed(cards, key = { _, item -> item.id }) { index, item ->
+                    ArtStaggeredReveal(
+                        visible = true,
+                        revealKey = item.id,
+                        delayMillis = (36 + index * 18).coerceAtMost(150),
+                    ) {
+                        ModuleStyleManagerCard(
+                            title = item.title,
+                            summaryLines = listOf(
+                                stringResource(
+                                    R.string.rear_widget_card_summary,
+                                    item.packageName,
+                                    item.business,
+                                    item.priority,
+                                ),
+                                stringResource(
+                                    R.string.rear_widget_card_sticky_summary,
+                                    stringResource(
+                                        if (item.sticky) {
+                                            R.string.rear_wallpaper_schedule_on
+                                        } else {
+                                            R.string.rear_wallpaper_schedule_off
+                                        }
+                                    ),
+                                ),
+                            ),
+                            trailing = {
+                                Switch(
+                                    checked = item.enabled,
+                                    onCheckedChange = { checked ->
+                                        val i = cards.indexOfFirst { it.id == item.id }
+                                        if (i >= 0) {
+                                            cards[i] = cards[i].copy(enabled = checked)
+                                            scope.launch(Dispatchers.IO) {
+                                                RearWidgetManagerRepository.setCardEnabled(
+                                                    context = context,
+                                                    prefsManager = prefsManager,
+                                                    cardId = item.id,
+                                                    enabled = checked,
+                                                )
+                                            }
+                                        }
+                                    },
+                                )
+                            },
+                            onCardClick = { openEditDialog(item) },
+                            leftAction = {
+                                ModuleStyleIconAction(
+                                    icon = Icons.Rounded.EditNote,
+                                    onClick = { openEditDialog(item) },
+                                )
+                            },
+                            rightAction = {
+                                ModuleStyleDeleteAction(
+                                    icon = MiuixIcons.Delete,
+                                    text = stringResource(R.string.rear_widget_action_delete),
+                                    onClick = {
+                                        cards.remove(item)
+                                        persist()
+                                    },
+                                )
                             },
                         )
-                    },
-                    onCardClick = { openEditDialog(item) },
-                    leftAction = {
-                        ModuleStyleIconAction(
-                            icon = Icons.Rounded.EditNote,
-                            onClick = { openEditDialog(item) },
-                        )
-                    },
-                    rightAction = {
-                        ModuleStyleDeleteAction(
-                            icon = MiuixIcons.Delete,
-                            text = stringResource(R.string.rear_widget_action_delete),
-                            onClick = {
-                                cards.remove(item)
-                                persist()
-                            },
-                        )
-                    },
-                )
+                    }
+                }
             }
 
             item {
-                AnimatedVisibility(visible = cards.isEmpty()) {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = stringResource(R.string.rear_widget_empty_card),
-                            modifier = Modifier.padding(16.dp),
-                        )
+                if (dataCardsVisible && cards.isEmpty()) {
+                    ArtRevealItem(visible = true, delayMillis = 40) {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = stringResource(R.string.rear_widget_empty_card),
+                                modifier = Modifier.padding(16.dp),
+                            )
+                        }
                     }
                 }
             }
         }
     }
 
-    SuperDialog(
+    OverlayDialog(
         show = showDialog,
         title = stringResource(
             if (editingCardId == null) R.string.rear_widget_add_card else R.string.rear_widget_edit_card,
@@ -316,6 +411,12 @@ fun CardManagerScreen(
                 modifier = Modifier.fillMaxWidth(),
                 label = stringResource(R.string.rear_widget_default_priority),
                 singleLine = true,
+            )
+            SwitchPreference(
+                title = stringResource(R.string.rear_widget_card_sticky),
+                summary = stringResource(R.string.rear_widget_card_sticky_desc),
+                checked = draftSticky,
+                onCheckedChange = { draftSticky = it },
             )
             Column(
                 modifier = Modifier.fillMaxWidth(),

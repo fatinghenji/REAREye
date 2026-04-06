@@ -4,8 +4,7 @@ import android.content.Context
 import com.highcapable.yukihookapi.hook.factory.prefs
 import com.highcapable.yukihookapi.hook.xposed.prefs.YukiHookPrefsBridge
 
-class PrefsManager(context: Context) {
-    val prefs: YukiHookPrefsBridge = context.prefs()
+class PrefsManager(val prefs: YukiHookPrefsBridge) {
 
     fun getBoolean(key: String, defValue: Boolean): Boolean {
         return prefs.getBoolean(key, defValue)
@@ -29,5 +28,26 @@ class PrefsManager(context: Context) {
 
     fun putString(key: String, value: String) {
         prefs.edit().putString(key, value).apply()
+    }
+
+    fun getInt(key: String, defValue: Int): Int {
+        return prefs.getInt(key, defValue)
+    }
+
+    fun putInt(key: String, value: Int) {
+        prefs.edit().putInt(key, value).apply()
+    }
+
+    fun getFloat(key: String, defValue: Float): Float {
+        return prefs.getFloat(key, defValue)
+    }
+
+    fun putFloat(key: String, value: Float) {
+        prefs.edit().putFloat(key, value).apply()
+    }
+
+    companion object {
+        fun Context.getPrefsManager() = PrefsManager(this.prefs())
+        fun YukiHookPrefsBridge.getPrefsManager() = PrefsManager(this)
     }
 }

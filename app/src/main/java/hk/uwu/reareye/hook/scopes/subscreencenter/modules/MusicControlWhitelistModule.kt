@@ -4,7 +4,7 @@ import android.media.MediaMetadata
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import de.robv.android.xposed.XposedBridge
+import com.highcapable.yukihookapi.hook.log.YLog
 import hk.uwu.reareye.ui.config.ConfigKeys
 
 class MusicControlWhitelistModule : YukiBaseHooker() {
@@ -24,7 +24,7 @@ class MusicControlWhitelistModule : YukiBaseHooker() {
             }
             if (prefs.getBoolean(ConfigKeys.HOOK_MUSIC_CONTROLS_WHITELIST, true)) {
                 field.set(map)
-                XposedBridge.log("Hooked SubscreenCenter whitelist ${field.get()}")
+                YLog.debug("Hooked SubscreenCenter whitelist ${field.get()}")
             }
 
             val musicControlListenerClz =
@@ -49,7 +49,9 @@ class MusicControlWhitelistModule : YukiBaseHooker() {
                 mRoot.asResolver().firstMethod {
                     name = "requestUpdate"
                 }.invoke()
-                XposedBridge.log("Request render controller to update metadata")
+                if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+                    YLog.debug("Request render controller to update metadata")
+                }
             }
         }
     }

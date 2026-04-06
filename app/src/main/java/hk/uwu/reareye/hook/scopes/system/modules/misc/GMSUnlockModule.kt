@@ -5,7 +5,7 @@ import android.util.ArrayMap
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import de.robv.android.xposed.XposedBridge
+import com.highcapable.yukihookapi.hook.log.YLog
 import hk.uwu.reareye.ui.config.ConfigKeys
 
 class GMSUnlockModule : YukiBaseHooker() {
@@ -30,16 +30,16 @@ class GMSUnlockModule : YukiBaseHooker() {
                         val map = instance.asResolver().firstMethod {
                             name = "getAvailableFeatures"
                         }.invoke() as ArrayMap<String, FeatureInfo>
-                        XposedBridge.log("Hooked system features $map")
+                        YLog.debug("Hooked system features $map")
                     } else {
-                        XposedBridge.log("Removed system features")
+                        YLog.debug("Removed system features")
                     }
                 }
             }
             clz.firstConstructor {
                 parameterCount = 0
             }.hook().after {
-                XposedBridge.log("Hooking SystemConfig constructor")
+                YLog.debug("Hooking SystemConfig constructor")
                 if (prefs.getBoolean(ConfigKeys.MISC_HOOK_GMS_UNLOCK, false)) {
                     remove(instance, true)
                 }
@@ -51,7 +51,7 @@ class GMSUnlockModule : YukiBaseHooker() {
                 before {
                     if (prefs.getBoolean(ConfigKeys.MISC_HOOK_GMS_UNLOCK, false)) {
                         remove(instance, false)
-                        XposedBridge.log("Features has been patched, remove this hook")
+                        YLog.debug("Features has been patched, remove this hook")
                         removeSelf()
                     }
                 }

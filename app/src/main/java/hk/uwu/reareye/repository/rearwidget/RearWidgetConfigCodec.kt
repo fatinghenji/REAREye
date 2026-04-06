@@ -1,4 +1,4 @@
-package hk.uwu.reareye.rearwidget
+package hk.uwu.reareye.repository.rearwidget
 
 import org.json.JSONArray
 import org.json.JSONObject
@@ -19,6 +19,7 @@ data class RearCardConfig(
     val packageName: String,
     val business: String,
     val enabled: Boolean = true,
+    val sticky: Boolean = true,
     val priority: Int = 500,
 )
 
@@ -85,6 +86,7 @@ object RearWidgetConfigCodec {
                 packageName = packageName,
                 business = business,
                 enabled = obj.optBoolean("enabled", true),
+                sticky = obj.optBoolean("sticky", true),
                 priority = obj.optInt("priority", 500),
             )
         }
@@ -116,6 +118,7 @@ object RearWidgetConfigCodec {
                         .put("packageName", item.packageName)
                         .put("business", item.business)
                         .put("enabled", item.enabled)
+                        .put("sticky", item.sticky)
                         .put("priority", item.priority)
                 )
             }
