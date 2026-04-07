@@ -22,16 +22,19 @@ import io.github.proify.lyricon.subscriber.LyriconSubscriber
 import io.github.proify.lyricon.subscriber.ProviderInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.time.Duration.Companion.seconds
 
-
 class LyriconHook : YukiBaseHooker() {
     private val lyricParser = LyricParser()
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val mainScope by lazy(LazyThreadSafetyMode.NONE) {
+        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    }
 
     @Volatile
     private var latestLyricLrc: String = ""
@@ -181,8 +184,35 @@ class LyriconHook : YukiBaseHooker() {
                     YLog.debug("Reject reset lyric while media id is not changed")
                     return@replaceUnit
                 } else {
+                    clearManagedLyricState(instance)
                     invokeOriginal()
                 }
+            }
+
+            ref.firstMethod {
+                name = "updateLyricVar"
+                parameters(Long::class.java)
+            }.hook().replaceUnit {
+                if (!isManagedFullLyric(instance)) {
+                    invokeOriginal()
+                    return@replaceUnit
+                }
+                updateLyricVarsDiff(instance, args(0).cast<Long>() ?: 0L)
+            }
+
+            ref.firstMethod {
+                name = "startProgressUpdate"
+                parameters(Boolean::class.java, Long::class.java)
+            }.hook().replaceUnit {
+                if (!isManagedFullLyric(instance)) {
+                    invokeOriginal(*args)
+                    return@replaceUnit
+                }
+                scheduleManagedProgressTick(
+                    element = instance,
+                    isPlaying = args(0).boolean(),
+                    delayMs = args(1).cast<Long>() ?: 0L
+                )
             }
 
             val seClz = "com.miui.maml.elements.ScreenElement".toClass().resolve()
@@ -192,8 +222,23 @@ class LyriconHook : YukiBaseHooker() {
             }.hook().after {
                 if (instanceClass == clz && !args(0).boolean()) {
                     YLog.debug("Release music control instance: $instance")
+                    clearManagedLyricState(instance)
                     elements.remove(instance)
                 }
+            }
+
+            "com.miui.maml.elements.MusicControlScreenElement$4".toClass().resolve().firstMethod {
+                name = "run"
+            }.hook().replaceUnit {
+                val element = XposedHelpers.getObjectField(instance, "this$0") ?: run {
+                    invokeOriginal()
+                    return@replaceUnit
+                }
+                if (!isManagedFullLyric(element)) {
+                    invokeOriginal()
+                    return@replaceUnit
+                }
+                runManagedProgressTick(element)
             }
 
             val musicControlListenerClz =
@@ -412,6 +457,7 @@ class LyriconHook : YukiBaseHooker() {
     }
 
     private fun updateFallbackLine(element: Any, text: String) {
+        clearManagedLyricState(element)
         val ref = element.asResolver()
         val mLyric = ref.firstField { name = "mLyric" }.get()
         if (mLyric != null) return
@@ -462,6 +508,7 @@ class LyriconHook : YukiBaseHooker() {
         }.invoke(vLrc)
         if (moreDebug) YLog.debug("parsed $nLyric")
         if (nLyric != null) {
+            clearManagedLyricState(element)
             nLyric.asResolver().firstMethod { name = "decorate" }.invoke()
             mLyric.set(nLyric)
             ref.firstMethod { name = "updateLyric" }.invoke(nLyric)
@@ -476,7 +523,197 @@ class LyriconHook : YukiBaseHooker() {
                 )
             }
             XposedHelpers.setAdditionalInstanceField(element, "TEMP_LRC", vLrc)
+            XposedHelpers.setAdditionalInstanceField(element, MANAGED_FULL_LRC, true)
+        } else {
+            clearManagedLyricState(element)
         }
+    }
+
+    private fun runManagedProgressTick(element: Any) {
+        val metadata =
+            XposedHelpers.getObjectField(element, "mMetadata") as? MediaMetadata ?: return
+        if (!XposedHelpers.getBooleanField(element, "mPlaying")) return
+        val duration = metadata.getLong(DURATION_METADATA)
+        val musicController = XposedHelpers.getObjectField(element, "mMusicController") ?: return
+        val position = (XposedHelpers.callMethod(musicController, "getPosition") as? Long) ?: return
+        if (duration <= 0 || position < 0) return
+
+        setIndexedVariable(
+            XposedHelpers.getObjectField(element, "mDurationVar"),
+            duration.toDouble()
+        )
+        setIndexedVariable(
+            XposedHelpers.getObjectField(element, "mPositionVar"),
+            position.toDouble()
+        )
+
+        val lyricChanged = updateLyricVarsDiff(element, position)
+        if (lyricChanged) {
+            XposedHelpers.callMethod(element, "requestUpdate")
+        }
+
+        val interval = XposedHelpers.getIntField(element, "mUpdateProgressInterval").toLong()
+            .coerceAtLeast(MIN_PROGRESS_INTERVAL_MS)
+        val lyric = XposedHelpers.getObjectField(element, "mLyric")
+        val cache = lyric?.let { getOrBuildLyricCache(element, it) }
+        val delay = cache?.let { computeNextTickDelay(it.times, position, interval) } ?: interval
+        scheduleManagedProgressTick(element, true, delay)
+    }
+
+    private fun scheduleManagedProgressTick(element: Any, isPlaying: Boolean, delayMs: Long) {
+        cancelManagedProgressJob(element)
+        if (!isPlaying) return
+        val safeDelay = delayMs.coerceAtLeast(0L)
+        val job = mainScope.launch {
+            if (safeDelay > 0L) {
+                delay(safeDelay)
+            }
+            runManagedProgressTick(element)
+        }
+        XposedHelpers.setAdditionalInstanceField(element, MANAGED_PROGRESS_JOB, job)
+    }
+
+    private fun updateLyricVarsDiff(element: Any, position: Long): Boolean {
+        val lyric = XposedHelpers.getObjectField(element, "mLyric") ?: return false
+        val cache = getOrBuildLyricCache(element, lyric) ?: return false
+        val currentIndex = findLineIndex(cache.times, position)
+        val previousIndex =
+            XposedHelpers.getAdditionalInstanceField(element, LAST_LINE_INDEX) as? Int
+                ?: Int.MIN_VALUE
+
+        setIndexedVariable(
+            XposedHelpers.getObjectField(element, "mLyricCurrentLineProgressVar"),
+            computeLineProgress(cache.times, currentIndex, position)
+        )
+
+        if (currentIndex == previousIndex) {
+            return false
+        }
+
+        XposedHelpers.setAdditionalInstanceField(element, LAST_LINE_INDEX, currentIndex)
+        applyLyricSnapshot(element, lyric, cache, currentIndex, position)
+        return true
+    }
+
+    private fun applyLyricSnapshot(
+        element: Any,
+        lyric: Any,
+        cache: LyricCache,
+        currentIndex: Int,
+        position: Long
+    ) {
+        val currentText = cache.lines.getOrNull(currentIndex)?.toString()
+        setIndexedVariable(XposedHelpers.getObjectField(element, "mLyricCurrentVar"), currentText)
+        setIndexedVariable(
+            XposedHelpers.getObjectField(element, "mLyricBeforeVar"),
+            XposedHelpers.callMethod(lyric, "getBeforeLines", position)
+        )
+        setIndexedVariable(
+            XposedHelpers.getObjectField(element, "mLyricAfterVar"),
+            XposedHelpers.callMethod(lyric, "getAfterLines", position)
+        )
+        val lastLine = XposedHelpers.callMethod(lyric, "getLastLine", position)
+        setIndexedVariable(XposedHelpers.getObjectField(element, "mLyricLastVar"), lastLine)
+        setIndexedVariable(XposedHelpers.getObjectField(element, "mLyricPrevVar"), lastLine)
+        setIndexedVariable(
+            XposedHelpers.getObjectField(element, "mLyricNextVar"),
+            XposedHelpers.callMethod(lyric, "getNextLine", position)
+        )
+    }
+
+    private fun getOrBuildLyricCache(element: Any, lyric: Any): LyricCache? {
+        val cachedLyric = XposedHelpers.getAdditionalInstanceField(element, CACHED_LYRIC)
+        if (cachedLyric === lyric) {
+            val times = XposedHelpers.getAdditionalInstanceField(element, CACHED_TIMES) as? IntArray
+
+            @Suppress("UNCHECKED_CAST")
+            val lines = XposedHelpers.getAdditionalInstanceField(
+                element,
+                CACHED_LINES
+            ) as? List<CharSequence>
+            if (times != null && lines != null) {
+                return LyricCache(times, lines)
+            }
+        }
+
+        val times = (XposedHelpers.callMethod(lyric, "getTimeArr") as? IntArray) ?: return null
+
+        @Suppress("UNCHECKED_CAST")
+        val lines =
+            (XposedHelpers.callMethod(lyric, "getStringArr") as? List<CharSequence>) ?: return null
+        XposedHelpers.setAdditionalInstanceField(element, CACHED_LYRIC, lyric)
+        XposedHelpers.setAdditionalInstanceField(element, CACHED_TIMES, times)
+        XposedHelpers.setAdditionalInstanceField(element, CACHED_LINES, lines)
+        XposedHelpers.setAdditionalInstanceField(element, LAST_LINE_INDEX, Int.MIN_VALUE)
+        return LyricCache(times, lines)
+    }
+
+    private fun isManagedFullLyric(element: Any): Boolean {
+        return XposedHelpers.getAdditionalInstanceField(
+            element,
+            MANAGED_FULL_LRC
+        ) as? Boolean == true
+    }
+
+    private fun clearManagedLyricState(element: Any) {
+        cancelManagedProgressJob(element)
+        XposedHelpers.setAdditionalInstanceField(element, MANAGED_FULL_LRC, false)
+        XposedHelpers.setAdditionalInstanceField(element, CACHED_LYRIC, null)
+        XposedHelpers.setAdditionalInstanceField(element, CACHED_TIMES, null)
+        XposedHelpers.setAdditionalInstanceField(element, CACHED_LINES, null)
+        XposedHelpers.setAdditionalInstanceField(element, LAST_LINE_INDEX, Int.MIN_VALUE)
+    }
+
+    private fun cancelManagedProgressJob(element: Any) {
+        (XposedHelpers.getAdditionalInstanceField(element, MANAGED_PROGRESS_JOB) as? Job)?.cancel()
+        XposedHelpers.setAdditionalInstanceField(element, MANAGED_PROGRESS_JOB, null)
+    }
+
+    private fun setIndexedVariable(target: Any?, value: Any?) {
+        if (target == null) return
+        XposedHelpers.callMethod(target, "set", value)
+    }
+
+    private fun computeNextTickDelay(
+        times: IntArray,
+        position: Long,
+        fallbackInterval: Long
+    ): Long {
+        if (times.isEmpty()) return fallbackInterval
+        val currentIndex = findLineIndex(times, position)
+        val nextIndex = if (currentIndex < 0) 0 else currentIndex + 1
+        if (nextIndex !in times.indices) return fallbackInterval
+        val nextLineDelay =
+            (times[nextIndex].toLong() - position).coerceAtLeast(MIN_PROGRESS_INTERVAL_MS)
+        return minOf(fallbackInterval, nextLineDelay)
+    }
+
+    private fun computeLineProgress(times: IntArray, currentIndex: Int, position: Long): Double {
+        if (times.isEmpty() || currentIndex < 0) return 0.0
+        if (currentIndex >= times.lastIndex) {
+            return ((position - times.last().toLong()) / LAST_LINE_DURATION_MS.toDouble())
+                .coerceIn(0.0, 1.0)
+        }
+        val lineStart = times[currentIndex].toLong()
+        val lineEnd = times[currentIndex + 1].toLong()
+        if (lineEnd <= lineStart) return 0.0
+        return ((position - lineStart).toDouble() / (lineEnd - lineStart).toDouble())
+            .coerceIn(0.0, 1.0)
+    }
+
+    private fun findLineIndex(times: IntArray, position: Long): Int {
+        if (times.isEmpty() || position < times.first().toLong()) return -1
+        var left = 0
+        var right = times.lastIndex
+        while (left <= right) {
+            val middle = (left + right) ushr 1
+            if (times[middle].toLong() <= position) {
+                left = middle + 1
+            } else {
+                right = middle - 1
+            }
+        }
+        return right
     }
 
     private fun normalizeForMiuiParser(rawLrc: String): String {
@@ -487,9 +724,41 @@ class LyriconHook : YukiBaseHooker() {
             .replace("\n", "\r\n")
     }
 
+    private data class LyricCache(
+        val times: IntArray,
+        val lines: List<CharSequence>
+    ) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+
+            other as LyricCache
+
+            if (!times.contentEquals(other.times)) return false
+            if (lines != other.lines) return false
+
+            return true
+        }
+
+        override fun hashCode(): Int {
+            var result = times.contentHashCode()
+            result = 31 * result + lines.hashCode()
+            return result
+        }
+    }
+
     private companion object {
         private const val TARGET_LYRICON_PACKAGE = "io.github.proify.lyricon"
         private const val LYRICON_CORE_PACKAGE = "io.github.proify.lyricon.core"
         private const val XIAOMI_LYRIC_METADATA = "android.media.metadata.LYRIC"
+        private const val DURATION_METADATA = "android.media.metadata.DURATION"
+        private const val MANAGED_FULL_LRC = "REAREYE_MANAGED_FULL_LRC"
+        private const val CACHED_LYRIC = "REAREYE_CACHED_LYRIC"
+        private const val CACHED_TIMES = "REAREYE_CACHED_TIMES"
+        private const val CACHED_LINES = "REAREYE_CACHED_LINES"
+        private const val LAST_LINE_INDEX = "REAREYE_LAST_LINE_INDEX"
+        private const val MANAGED_PROGRESS_JOB = "REAREYE_MANAGED_PROGRESS_JOB"
+        private const val MIN_PROGRESS_INTERVAL_MS = 100L
+        private const val LAST_LINE_DURATION_MS = 8000L
     }
 }
