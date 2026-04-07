@@ -20,6 +20,9 @@ import io.github.proify.lyricon.lyric.model.Song
 import io.github.proify.lyricon.subscriber.ActivePlayerListener
 import io.github.proify.lyricon.subscriber.LyriconSubscriber
 import io.github.proify.lyricon.subscriber.ProviderInfo
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.util.concurrent.CopyOnWriteArrayList
 
 
@@ -153,7 +156,7 @@ class LyriconHook : YukiBaseHooker() {
                     elements.addIfAbsent(instance)
                     if (latestLyricLrc.isNotEmpty()) {
                         elements.forEach {
-                            forceUpdateLyric(it, latestLyricLrc)
+                            updateLyric(it, latestLyricLrc)
                         }
                     }
                 }
@@ -222,54 +225,78 @@ class LyriconHook : YukiBaseHooker() {
                 }
 
                 after {
-                    val moreDebug = prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)
                     val metadata = args(0).cast<MediaMetadata>()
                     val i = instance.asResolver().firstField {
                         name = "this$0"
                     }.get() ?: return@after
-                    val iRef = i.asResolver()
-                    val mLyric = iRef.firstField { name = "mLyric" }.get()
-                    val lrc = XposedHelpers.getAdditionalInstanceField(i, "TEMP_LRC") as? String
-                    if (mLyric == null) {
-                        if (lrc != null || latestLyricLrc.isNotEmpty()) {
-                            if (moreDebug) {
-                                YLog.debug("onUpdateLrc $mLyric ${lrc == null} ${latestLyricLrc.isEmpty()}")
-                            }
-                            forceUpdateLyric(i, lrc ?: latestLyricLrc)
-                            return@after
-                        }
-                        val currentId = metadata?.description?.mediaId
-                        if (currentId != null && currentId == XposedHelpers.getAdditionalStaticField(
-                                clz,
-                                "LAST_LYRIC_ID"
-                            )
-                        ) {
-                            val lastLrc = XposedHelpers.getAdditionalStaticField(
-                                clz,
-                                "LAST_LYRIC_LRC"
-                            ) as String
-                            if (moreDebug) {
-                                YLog.debug("onUseLastLrc $lastLrc")
-                            }
-                            forceUpdateLyric(i, lastLrc)
-                        }
-                        val line =
-                            XposedHelpers.getAdditionalInstanceField(
-                                i,
-                                "TEMP_LYRIC_LINE"
-                            ) as? String
-                        val mLyricCurrentVar =
-                            iRef.firstField { name = "mLyricCurrentVar" }.get() ?: return@after
-                        val currentLyric =
-                            mLyricCurrentVar.asResolver().firstMethod { name = "get" }.invoke()
-                        if (line != null && currentLyric == null) {
-                            if (moreDebug) {
-                                YLog.debug("onUpdateLine $line")
-                            }
-                            updateFallbackLine(i, line)
-                        }
-                    }
+                    checkLyricState(metadata, i)
                 }
+            }
+
+            /*musicControlListenerClz.firstMethod {
+                name = "onStateUpdate"
+            }.hook().after {
+                val i = instance.asResolver().firstField {
+                    name = "this$0"
+                }.get() ?: return@after
+                val metadata = i.asResolver().firstField { name = "mMetadata" }.get<MediaMetadata>()?.also {
+                    XposedHelpers.setAdditionalInstanceField(
+                        i,
+                        "OLD_MEDIA_ID",
+                        it.description.mediaId
+                    )
+                }
+                if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+                    YLog.debug("onStateUpdate")
+                }
+                checkLyricState(metadata, i)
+            }*/
+        }
+    }
+
+    private fun checkLyricState(metadata: MediaMetadata?, instance: Any) {
+        val clz = "com.miui.maml.elements.MusicControlScreenElement".toClass()
+        val moreDebug = prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)
+        val iRef = instance.asResolver()
+        val mLyric = iRef.firstField { name = "mLyric" }.get()
+        val lrc = XposedHelpers.getAdditionalInstanceField(instance, "TEMP_LRC") as? String
+        if (mLyric == null) {
+            if (lrc != null || latestLyricLrc.isNotEmpty()) {
+                if (moreDebug) {
+                    YLog.debug("onUpdateLrc $mLyric ${lrc == null} ${latestLyricLrc.isEmpty()}")
+                }
+                updateLyric(instance, lrc ?: latestLyricLrc)
+                return
+            }
+            val currentId = metadata?.description?.mediaId
+            if (currentId != null && currentId == XposedHelpers.getAdditionalStaticField(
+                    clz,
+                    "LAST_LYRIC_ID"
+                )
+            ) {
+                val lastLrc = XposedHelpers.getAdditionalStaticField(
+                    clz,
+                    "LAST_LYRIC_LRC"
+                ) as String
+                if (moreDebug) {
+                    YLog.debug("onUseLastLrc $lastLrc")
+                }
+                updateLyric(instance, lastLrc)
+            }
+            val line =
+                XposedHelpers.getAdditionalInstanceField(
+                    instance,
+                    "TEMP_LYRIC_LINE"
+                ) as? String
+            val mLyricCurrentVar =
+                iRef.firstField { name = "mLyricCurrentVar" }.get() ?: return
+            val currentLyric =
+                mLyricCurrentVar.asResolver().firstMethod { name = "get" }.invoke()
+            if (line != null && currentLyric == null) {
+                if (moreDebug) {
+                    YLog.debug("onUpdateLine $line")
+                }
+                updateFallbackLine(instance, line)
             }
         }
     }
@@ -288,6 +315,7 @@ class LyriconHook : YukiBaseHooker() {
 
     private fun createLyricListener(): ActivePlayerListener {
         val clz = "com.miui.maml.elements.MusicControlScreenElement".toClass()
+        val checkUpdateScope = CoroutineScope(Dispatchers.IO)
 
         return object : ActivePlayerListener {
             override fun onActiveProviderChanged(providerInfo: ProviderInfo?) {
@@ -322,7 +350,7 @@ class LyriconHook : YukiBaseHooker() {
                     XposedHelpers.setAdditionalStaticField(clz, "LAST_LYRIC_LRC", latestLyricLrc)
                     if (elements.isNotEmpty()) {
                         elements.forEach {
-                            forceUpdateLyric(it, latestLyricLrc)
+                            updateLyric(it, latestLyricLrc)
                         }
                         latestLyricLrc = ""
                     }
@@ -333,7 +361,13 @@ class LyriconHook : YukiBaseHooker() {
 
             override fun onPlaybackStateChanged(isPlaying: Boolean) = Unit
 
-            override fun onPositionChanged(position: Long) = Unit
+            override fun onPositionChanged(position: Long) {
+                checkUpdateScope.launch {
+                    elements.forEach {
+                        updateLyric(it, latestLyricLrc, force = false, checkId = true)
+                    }
+                }
+            }
 
             override fun onSeekTo(position: Long) = Unit
 
@@ -395,31 +429,59 @@ class LyriconHook : YukiBaseHooker() {
         }.invoke(text)
     }
 
-    private fun forceUpdateLyric(element: Any, lrc: String) {
-        YLog.debug("handle instance: $element")
+    private fun updateLyric(
+        element: Any,
+        lrc: String,
+        force: Boolean = true,
+        checkId: Boolean = false
+    ) {
+        val moreDebug = prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)
+        val clz = "com.miui.maml.elements.MusicControlScreenElement".toClass()
+        if (moreDebug) {
+            YLog.debug("handle instance: $element")
+        }
         val ref = element.asResolver()
         val mLyric = ref.firstField { name = "mLyric" }
+        val metadata = ref.firstField { name = "mMetadata" }.get<MediaMetadata>()
+        if (!force && mLyric.get() != null) {
+            if (moreDebug) {
+                YLog.debug("Skip to update, in non-force mode")
+            }
+            return
+        }
+        var vLrc = lrc
+        if (checkId) {
+            if (metadata == null) return
+            if (metadata.description.mediaId != XposedHelpers.getAdditionalStaticField(
+                    clz,
+                    "LAST_LYRIC_ID"
+                )
+            ) {
+                return
+            }
+            vLrc = XposedHelpers.getAdditionalStaticField(clz, "LAST_LYRIC_LRC") as String
+        }
         val parserClz = "com.miui.maml.elements.MusicLyricParser".toClass().resolve()
         val nLyric = parserClz.firstMethod {
             name = "parseLyric"
             parameters(String::class.java)
-        }.invoke(lrc)
-        YLog.debug("parsed $nLyric")
+        }.invoke(vLrc)
+        if (moreDebug) YLog.debug("parsed $nLyric")
         if (nLyric != null) {
             nLyric.asResolver().firstMethod { name = "decorate" }.invoke()
             mLyric.set(nLyric)
             ref.firstMethod { name = "updateLyric" }.invoke(nLyric)
-            if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+            if (moreDebug) {
                 YLog.debug("Force Update Lyric")
             }
-            ref.firstField { name = "mMetadata" }.get<MediaMetadata>()?.also {
+            metadata?.also {
                 XposedHelpers.setAdditionalInstanceField(
                     element,
                     "OLD_MEDIA_ID",
                     it.description.mediaId
                 )
             }
-            XposedHelpers.setAdditionalInstanceField(element, "TEMP_LRC", lrc)
+            XposedHelpers.setAdditionalInstanceField(element, "TEMP_LRC", vLrc)
         }
     }
 
