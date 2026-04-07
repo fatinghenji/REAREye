@@ -45,6 +45,19 @@ class RearWidgetHook : YukiBaseHooker() {
         private const val TAG = "REAREye-RearWidget"
         private const val TEMPLATE_BASE =
             "/data/system/theme_magic/users/%s/subscreencenter/smart_assistant"
+        private val INTERNAL_BUSINESSES = listOf(
+            "incall",
+            "carHailing",
+            "foodDelivery",
+            "music",
+            "xiaomiev",
+            "privacy",
+            "stock",
+            "travel",
+            "movie",
+            "mishow",
+            "mihomeCamera"
+        )
     }
 
     private val appliedOnce = AtomicBoolean(false)
@@ -735,6 +748,7 @@ class RearWidgetHook : YukiBaseHooker() {
     }
 
     private fun allowSelfDescribedNotificationPackage(runnable: Any) {
+        if (!prefs.getBoolean(ConfigKeys.HOOK_ALLOW_REAR_FOCUS_NOTICES, false)) return
         val ref = runnable.asResolver()
         val owner = runCatching {
             ref.firstField { name = "c" }.get<Any>()
@@ -752,9 +766,10 @@ class RearWidgetHook : YukiBaseHooker() {
         if (extras.isEmpty) return
 
         val business = parseBusinessFromParams(packageName, extras) ?: return
-        logNoWidgetPathIfNeeded(packageName, business, extras)
 
-        if (!prefs.getBoolean(ConfigKeys.HOOK_ALLOW_REAR_FOCUS_NOTICES, false)) return
+        if (INTERNAL_BUSINESSES.contains(business)) return
+
+        logNoWidgetPathIfNeeded(packageName, business, extras)
 
         runCatching {
             @Suppress("UNCHECKED_CAST")

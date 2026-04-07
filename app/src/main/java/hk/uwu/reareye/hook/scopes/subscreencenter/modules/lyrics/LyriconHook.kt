@@ -22,12 +22,16 @@ import io.github.proify.lyricon.subscriber.LyriconSubscriber
 import io.github.proify.lyricon.subscriber.ProviderInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlin.time.Duration.Companion.seconds
 
 
 class LyriconHook : YukiBaseHooker() {
     private val lyricParser = LyricParser()
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     @Volatile
     private var latestLyricLrc: String = ""
@@ -97,36 +101,38 @@ class LyriconHook : YukiBaseHooker() {
                                 }
 
                                 override fun onSuperLyric(data: SuperLyricData) {
-                                    runCatching {
-                                        if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
-                                            YLog.debug("onSuperLyric ${data.lyric} ${data.translation}")
-                                        }
-                                        val mode = prefs.getInt(
-                                            ConfigKeys.SUPER_LYRIC_DISPLAY_MODE,
-                                            ConfigKeys.SUPER_LYRIC_DISPLAY_MODE_DEFAULT
-                                        )
-                                        val originalLines = data.lyric.split("\n")
-                                        val lyric = when {
-                                            LyricParser.DisplayMode.shouldShowTranslation(mode) -> {
-                                                val translation = data.translation
-                                                if (!translation.isNullOrEmpty()) {
-                                                    translation
-                                                } else if (originalLines.size > 1) {
-                                                    originalLines[1]
-                                                } else {
-                                                    data.lyric
+                                    scope.launch {
+                                        runCatching {
+                                            if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+                                                YLog.debug("onSuperLyric ${data.lyric} ${data.translation}")
+                                            }
+                                            val mode = prefs.getInt(
+                                                ConfigKeys.SUPER_LYRIC_DISPLAY_MODE,
+                                                ConfigKeys.SUPER_LYRIC_DISPLAY_MODE_DEFAULT
+                                            )
+                                            val originalLines = data.lyric.split("\n")
+                                            val lyric = when {
+                                                LyricParser.DisplayMode.shouldShowTranslation(mode) -> {
+                                                    val translation = data.translation
+                                                    if (!translation.isNullOrEmpty()) {
+                                                        translation
+                                                    } else if (originalLines.size > 1) {
+                                                        originalLines[1]
+                                                    } else {
+                                                        data.lyric
+                                                    }
+                                                }
+
+                                                else -> {
+                                                    originalLines[0]
                                                 }
                                             }
-
-                                            else -> {
-                                                originalLines[0]
+                                            if (lyric.isNotEmpty()) {
+                                                updateFallbackLyric(lyric)
                                             }
+                                        }.onFailure {
+                                            YLog.error(it)
                                         }
-                                        if (lyric.isNotEmpty()) {
-                                            updateFallbackLyric(lyric)
-                                        }
-                                    }.onFailure {
-                                        YLog.error(it)
                                     }
                                 }
                             }
@@ -229,28 +235,11 @@ class LyriconHook : YukiBaseHooker() {
                     val i = instance.asResolver().firstField {
                         name = "this$0"
                     }.get() ?: return@after
-                    checkLyricState(metadata, i)
+                    scope.launch {
+                        checkLyricState(metadata, i)
+                    }
                 }
             }
-
-            /*musicControlListenerClz.firstMethod {
-                name = "onStateUpdate"
-            }.hook().after {
-                val i = instance.asResolver().firstField {
-                    name = "this$0"
-                }.get() ?: return@after
-                val metadata = i.asResolver().firstField { name = "mMetadata" }.get<MediaMetadata>()?.also {
-                    XposedHelpers.setAdditionalInstanceField(
-                        i,
-                        "OLD_MEDIA_ID",
-                        it.description.mediaId
-                    )
-                }
-                if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
-                    YLog.debug("onStateUpdate")
-                }
-                checkLyricState(metadata, i)
-            }*/
         }
     }
 
@@ -315,7 +304,6 @@ class LyriconHook : YukiBaseHooker() {
 
     private fun createLyricListener(): ActivePlayerListener {
         val clz = "com.miui.maml.elements.MusicControlScreenElement".toClass()
-        val checkUpdateScope = CoroutineScope(Dispatchers.IO)
 
         return object : ActivePlayerListener {
             override fun onActiveProviderChanged(providerInfo: ProviderInfo?) {
@@ -327,80 +315,86 @@ class LyriconHook : YukiBaseHooker() {
 
             override fun onSongChanged(song: Song?) {
                 if (song == null) return
-                runCatching {
-                    song.id
-                    val lrc = lyricParser.toLrc(
-                        song = song,
-                        displayMode = prefs.getInt(
-                            ConfigKeys.LYRIC_DISPLAY_MODE,
-                            ConfigKeys.LYRIC_DISPLAY_MODE_DEFAULT,
-                        ),
-                        showArtistBeforeFirstLine = prefs.getBoolean(
-                            ConfigKeys.LYRIC_SHOW_ARTIST_BEFORE_FIRST_LINE,
-                            false,
-                        ),
-                    )
-                    latestLyricLrc = normalizeForMiuiParser(lrc)
-                    if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
-                        YLog.debug("REAREye getSongLRC $latestLyricLrc")
-                        YLog.debug("onSongChanged converted LRC length=${latestLyricLrc.length}")
-                        YLog.debug("current instance size ${elements.size}")
-                    }
-                    XposedHelpers.setAdditionalStaticField(clz, "LAST_LYRIC_ID", song.id)
-                    XposedHelpers.setAdditionalStaticField(clz, "LAST_LYRIC_LRC", latestLyricLrc)
-                    if (elements.isNotEmpty()) {
-                        elements.forEach {
-                            updateLyric(it, latestLyricLrc)
+                scope.launch {
+                    runCatching {
+                        song.id
+                        val lrc = lyricParser.toLrc(
+                            song = song,
+                            displayMode = prefs.getInt(
+                                ConfigKeys.LYRIC_DISPLAY_MODE,
+                                ConfigKeys.LYRIC_DISPLAY_MODE_DEFAULT,
+                            ),
+                            showArtistBeforeFirstLine = prefs.getBoolean(
+                                ConfigKeys.LYRIC_SHOW_ARTIST_BEFORE_FIRST_LINE,
+                                false,
+                            ),
+                        )
+                        latestLyricLrc = normalizeForMiuiParser(lrc)
+                        if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+                            YLog.debug("REAREye getSongLRC $latestLyricLrc")
+                            YLog.debug("onSongChanged converted LRC length=${latestLyricLrc.length}")
+                            YLog.debug("current instance size ${elements.size}")
                         }
-                        latestLyricLrc = ""
+                        XposedHelpers.setAdditionalStaticField(clz, "LAST_LYRIC_ID", song.id)
+                        XposedHelpers.setAdditionalStaticField(
+                            clz,
+                            "LAST_LYRIC_LRC",
+                            latestLyricLrc
+                        )
+                        if (elements.isNotEmpty()) {
+                            elements.forEach {
+                                updateLyric(it, latestLyricLrc)
+                            }
+                            latestLyricLrc = ""
+                        }
+                        delay(2.seconds)
+                        elements.forEach {
+                            updateLyric(it, latestLyricLrc, force = false, checkId = true)
+                        }
+                    }.onFailure {
+                        YLog.error(it)
                     }
-                }.onFailure {
-                    YLog.error(it)
                 }
             }
 
             override fun onPlaybackStateChanged(isPlaying: Boolean) = Unit
 
-            override fun onPositionChanged(position: Long) {
-                checkUpdateScope.launch {
-                    elements.forEach {
-                        updateLyric(it, latestLyricLrc, force = false, checkId = true)
-                    }
-                }
-            }
+            override fun onPositionChanged(position: Long) = Unit
 
             override fun onSeekTo(position: Long) = Unit
 
             override fun onReceiveText(text: String?) {
-                runCatching {
-                    if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
-                        YLog.debug("onSendText $text")
-                    }
-                    val mode = prefs.getInt(
-                        ConfigKeys.SUPER_LYRIC_DISPLAY_MODE,
-                        ConfigKeys.SUPER_LYRIC_DISPLAY_MODE_DEFAULT
-                    )
-                    if (text != null) {
-                        val originalLines = text.split("\n")
-                        val lyric = when {
-                            LyricParser.DisplayMode.shouldShowTranslation(mode) -> {
-                                if (originalLines.size > 1) {
-                                    originalLines[1]
-                                } else {
-                                    text
+                scope.launch {
+                    runCatching {
+                        if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+                            YLog.debug("onSendText $text")
+                        }
+                        val mode = prefs.getInt(
+                            ConfigKeys.SUPER_LYRIC_DISPLAY_MODE,
+                            ConfigKeys.SUPER_LYRIC_DISPLAY_MODE_DEFAULT
+                        )
+                        if (text != null) {
+                            val originalLines = text.split("\n")
+                            val lyric = when {
+                                LyricParser.DisplayMode.shouldShowTranslation(mode) -> {
+                                    if (originalLines.size > 1) {
+                                        originalLines[1]
+                                    } else {
+                                        text
+                                    }
+                                }
+
+                                else -> {
+                                    originalLines[0]
                                 }
                             }
-
-                            else -> {
-                                originalLines[0]
+                            if (lyric.isNotEmpty()) {
+                                updateFallbackLyric(lyric)
                             }
                         }
-                        if (lyric.isNotEmpty()) {
-                            updateFallbackLyric(lyric)
-                        }
+                    }.onFailure {
+                        YLog.error(it)
                     }
-                }.onFailure {
-                    YLog.error(it)
                 }
             }
 
