@@ -1,10 +1,11 @@
+@file:OptIn(androidx.compose.foundation.style.ExperimentalFoundationStyleApi::class)
+
 package hk.uwu.reareye.ui.components.motion
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -14,6 +15,11 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.style.MutableStyleState
+import androidx.compose.foundation.style.Style
+import androidx.compose.foundation.style.StyleScope
+import androidx.compose.foundation.style.StyleStateKey
+import androidx.compose.foundation.style.styleable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -25,10 +31,37 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
 private const val DEFAULT_VISIBILITY_DELAY = 0
+
+private enum class ArtRevealPhase {
+    Hidden,
+    Primed,
+    Visible,
+}
+
+private val artRevealPhaseKey = StyleStateKey(ArtRevealPhase.Hidden)
+
+private var MutableStyleState.artRevealPhase
+    get() = this[artRevealPhaseKey]
+    set(value) {
+        this[artRevealPhaseKey] = value
+    }
+
+private fun StyleScope.artRevealHidden(value: Style) {
+    state(artRevealPhaseKey, value) { key, styleState -> styleState[key] == ArtRevealPhase.Hidden }
+}
+
+private fun StyleScope.artRevealPrimed(value: Style) {
+    state(artRevealPhaseKey, value) { key, styleState -> styleState[key] == ArtRevealPhase.Primed }
+}
+
+private fun StyleScope.artRevealVisible(value: Style) {
+    state(artRevealPhaseKey, value) { key, styleState -> styleState[key] == ArtRevealPhase.Visible }
+}
 
 @Composable
 fun ArtRevealItem(
@@ -36,7 +69,7 @@ fun ArtRevealItem(
     delayMillis: Int = 0,
     content: @Composable () -> Unit,
 ) {
-    ArtRevealContainer(
+    ArtVisibilityMotion(
         visible = visible,
         delayMillis = delayMillis,
         enterAlphaDurationMillis = 240,
@@ -58,7 +91,7 @@ fun ArtStaggeredReveal(
     delayMillis: Int = DEFAULT_VISIBILITY_DELAY,
     content: @Composable () -> Unit,
 ) {
-    ArtRevealContainer(
+    ArtVisibilityMotion(
         visible = visible,
         revealKey = revealKey,
         delayMillis = delayMillis,
@@ -75,9 +108,10 @@ fun ArtStaggeredReveal(
 }
 
 @Composable
-private fun ArtRevealContainer(
+fun ArtVisibilityMotion(
     visible: Boolean,
-    delayMillis: Int,
+    modifier: Modifier = Modifier,
+    delayMillis: Int = 0,
     enterAlphaDurationMillis: Int,
     enterTransformDurationMillis: Int,
     exitAlphaDurationMillis: Int,
@@ -85,72 +119,117 @@ private fun ArtRevealContainer(
     hiddenEnterScale: Float,
     hiddenExitScale: Float,
     slideDivisor: Int,
+    hiddenOffsetFallback: Dp = 18.dp,
     revealKey: Any = Unit,
     content: @Composable () -> Unit,
 ) {
     val density = LocalDensity.current
     var contentHeightPx by remember(revealKey) { mutableIntStateOf(0) }
-    var startedVisible by remember(revealKey) { mutableStateOf(false) }
+    var revealPhase by remember(revealKey) {
+        mutableStateOf(if (visible) ArtRevealPhase.Primed else ArtRevealPhase.Hidden)
+    }
 
     LaunchedEffect(visible, revealKey, delayMillis) {
         if (visible) {
+            revealPhase = ArtRevealPhase.Primed
             if (delayMillis > 0) {
                 delay(delayMillis.toLong())
             }
-            startedVisible = true
+            revealPhase = ArtRevealPhase.Visible
         } else {
-            startedVisible = false
+            revealPhase = ArtRevealPhase.Hidden
         }
     }
 
-    val targetAlpha = if (startedVisible) 1f else 0f
-    if (startedVisible) 1f else hiddenExitScale
     val hiddenOffsetPx = remember(contentHeightPx, density, slideDivisor) {
         if (contentHeightPx > 0) {
             contentHeightPx / slideDivisor.toFloat()
         } else {
-            with(density) { 18.dp.toPx() }
+            with(density) { hiddenOffsetFallback.toPx() }
         }
     }
-    val targetTranslationY = if (startedVisible) 0f else hiddenOffsetPx
+    val revealStyleState = remember(revealKey) { MutableStyleState(null) }
+    revealStyleState.artRevealPhase = revealPhase
+    val revealStyle = remember(
+        hiddenOffsetPx,
+        hiddenEnterScale,
+        hiddenExitScale,
+        enterAlphaDurationMillis,
+        enterTransformDurationMillis,
+        exitAlphaDurationMillis,
+        exitTransformDurationMillis,
+    ) {
+        Style {
+            alpha(0f)
+            scale(hiddenExitScale)
+            translationY(hiddenOffsetPx)
 
-    val alpha by animateFloatAsState(
-        targetValue = targetAlpha,
-        animationSpec = tween(
-            durationMillis = if (startedVisible) enterAlphaDurationMillis else exitAlphaDurationMillis,
-            delayMillis = 0,
-            easing = if (startedVisible) LinearOutSlowInEasing else FastOutLinearInEasing,
-        ),
-        label = "ArtRevealAlpha",
-    )
-    val scale by animateFloatAsState(
-        targetValue = if (startedVisible) 1f else if (visible) hiddenEnterScale else hiddenExitScale,
-        animationSpec = tween(
-            durationMillis = if (startedVisible) enterTransformDurationMillis else exitTransformDurationMillis,
-            delayMillis = 0,
-            easing = if (startedVisible) FastOutSlowInEasing else FastOutLinearInEasing,
-        ),
-        label = "ArtRevealScale",
-    )
-    val translationY by animateFloatAsState(
-        targetValue = targetTranslationY,
-        animationSpec = tween(
-            durationMillis = if (startedVisible) enterTransformDurationMillis else exitTransformDurationMillis,
-            delayMillis = 0,
-            easing = if (startedVisible) FastOutSlowInEasing else FastOutLinearInEasing,
-        ),
-        label = "ArtRevealTranslationY",
-    )
+            artRevealHidden {
+                animate(
+                    tween(
+                        durationMillis = exitAlphaDurationMillis,
+                        easing = FastOutLinearInEasing,
+                    )
+                ) {
+                    alpha(0f)
+                }
+                animate(
+                    tween(
+                        durationMillis = exitTransformDurationMillis,
+                        easing = FastOutLinearInEasing,
+                    )
+                ) {
+                    scale(hiddenExitScale)
+                    translationY(hiddenOffsetPx)
+                }
+            }
+
+            artRevealPrimed {
+                animate(
+                    tween(
+                        durationMillis = exitAlphaDurationMillis,
+                        easing = FastOutLinearInEasing,
+                    )
+                ) {
+                    alpha(0f)
+                }
+                animate(
+                    tween(
+                        durationMillis = exitTransformDurationMillis,
+                        easing = FastOutLinearInEasing,
+                    )
+                ) {
+                    scale(hiddenEnterScale)
+                    translationY(hiddenOffsetPx)
+                }
+            }
+
+            artRevealVisible {
+                animate(
+                    tween(
+                        durationMillis = enterAlphaDurationMillis,
+                        easing = LinearOutSlowInEasing,
+                    )
+                ) {
+                    alpha(1f)
+                }
+                animate(
+                    tween(
+                        durationMillis = enterTransformDurationMillis,
+                        easing = FastOutSlowInEasing,
+                    )
+                ) {
+                    scale(1f)
+                    translationY(0f)
+                }
+            }
+        }
+    }
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .onSizeChanged { contentHeightPx = it.height }
-            .graphicsLayer {
-                this.alpha = alpha
-                scaleX = scale
-                scaleY = scale
-                this.translationY = translationY
-            }
+            .styleable(revealStyleState, revealStyle)
     ) {
         content()
     }

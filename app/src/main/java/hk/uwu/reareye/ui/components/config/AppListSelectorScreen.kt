@@ -3,7 +3,6 @@ package hk.uwu.reareye.ui.components.config
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
@@ -27,6 +26,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.style.ExperimentalFoundationStyleApi
+import androidx.compose.foundation.style.MutableStyleState
+import androidx.compose.foundation.style.Style
+import androidx.compose.foundation.style.selected
+import androidx.compose.foundation.style.styleable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -267,6 +271,7 @@ private fun EmptyAppsCard() {
     }
 }
 
+@OptIn(ExperimentalFoundationStyleApi::class)
 @Composable
 private fun AppSelectorRow(
     appItem: AppItem,
@@ -277,6 +282,7 @@ private fun AppSelectorRow(
     onToggle: () -> Unit,
 ) {
     val density = LocalDensity.current
+    val primaryColor = MiuixTheme.colorScheme.primary
     var previousIndex by remember(appItem.packageName) { mutableStateOf(currentIndex) }
     var placementOffset by remember(appItem.packageName) { mutableFloatStateOf(0f) }
     val animatedPlacementOffset by animateFloatAsState(
@@ -284,38 +290,63 @@ private fun AppSelectorRow(
         animationSpec = appRowPlacementSpec,
         label = "AppRowPlacementOffset",
     )
-    val selectionOverlayAlpha by animateFloatAsState(
-        targetValue = if (selected) 0.08f else 0f,
-        animationSpec = spring(
-            dampingRatio = 0.9f,
-            stiffness = 520f,
-        ),
-        label = "AppRowSelectionOverlayAlpha",
-    )
-    val selectionOverlayScale by animateFloatAsState(
-        targetValue = if (selected) 1f else 0.965f,
-        animationSpec = spring(
-            dampingRatio = 0.92f,
-            stiffness = 540f,
-        ),
-        label = "AppRowSelectionOverlayScale",
-    )
-    val contentOffsetPx by animateFloatAsState(
-        targetValue = with(density) { if (selected) 1.5.dp.toPx() else 0.dp.toPx() },
-        animationSpec = spring(
-            dampingRatio = 0.92f,
-            stiffness = 560f,
-        ),
-        label = "AppRowContentOffset",
-    )
-    val contentScale by animateFloatAsState(
-        targetValue = if (selected) 0.998f else 1f,
-        animationSpec = spring(
-            dampingRatio = 0.95f,
-            stiffness = 600f,
-        ),
-        label = "AppRowContentScale",
-    )
+    val selectionStyleState = remember(appItem.packageName) { MutableStyleState(null) }
+    selectionStyleState.isSelected = selected
+    val placementStyle = Style { translationY(animatedPlacementOffset) }
+    val overlayShape = remember { RoundedCornerShape(20.dp) }
+    val selectionOverlayStyle = remember(primaryColor, overlayShape) {
+        Style {
+            alpha(0f)
+            scale(0.965f)
+            background(primaryColor)
+            shape(overlayShape)
+
+            selected {
+                animate(
+                    spring(
+                        dampingRatio = 0.9f,
+                        stiffness = 520f,
+                    )
+                ) {
+                    alpha(0.08f)
+                }
+                animate(
+                    spring(
+                        dampingRatio = 0.92f,
+                        stiffness = 540f,
+                    )
+                ) {
+                    scale(1f)
+                }
+            }
+        }
+    }
+    val rowContentOffsetPx = remember(density) { with(density) { 1.5.dp.toPx() } }
+    val rowContentStyle = remember(rowContentOffsetPx) {
+        Style {
+            translationX(0f)
+            scale(1f)
+
+            selected {
+                animate(
+                    spring(
+                        dampingRatio = 0.92f,
+                        stiffness = 560f,
+                    )
+                ) {
+                    translationX(rowContentOffsetPx)
+                }
+                animate(
+                    spring(
+                        dampingRatio = 0.95f,
+                        stiffness = 600f,
+                    )
+                ) {
+                    scale(0.998f)
+                }
+            }
+        }
+    }
 
     LaunchedEffect(currentIndex, averageItemHeightPx) {
         if (previousIndex == currentIndex) {
@@ -331,9 +362,7 @@ private fun AppSelectorRow(
     Card(
         modifier = Modifier
             .padding(top = 10.dp)
-            .graphicsLayer {
-                translationY = animatedPlacementOffset
-            }
+            .styleable(selectionStyleState, placementStyle)
             .fillMaxWidth(),
         insideMargin = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
         onClick = onToggle,
@@ -343,25 +372,13 @@ private fun AppSelectorRow(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer {
-                        alpha = selectionOverlayAlpha
-                        scaleX = selectionOverlayScale
-                        scaleY = selectionOverlayScale
-                    }
-                    .background(
-                        color = MiuixTheme.colorScheme.primary,
-                        shape = RoundedCornerShape(20.dp),
-                    )
+                    .styleable(selectionStyleState, selectionOverlayStyle)
             )
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .graphicsLayer {
-                        translationX = contentOffsetPx
-                        scaleX = contentScale
-                        scaleY = contentScale
-                    },
+                    .styleable(selectionStyleState, rowContentStyle),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 AppIcon(
@@ -390,61 +407,114 @@ private fun AppSelectorRow(
     }
 }
 
+@OptIn(ExperimentalFoundationStyleApi::class)
 @Composable
 private fun SelectionIndicator(selected: Boolean) {
-    val haloAlpha by animateFloatAsState(
-        targetValue = if (selected) 0.18f else 0f,
-        animationSpec = spring(
-            dampingRatio = 0.88f,
-            stiffness = 460f,
-        ),
-        label = "SelectionHaloAlpha",
-    )
-    val haloScale by animateFloatAsState(
-        targetValue = if (selected) 1.7f else 0.7f,
-        animationSpec = spring(
-            dampingRatio = 0.82f,
-            stiffness = 420f,
-        ),
-        label = "SelectionHaloScale",
-    )
-    val ringColor by animateColorAsState(
-        targetValue = if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.outline,
-        animationSpec = spring(stiffness = 500f),
-        label = "SelectionRingColor",
-    )
-    val ringScale by animateFloatAsState(
-        targetValue = if (selected) 1f else 0.94f,
-        animationSpec = spring(
-            dampingRatio = 0.88f,
-            stiffness = 520f,
-        ),
-        label = "SelectionRingScale",
-    )
-    val fillScale by animateFloatAsState(
-        targetValue = if (selected) 1f else 0f,
-        animationSpec = spring(
-            dampingRatio = 0.78f,
-            stiffness = 680f,
-        ),
-        label = "SelectionFillScale",
-    )
-    val iconAlpha by animateFloatAsState(
-        targetValue = if (selected) 1f else 0f,
-        animationSpec = spring(
-            dampingRatio = 0.9f,
-            stiffness = 750f,
-        ),
-        label = "SelectionIconAlpha",
-    )
-    val iconRotation by animateFloatAsState(
-        targetValue = if (selected) 0f else -16f,
-        animationSpec = spring(
-            dampingRatio = 0.84f,
-            stiffness = 560f,
-        ),
-        label = "SelectionIconRotation",
-    )
+    val primaryColor = MiuixTheme.colorScheme.primary
+    val outlineColor = MiuixTheme.colorScheme.outline
+    val onPrimaryColor = MiuixTheme.colorScheme.onPrimary
+    val selectionStyleState = remember { MutableStyleState(null) }
+    selectionStyleState.isSelected = selected
+    val haloStyle = remember(primaryColor) {
+        Style {
+            alpha(0f)
+            scale(0.7f)
+            background(primaryColor)
+            shape(CircleShape)
+
+            selected {
+                animate(
+                    spring(
+                        dampingRatio = 0.88f,
+                        stiffness = 460f,
+                    )
+                ) {
+                    alpha(0.18f)
+                }
+                animate(
+                    spring(
+                        dampingRatio = 0.82f,
+                        stiffness = 420f,
+                    )
+                ) {
+                    scale(1.7f)
+                }
+            }
+        }
+    }
+    val ringStyle = remember(primaryColor, outlineColor) {
+        Style {
+            scale(0.94f)
+            border(2.dp, outlineColor)
+            shape(CircleShape)
+
+            selected {
+                animate(spring(stiffness = 500f)) {
+                    borderColor(primaryColor)
+                }
+                animate(
+                    spring(
+                        dampingRatio = 0.88f,
+                        stiffness = 520f,
+                    )
+                ) {
+                    scale(1f)
+                }
+            }
+        }
+    }
+    val fillStyle = remember(primaryColor) {
+        Style {
+            scale(0f)
+            background(primaryColor)
+            shape(CircleShape)
+
+            selected {
+                animate(
+                    spring(
+                        dampingRatio = 0.78f,
+                        stiffness = 680f,
+                    )
+                ) {
+                    scale(1f)
+                }
+            }
+        }
+    }
+    val iconStyle = remember {
+        Style {
+            alpha(0f)
+            rotationZ(-16f)
+            scale(0.9f)
+
+            selected {
+                animate(
+                    spring(
+                        dampingRatio = 0.9f,
+                        stiffness = 750f,
+                    )
+                ) {
+                    alpha(1f)
+                }
+                animate(
+                    spring(
+                        dampingRatio = 0.84f,
+                        stiffness = 560f,
+                    )
+                ) {
+                    rotationZ(0f)
+                }
+                animate(
+                    spring(
+                        dampingRatio = 0.78f,
+                        stiffness = 680f,
+                    )
+                ) {
+                    scale(1f)
+                }
+            }
+        }
+    }
 
     Box(
         modifier = Modifier.size(30.dp),
@@ -453,46 +523,28 @@ private fun SelectionIndicator(selected: Boolean) {
         Box(
             modifier = Modifier
                 .size(18.dp)
-                .graphicsLayer {
-                    alpha = haloAlpha
-                    scaleX = haloScale
-                    scaleY = haloScale
-                }
-                .background(MiuixTheme.colorScheme.primary, CircleShape)
+                .styleable(selectionStyleState, haloStyle)
         )
 
         Box(
             modifier = Modifier
                 .size(24.dp)
-                .graphicsLayer {
-                    scaleX = ringScale
-                    scaleY = ringScale
-                }
-                .border(width = 2.dp, color = ringColor, shape = CircleShape),
+                .styleable(selectionStyleState, ringStyle),
             contentAlignment = Alignment.Center,
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer {
-                        scaleX = fillScale
-                        scaleY = fillScale
-                    }
-                    .background(MiuixTheme.colorScheme.primary, CircleShape)
+                    .styleable(selectionStyleState, fillStyle)
             )
 
             Icon(
                 imageVector = MiuixIcons.Basic.Check,
                 contentDescription = null,
-                tint = MiuixTheme.colorScheme.onPrimary,
+                tint = onPrimaryColor,
                 modifier = Modifier
                     .size(16.dp)
-                    .graphicsLayer {
-                        alpha = iconAlpha
-                        rotationZ = iconRotation
-                        scaleX = 0.9f + (0.1f * fillScale)
-                        scaleY = 0.9f + (0.1f * fillScale)
-                    }
+                    .styleable(selectionStyleState, iconStyle)
             )
         }
     }

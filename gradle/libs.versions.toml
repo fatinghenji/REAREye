@@ -11,6 +11,7 @@ junit = "4.13.2"
 androidx-test-junit = "1.3.0"
 androidx-test-espresso-core = "3.7.0"
 compose-bom = "2026.03.01"
+compose-foundation-style = "1.11.0-beta02"
 androidx-activity-compose = "1.13.0"
 androidx-lifecycle-runtime-compose = "2.10.0"
 miuix = "0.9.0"
@@ -40,6 +41,7 @@ androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version
 androidx-test-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "androidx-test-espresso-core" }
 compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "compose-bom" }
 androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
+androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "compose-foundation-style" }
 androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
 androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }

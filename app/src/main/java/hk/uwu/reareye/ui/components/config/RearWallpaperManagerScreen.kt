@@ -1,12 +1,17 @@
+@file:OptIn(androidx.compose.foundation.style.ExperimentalFoundationStyleApi::class)
+
 package hk.uwu.reareye.ui.components.config
 
 import android.annotation.SuppressLint
 import android.widget.Toast
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,7 +23,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,6 +30,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.style.MutableStyleState
+import androidx.compose.foundation.style.Style
+import androidx.compose.foundation.style.StyleScope
+import androidx.compose.foundation.style.StyleStateKey
+import androidx.compose.foundation.style.styleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -43,9 +52,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -58,8 +67,8 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -79,6 +88,7 @@ import hk.uwu.reareye.ui.theme.rememberAcrylicHazeStyle
 import hk.uwu.reareye.widgetapi.RearWallpaperScheduleCodec
 import hk.uwu.reareye.widgetapi.RearWallpaperScheduleEntry
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
@@ -105,17 +115,36 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import java.util.Locale
-import kotlin.math.roundToInt
 
 private data class ItemBounds(
     val top: Float,
     val height: Float,
 )
 
+private data class SettlingScheduleOverlay(
+    val entry: RearWallpaperScheduleEntry,
+    val isCurrent: Boolean,
+    val startTranslationY: Float,
+    val targetTranslationY: Float,
+)
+
+private const val SETTLING_OVERLAY_DURATION_MS = 320L
+
 private enum class WallpaperPickerMode { ADD_TO_SCHEDULE }
 
 private const val WALLPAPER_PREVIEW_RATIO = 1.6f
 private val SCHEDULE_ITEM_SHAPE = RoundedCornerShape(24.dp)
+private val scheduleDraggedStateKey = StyleStateKey(false)
+
+private var MutableStyleState.isScheduleDragged: Boolean
+    get() = this[scheduleDraggedStateKey]
+    set(value) {
+        this[scheduleDraggedStateKey] = value
+    }
+
+private fun StyleScope.scheduleDragged(value: Style) {
+    state(scheduleDraggedStateKey, value) { key, styleState -> styleState[key] }
+}
 
 @Composable
 fun RearWallpaperManagerScreen(
@@ -149,6 +178,8 @@ fun RearWallpaperManagerScreen(
     var draggedItemHeight by remember { mutableFloatStateOf(0f) }
     var draggedOffsetY by remember { mutableFloatStateOf(0f) }
     var contentTopInRoot by remember { mutableFloatStateOf(0f) }
+    var settlingOverlay by remember { mutableStateOf<SettlingScheduleOverlay?>(null) }
+    var settlingWallpaperId by remember { mutableStateOf<Int?>(null) }
 
     @SuppressLint("LocalContextGetResourceValueCall")
     fun toast(resId: Int) {
@@ -243,6 +274,14 @@ fun RearWallpaperManagerScreen(
         scheduleItemBounds.keys.toList()
             .filter { it !in activeIds }
             .forEach(scheduleItemBounds::remove)
+    }
+
+    LaunchedEffect(settlingOverlay) {
+        if (settlingOverlay != null) {
+            delay(SETTLING_OVERLAY_DURATION_MS)
+            settlingOverlay = null
+            settlingWallpaperId = null
+        }
     }
 
     val wallpaperMap = wallpapers.associateBy { it.wallpaperId }
@@ -395,26 +434,19 @@ fun RearWallpaperManagerScreen(
                 }
 
                 if (schedule.isNotEmpty()) {
-                    items(schedule, key = { it.wallpaperId }) { entry ->
+                    items(renderedSchedule, key = { it.wallpaperId }) { entry ->
                         val wallpaper = wallpaperMap[entry.wallpaperId]
                         val isDragged = draggedId == entry.wallpaperId
-                        val previewOffsetY = if (draggedId != null && !isDragged) {
-                            calculatePreviewOffsetY(
-                                schedule = schedule,
-                                previewSchedule = renderedSchedule,
-                                bounds = scheduleItemBounds,
-                                wallpaperId = entry.wallpaperId,
-                            )
-                        } else {
-                            0f
-                        }
-                        val animatedPreviewOffsetY by animateFloatAsState(
-                            targetValue = previewOffsetY,
-                            label = "schedulePreviewOffset",
-                        )
-                        ScheduleItemCard(
+                        val isSettling = settlingWallpaperId == entry.wallpaperId
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .animateItem(
+                                    placementSpec = spring(
+                                        dampingRatio = 0.9f,
+                                        stiffness = 360f,
+                                    )
+                                )
                                 .zIndex(if (isDragged) 1f else 0f)
                                 .onGloballyPositioned { coordinates ->
                                     scheduleItemBounds[entry.wallpaperId] = ItemBounds(
@@ -425,6 +457,8 @@ fun RearWallpaperManagerScreen(
                                 .pointerInput(entry.wallpaperId) {
                                     detectDragGesturesAfterLongPress(
                                         onDragStart = {
+                                            settlingOverlay = null
+                                            settlingWallpaperId = null
                                             draggedId = entry.wallpaperId
                                             val bounds = scheduleItemBounds[entry.wallpaperId]
                                             draggedInsertIndex =
@@ -440,11 +474,28 @@ fun RearWallpaperManagerScreen(
                                             draggedOffsetY = 0f
                                         },
                                         onDragEnd = {
+                                            val draggingId = draggedId
                                             val finalSchedule = previewScheduleEntries(
                                                 schedule = schedule,
-                                                draggingId = draggedId,
+                                                draggingId = draggingId,
                                                 insertIndex = draggedInsertIndex,
                                             )
+                                            val draggedEntrySnapshot =
+                                                draggingId?.let { wallpaperId ->
+                                                    schedule.firstOrNull { it.wallpaperId == wallpaperId }
+                                                }
+                                            val startTranslationY =
+                                                draggedStartTop - contentTopInRoot + draggedOffsetY
+                                            if (draggedEntrySnapshot != null) {
+                                                settlingOverlay = SettlingScheduleOverlay(
+                                                    entry = draggedEntrySnapshot,
+                                                    isCurrent = currentWallpaperId == draggedEntrySnapshot.wallpaperId,
+                                                    startTranslationY = startTranslationY,
+                                                    targetTranslationY = startTranslationY,
+                                                )
+                                                settlingWallpaperId =
+                                                    draggedEntrySnapshot.wallpaperId
+                                            }
                                             if (finalSchedule.map { it.wallpaperId } != schedule.map { it.wallpaperId }) {
                                                 schedule.clear()
                                                 schedule.addAll(finalSchedule)
@@ -454,6 +505,21 @@ fun RearWallpaperManagerScreen(
                                             draggedInsertIndex = null
                                             draggedItemHeight = 0f
                                             draggedOffsetY = 0f
+
+                                            if (draggingId != null) {
+                                                scope.launch {
+                                                    withFrameNanos { }
+                                                    withFrameNanos { }
+                                                    val resolvedTarget =
+                                                        scheduleItemBounds[draggingId]?.top?.minus(
+                                                            contentTopInRoot
+                                                        )
+                                                    if (resolvedTarget != null && settlingOverlay?.entry?.wallpaperId == draggingId) {
+                                                        settlingOverlay =
+                                                            settlingOverlay?.copy(targetTranslationY = resolvedTarget)
+                                                    }
+                                                }
+                                            }
                                         },
                                         onDrag = { change, dragAmount ->
                                             change.consume()
@@ -472,22 +538,26 @@ fun RearWallpaperManagerScreen(
                                             )
                                         },
                                     )
+                                }
+                        ) {
+                            ScheduleItemCard(
+                                modifier = Modifier.fillMaxWidth(),
+                                wallpaper = wallpaper,
+                                scheduleEntry = entry,
+                                isCurrent = currentWallpaperId == entry.wallpaperId,
+                                isDragged = isDragged,
+                                isDragPlaceholder = isDragged || isSettling,
+                                dragOffsetY = 0f,
+                                onEdit = {
+                                    editTargetId = entry.wallpaperId
+                                    delayInput = entry.delayMs.toString()
                                 },
-                            wallpaper = wallpaper,
-                            scheduleEntry = entry,
-                            isCurrent = currentWallpaperId == entry.wallpaperId,
-                            isDragged = isDragged,
-                            isDragPlaceholder = isDragged,
-                            dragOffsetY = animatedPreviewOffsetY,
-                            onEdit = {
-                                editTargetId = entry.wallpaperId
-                                delayInput = entry.delayMs.toString()
-                            },
-                            onDelete = {
-                                schedule.removeAll { it.wallpaperId == entry.wallpaperId }
-                                persistSchedule()
-                            },
-                        )
+                                onDelete = {
+                                    schedule.removeAll { it.wallpaperId == entry.wallpaperId }
+                                    persistSchedule()
+                                },
+                            )
+                        }
                     }
                 }
 
@@ -519,16 +589,19 @@ fun RearWallpaperManagerScreen(
             }
 
             draggedEntry?.let { entry ->
+                val draggedOverlayStyleState =
+                    remember(entry.wallpaperId) { MutableStyleState(null) }
+                val draggedOverlayStyle =
+                    remember(draggedStartTop, contentTopInRoot, draggedOffsetY) {
+                        Style {
+                            translationY(draggedStartTop - contentTopInRoot + draggedOffsetY)
+                        }
+                    }
                 ScheduleItemCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp)
-                        .offset {
-                            IntOffset(
-                                x = 0,
-                                y = (draggedStartTop - contentTopInRoot + draggedOffsetY).roundToInt(),
-                            )
-                        }
+                        .styleable(draggedOverlayStyleState, draggedOverlayStyle)
                         .zIndex(3f),
                     wallpaper = wallpaperMap[entry.wallpaperId],
                     scheduleEntry = entry,
@@ -546,6 +619,28 @@ fun RearWallpaperManagerScreen(
                         draggedInsertIndex = null
                         draggedItemHeight = 0f
                         draggedOffsetY = 0f
+                        persistSchedule()
+                    },
+                )
+            } ?: settlingOverlay?.let { overlay ->
+                SettlingScheduleItemOverlay(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp)
+                        .zIndex(3f),
+                    wallpaper = wallpaperMap[overlay.entry.wallpaperId],
+                    scheduleEntry = overlay.entry,
+                    isCurrent = overlay.isCurrent,
+                    startTranslationY = overlay.startTranslationY,
+                    targetTranslationY = overlay.targetTranslationY,
+                    onEdit = {
+                        editTargetId = overlay.entry.wallpaperId
+                        delayInput = overlay.entry.delayMs.toString()
+                    },
+                    onDelete = {
+                        schedule.removeAll { it.wallpaperId == overlay.entry.wallpaperId }
+                        settlingOverlay = null
+                        settlingWallpaperId = null
                         persistSchedule()
                     },
                 )
@@ -686,21 +781,6 @@ private fun findDraggedInsertIndex(
     return boundaries.count { draggedCenter > it }
 }
 
-private fun calculatePreviewOffsetY(
-    schedule: List<RearWallpaperScheduleEntry>,
-    previewSchedule: List<RearWallpaperScheduleEntry>,
-    bounds: Map<Int, ItemBounds>,
-    wallpaperId: Int,
-): Float {
-    val currentTop = bounds[wallpaperId]?.top ?: return 0f
-    val previewIndex = previewSchedule.indexOfFirst { it.wallpaperId == wallpaperId }
-    if (previewIndex < 0) return 0f
-
-    val slotId = schedule.getOrNull(previewIndex)?.wallpaperId ?: return 0f
-    val targetTop = bounds[slotId]?.top ?: return 0f
-    return targetTop - currentTop
-}
-
 @Composable
 private fun ScheduleItemCard(
     modifier: Modifier,
@@ -710,10 +790,12 @@ private fun ScheduleItemCard(
     isDragged: Boolean,
     isDragPlaceholder: Boolean,
     dragOffsetY: Float,
+    externalShadow: androidx.compose.ui.unit.Dp? = null,
+    externalScale: Float? = null,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val locale = LocalConfiguration.current.locales[0] ?: Locale.getDefault()
+    val locale = LocalConfiguration.current.locales[0] ?: LocalLocale.current.platformLocale
     val title = wallpaper?.name ?: stringResource(
         R.string.rear_wallpaper_unavailable,
         scheduleEntry.wallpaperId,
@@ -724,38 +806,73 @@ private fun ScheduleItemCard(
         formatDelay(scheduleEntry.delayMs, locale),
     )
     val currentLabel = stringResource(R.string.rear_wallpaper_current)
-    val animatedScale by animateFloatAsState(if (isDragged) 1.018f else 1f, label = "scheduleScale")
-    val animatedShadow by animateDpAsState(if (isDragged) 18.dp else 0.dp, label = "scheduleShadow")
+    val animatedShadow by animateDpAsState(
+        targetValue = if (isDragged) 0.dp else 0.dp,
+        animationSpec = spring(
+            dampingRatio = 0.86f,
+            stiffness = 460f,
+        ),
+        label = "scheduleShadow",
+    )
+    val shadowElevation = externalShadow ?: animatedShadow
+    val baseScale = externalScale ?: 1f
+    val motionStyleState = remember(scheduleEntry.wallpaperId) { MutableStyleState(null) }
+    motionStyleState.isScheduleDragged = isDragged
+    val motionStyle = remember(dragOffsetY, isDragPlaceholder, baseScale) {
+        Style {
+            alpha(if (isDragPlaceholder) 0f else 1f)
+            scale(baseScale)
+
+            scheduleDragged {
+                animate(
+                    spring(
+                        dampingRatio = 0.9f,
+                        stiffness = 520f,
+                    )
+                ) {
+                    scale(1.018f)
+                }
+            }
+        }
+    }
 
     Card(
         modifier = modifier
-            .alpha(if (isDragPlaceholder) 0f else 1f)
+            .styleable(motionStyleState, motionStyle)
             .graphicsLayer {
                 translationY = dragOffsetY
-                scaleX = animatedScale
-                scaleY = animatedScale
             }
-            .shadow(animatedShadow, SCHEDULE_ITEM_SHAPE, clip = false),
+            .shadow(shadowElevation, SCHEDULE_ITEM_SHAPE, clip = false),
         insideMargin = PaddingValues(12.dp),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            BasicComponent(
-                title = title,
-                summary = listOfNotNull(
-                    wallpaper?.title ?: unavailableSummary,
-                    intervalSummary,
-                    currentLabel.takeIf { isCurrent },
-                ).joinToString(separator = "\n"),
-                startAction = {
-                    WallpaperPreview(
-                        cachePath = wallpaper?.cachePath,
-                        modifier = Modifier
-                            .width(88.dp)
-                            .aspectRatio(WALLPAPER_PREVIEW_RATIO),
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onEdit,
                     )
-                },
-                onClick = onEdit,
-            )
+            ) {
+                BasicComponent(
+                    title = title,
+                    summary = listOfNotNull(
+                        wallpaper?.title ?: unavailableSummary,
+                        intervalSummary,
+                        currentLabel.takeIf { isCurrent },
+                    ).joinToString(separator = "\n"),
+                    startAction = {
+                        WallpaperPreview(
+                            cachePath = wallpaper?.cachePath,
+                            modifier = Modifier
+                                .width(88.dp)
+                                .aspectRatio(WALLPAPER_PREVIEW_RATIO),
+                        )
+                    },
+                    onClick = null,
+                )
+            }
             HorizontalDivider(
                 modifier = Modifier.padding(vertical = 2.dp),
                 thickness = 0.5.dp,
@@ -778,6 +895,58 @@ private fun ScheduleItemCard(
             }
         }
     }
+}
+
+@Composable
+private fun SettlingScheduleItemOverlay(
+    modifier: Modifier,
+    wallpaper: RearWallpaperInfo?,
+    scheduleEntry: RearWallpaperScheduleEntry,
+    isCurrent: Boolean,
+    startTranslationY: Float,
+    targetTranslationY: Float,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    var settlingStarted by remember(
+        scheduleEntry.wallpaperId,
+        startTranslationY,
+        targetTranslationY
+    ) {
+        mutableStateOf(false)
+    }
+    LaunchedEffect(scheduleEntry.wallpaperId, startTranslationY, targetTranslationY) {
+        settlingStarted = true
+    }
+
+    val translationY by animateFloatAsState(
+        targetValue = if (settlingStarted) targetTranslationY else startTranslationY,
+        animationSpec = spring(
+            dampingRatio = 0.9f,
+            stiffness = 360f,
+        ),
+        label = "settlingOverlayTranslation",
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (settlingStarted) 1f else 1.018f,
+        animationSpec = spring(
+            dampingRatio = 0.9f,
+            stiffness = 520f,
+        ),
+        label = "settlingOverlayScale",
+    )
+    ScheduleItemCard(
+        modifier = modifier,
+        wallpaper = wallpaper,
+        scheduleEntry = scheduleEntry,
+        isCurrent = isCurrent,
+        isDragged = false,
+        isDragPlaceholder = false,
+        dragOffsetY = translationY,
+        externalScale = scale,
+        onEdit = onEdit,
+        onDelete = onDelete,
+    )
 }
 
 @Composable
@@ -853,7 +1022,6 @@ private fun WallpaperPickerCard(
                     }
                 }
             },
-            onClick = {},
         )
     }
 }

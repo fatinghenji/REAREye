@@ -4,14 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutLinearInEasing
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +48,7 @@ import androidx.core.net.toUri
 import com.highcapable.yukihookapi.YukiHookAPI
 import hk.uwu.reareye.R
 import hk.uwu.reareye.generated.AppProperties
+import hk.uwu.reareye.ui.components.motion.ArtVisibilityMotion
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
 import hk.uwu.reareye.ui.easteregg.EasterEggManager
@@ -289,7 +282,6 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
                 actions = {
                     Box {
                         IconButton(
-                            modifier = Modifier.padding(end = 16.dp),
                             onClick = { showTopMenu.value = true },
                             holdDownState = showTopMenu.value,
                         ) {
@@ -546,27 +538,16 @@ private fun RevealItem(
     delayMillis: Int,
     content: @Composable () -> Unit,
 ) {
-    AnimatedVisibility(
+    ArtVisibilityMotion(
         visible = visible,
-        enter = fadeIn(
-            animationSpec = tween(
-                durationMillis = 320,
-                delayMillis = delayMillis,
-                easing = LinearOutSlowInEasing,
-            )
-        ) + slideInVertically(
-            animationSpec = tween(
-                durationMillis = 420,
-                delayMillis = delayMillis,
-                easing = FastOutSlowInEasing,
-            )
-        ) { it / 8 },
-        exit = fadeOut(
-            animationSpec = tween(
-                durationMillis = 120,
-                easing = FastOutLinearInEasing,
-            )
-        ),
+        delayMillis = delayMillis,
+        enterAlphaDurationMillis = 320,
+        enterTransformDurationMillis = 420,
+        exitAlphaDurationMillis = 120,
+        exitTransformDurationMillis = 120,
+        hiddenEnterScale = 1f,
+        hiddenExitScale = 1f,
+        slideDivisor = 8,
     ) {
         content()
     }

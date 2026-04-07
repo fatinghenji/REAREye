@@ -33,6 +33,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import hk.uwu.reareye.ui.components.motion.ArtVisibilityMotion
 import hk.uwu.reareye.ui.components.navigation.RearNavigationBar
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.ModuleNavigationBarMode
@@ -194,19 +195,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        val navAlphaProgress by animateFloatAsState(
-                            targetValue = if (showNavigation) 1f else 0f,
-                            animationSpec = tween(
-                                durationMillis = if (showNavigation) 260 else 180,
-                                easing = if (showNavigation) {
-                                    LinearOutSlowInEasing
-                                } else {
-                                    FastOutLinearInEasing
-                                },
-                            ),
-                            label = "NavigationAlphaProgress",
-                        )
-                        val navSlideProgress by animateFloatAsState(
+                        val navShadowProgress by animateFloatAsState(
                             targetValue = if (showNavigation) 1f else 0f,
                             animationSpec = tween(
                                 durationMillis = if (showNavigation) 380 else 240,
@@ -216,19 +205,13 @@ class MainActivity : ComponentActivity() {
                                     FastOutLinearInEasing
                                 },
                             ),
-                            label = "NavigationSlideProgress",
+                            label = "NavigationShadowProgress",
                         )
-                        if (showNavigation || navAlphaProgress > 0.001f || navSlideProgress > 0.001f) {
-                            val hiddenOffsetPx = with(density) {
-                                ((if (stableBottomInset > 0.dp) stableBottomInset else 84.dp) / 3).toPx()
-                            }
-                            RearNavigationBar(
+                        if (showNavigation || navShadowProgress > 0.001f) {
+                            ArtVisibilityMotion(
+                                visible = showNavigation,
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
-                                    .graphicsLayer {
-                                        alpha = navAlphaProgress
-                                        translationY = (1f - navSlideProgress) * hiddenOffsetPx
-                                    }
                                     .onGloballyPositioned { coordinates ->
                                         val totalHeight = with(density) {
                                             coordinates.size.height.toDp()
@@ -237,12 +220,23 @@ class MainActivity : ComponentActivity() {
                                             stableBottomInset = totalHeight
                                         }
                                     },
-                                currentScreen = currentScreen,
-                                navigationBarMode = navigationBarMode,
-                                backdrop = backdrop,
-                                shadowVisibilityProgress = navSlideProgress,
-                                onScreenSelected = { currentScreen = it },
-                            )
+                                enterAlphaDurationMillis = 260,
+                                enterTransformDurationMillis = 380,
+                                exitAlphaDurationMillis = 180,
+                                exitTransformDurationMillis = 240,
+                                hiddenEnterScale = 1f,
+                                hiddenExitScale = 1f,
+                                slideDivisor = 3,
+                                hiddenOffsetFallback = 28.dp,
+                            ) {
+                                RearNavigationBar(
+                                    currentScreen = currentScreen,
+                                    navigationBarMode = navigationBarMode,
+                                    backdrop = backdrop,
+                                    shadowVisibilityProgress = navShadowProgress,
+                                    onScreenSelected = { currentScreen = it },
+                                )
+                            }
                         }
                     }
                 }
