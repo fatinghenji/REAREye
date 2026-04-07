@@ -140,5 +140,6 @@ dependencies {
     implementation(libs.gson)
     implementation(libs.lyricon.provider)
     implementation(libs.lyricon.central)
+    implementation(libs.lyricon.subscriber)
     implementation(libs.superlyric)
 }

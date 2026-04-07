@@ -17,10 +17,9 @@ import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.LyricProvider
 import io.github.proify.lyricon.central.BridgeCentral
 import io.github.proify.lyricon.lyric.model.Song
-import io.github.proify.lyricon.provider.LyriconFactory
-import io.github.proify.lyricon.provider.ProviderInfo
 import io.github.proify.lyricon.subscriber.ActivePlayerListener
-import io.github.proify.lyricon.subscriber.ActivePlayerMonitor
+import io.github.proify.lyricon.subscriber.LyriconSubscriber
+import io.github.proify.lyricon.subscriber.ProviderInfo
 import java.util.concurrent.CopyOnWriteArrayList
 
 
@@ -35,7 +34,7 @@ class LyriconHook : YukiBaseHooker() {
     private val elements: CopyOnWriteArrayList<Any> = CopyOnWriteArrayList<Any>()
 
     @Volatile
-    var monitor: ActivePlayerMonitor? = null
+    var monitor: LyriconSubscriber? = null
 
     @Volatile
     var superLyricStub: ISuperLyric.Stub? = null
@@ -52,7 +51,11 @@ class LyriconHook : YukiBaseHooker() {
                             )
                         ) == LyricProvider.LYRICON
                     ) {
-                        if (!isLyriconInstalled(context)) {
+                        if (!(isPackageInstalled(
+                                context,
+                                TARGET_LYRICON_PACKAGE
+                            ) || isPackageInstalled(context, LYRICON_CORE_PACKAGE))
+                        ) {
                             YLog.info("Lyricon is not found, starting bundled central")
                             BridgeCentral.initialize(context)
                             BridgeCentral.sendBootCompleted()
@@ -77,10 +80,10 @@ class LyriconHook : YukiBaseHooker() {
                         LyricProvider.LYRICON -> {
                             val listener = createLyricListener()
                             val monitor =
-                                LyriconFactory.createActivePlayerMonitor(
-                                    context,
-                                    listener = listener
+                                io.github.proify.lyricon.subscriber.LyriconFactory.createSubscriber(
+                                    context
                                 )
+                            monitor.subscribeActivePlayer(listener)
                             monitor.register()
                             YLog.info("Registered lyricon player monitor")
                         }
@@ -191,16 +194,22 @@ class LyriconHook : YukiBaseHooker() {
                 returnType = Void.TYPE
                 parameters(MediaMetadata::class.java)
             }.hook {
-                before {
+                replaceUnit {
+                    val metadata = args(0).cast<MediaMetadata>()
                     if (prefs.getBoolean(ConfigKeys.HOOK_REMOVE_NATIVE_LYRIC_SUPPORT, false)) {
-                        val metadataArg = args(0)
-                        val metadata = args(0).cast<MediaMetadata>()
+                        val moreDebug = prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)
                         val builder = MediaMetadata.Builder(metadata)
+                        if (moreDebug) {
+                            YLog.debug("Native lyric: ${metadata?.getString(XIAOMI_LYRIC_METADATA)}")
+                        }
                         builder.putString(XIAOMI_LYRIC_METADATA, null)
-                        metadataArg.set(builder.build())
-                        if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+                        val newMeta = builder.build()
+                        if (moreDebug) {
                             YLog.debug("Force removed native lyric data")
                         }
+                        invokeOriginal(newMeta)
+                    } else {
+                        invokeOriginal(metadata)
                     }
                 }
 
@@ -236,21 +245,20 @@ class LyriconHook : YukiBaseHooker() {
         }
     }
 
-    private fun isLyriconInstalled(context: Context): Boolean {
+    private fun isPackageInstalled(context: Context, pkg: String): Boolean {
         return runCatching {
             val pm = context.packageManager
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                pm.getPackageInfo(TARGET_LYRICON_PACKAGE, PackageManager.PackageInfoFlags.of(0))
+                pm.getPackageInfo(pkg, PackageManager.PackageInfoFlags.of(0))
             } else {
                 @Suppress("DEPRECATION")
-                pm.getPackageInfo(TARGET_LYRICON_PACKAGE, 0)
+                pm.getPackageInfo(pkg, 0)
             }
         }.isSuccess
     }
 
     private fun createLyricListener(): ActivePlayerListener {
         return object : ActivePlayerListener {
-
             override fun onActiveProviderChanged(providerInfo: ProviderInfo?) {
                 currentProvider = providerInfo
                 YLog.debug("onProviderChanged $currentProvider")
@@ -290,7 +298,7 @@ class LyriconHook : YukiBaseHooker() {
 
             override fun onSeekTo(position: Long) = Unit
 
-            override fun onSendText(text: String?) {
+            override fun onReceiveText(text: String?) {
                 runCatching {
                     if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
                         YLog.debug("onSendText $text")
@@ -325,7 +333,7 @@ class LyriconHook : YukiBaseHooker() {
 
             override fun onDisplayTranslationChanged(isDisplayTranslation: Boolean) = Unit
 
-            override fun onDisplayRomaChanged(displayRoma: Boolean) = Unit
+            override fun onDisplayRomaChanged(isDisplayRoma: Boolean) = Unit
         }
     }
 
@@ -384,6 +392,7 @@ class LyriconHook : YukiBaseHooker() {
 
     private companion object {
         private const val TARGET_LYRICON_PACKAGE = "io.github.proify.lyricon"
+        private const val LYRICON_CORE_PACKAGE = "io.github.proify.lyricon.core"
         private const val XIAOMI_LYRIC_METADATA = "android.media.metadata.LYRIC"
     }
 }

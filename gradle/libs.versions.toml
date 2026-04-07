@@ -17,7 +17,7 @@ miuix = "0.9.0"
 haze = "1.7.2"
 backdrop = "1.0.6"
 capsule = "2.1.3"
-lyricon = "0.1.70B1"
+lyricon = "0.1.70"
 superlyric = "2.5"
 gson = "2.13.2"
 
@@ -55,5 +55,6 @@ capsule = { module = "io.github.kyant0:capsule", version.ref = "capsule" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 lyricon-provider = { group = "io.github.proify.lyricon", name = "provider", version.ref = "lyricon" }
 lyricon-central = { group = "io.github.proify.lyricon", name = "central", version.ref = "lyricon" }
+lyricon-subscriber = { group = "io.github.proify.lyricon", name = "subscriber", version.ref = "lyricon" }
 superlyric = { group = "com.github.HChenX", name = "SuperLyricApi", version.ref = "superlyric" }
 gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
