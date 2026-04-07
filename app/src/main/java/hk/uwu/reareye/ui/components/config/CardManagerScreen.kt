@@ -91,8 +91,6 @@ fun CardManagerScreen(
     var dataCardsVisible by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        cardsLoaded = false
-        dataCardsVisible = false
         delay(220)
         val loadedCards = withContext(Dispatchers.IO) {
             RearWidgetManagerRepository.loadCards(prefsManager)
@@ -107,7 +105,7 @@ fun CardManagerScreen(
         }
     }
 
-    var showDialog by remember { mutableStateOf(false) }
+    val showDialog = remember { mutableStateOf(false) }
     var editingCardId by remember { mutableStateOf<String?>(null) }
     var draftTitle by remember { mutableStateOf("") }
     var draftPackageName by remember { mutableStateOf("hk.uwu.reareye") }
@@ -126,7 +124,7 @@ fun CardManagerScreen(
         draftBusiness = ""
         draftPriorityText = "500"
         draftSticky = true
-        showDialog = true
+        showDialog.value = true
     }
 
     fun openEditDialog(item: RearCardConfig) {
@@ -136,7 +134,7 @@ fun CardManagerScreen(
         draftBusiness = item.business
         draftPriorityText = item.priority.toString()
         draftSticky = item.sticky
-        showDialog = true
+        showDialog.value = true
     }
 
     @SuppressLint("LocalContextGetResourceValueCall")
@@ -172,7 +170,7 @@ fun CardManagerScreen(
         }
 
         persist()
-        showDialog = false
+        showDialog.value = false
         Toast.makeText(
             context,
             context.getString(R.string.rear_widget_card_saved),
@@ -371,11 +369,11 @@ fun CardManagerScreen(
     }
 
     OverlayDialog(
-        show = showDialog,
+        show = showDialog.value,
         title = stringResource(
             if (editingCardId == null) R.string.rear_widget_add_card else R.string.rear_widget_edit_card,
         ),
-        onDismissRequest = { showDialog = false },
+        onDismissRequest = { showDialog.value = false },
     ) {
         Column(
             modifier = Modifier
@@ -429,7 +427,7 @@ fun CardManagerScreen(
                 ) {
                     Text(stringResource(R.string.rear_widget_confirm))
                 }
-                Button(onClick = { showDialog = false }, modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = { showDialog.value = false }, modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.rear_widget_cancel))
                 }
             }

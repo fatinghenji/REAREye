@@ -600,7 +600,6 @@ private fun ContributorAvatar(
 
     LaunchedEffect(avatarUrl) {
         if (avatarUrl.isNullOrBlank()) {
-            imageBitmap = null
             return@LaunchedEffect
         }
 

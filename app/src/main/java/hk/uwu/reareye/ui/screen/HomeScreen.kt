@@ -214,7 +214,6 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
     LaunchedEffect(Unit) {
         if (!UpdateInfoCache.latestCommitHash.isNullOrBlank()) {
             latestCommitHash = UpdateInfoCache.latestCommitHash
-            isCheckingUpdate = false
             return@LaunchedEffect
         }
 

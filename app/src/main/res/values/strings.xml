@@ -100,7 +100,6 @@
     <string name="rear_wallpaper_picker_add">Add Wallpaper to Schedule</string>
     <string name="rear_wallpaper_loading">Loading wallpapers…</string>
     <string name="rear_wallpaper_catalog_empty">No available wallpapers found</string>
-    <string name="rear_wallpaper_refresh">Refresh Wallpaper List</string>
     <string name="rear_wallpaper_refresh_success">Wallpaper list refreshed</string>
     <string name="rear_wallpaper_refresh_failed">Failed to refresh wallpaper list: %1$s</string>
     <string name="rear_wallpaper_set_now">Set Current</string>

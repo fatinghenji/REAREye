@@ -119,8 +119,6 @@ fun BusinessExtraConfigManagerScreen(
     }
 
     LaunchedEffect(Unit) {
-        loaded = false
-        dataCardsVisible = false
         delay(220)
         reloadEntries()
         loaded = true
@@ -192,7 +190,6 @@ fun BusinessExtraConfigManagerScreen(
                 business = currentBusiness,
                 onBack = {
                     editingBusiness = null
-                    showDialog = false
                 },
             )
         } else {

@@ -91,14 +91,12 @@ fun BusinessManagerScreen(
     var widgetsLoaded by remember { mutableStateOf(false) }
     var dataCardsVisible by remember { mutableStateOf(false) }
 
-    var showDialog by remember { mutableStateOf(false) }
+    val showDialog = remember { mutableStateOf(false) }
     var editingId by remember { mutableStateOf<String?>(null) }
     var draftWidget by remember { mutableStateOf("") }
     var draftFilePath by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
-        widgetsLoaded = false
-        dataCardsVisible = false
         delay(220)
         val loadedWidgets = withContext(Dispatchers.IO) {
             RearWidgetManagerRepository.loadBusinesses(prefsManager)
@@ -121,14 +119,14 @@ fun BusinessManagerScreen(
         editingId = null
         draftWidget = ""
         draftFilePath = ""
-        showDialog = true
+        showDialog.value = true
     }
 
     fun openEditDialog(item: RearBusinessConfig) {
         editingId = item.id
         draftWidget = item.business
         draftFilePath = item.filePath
-        showDialog = true
+        showDialog.value = true
     }
 
     @SuppressLint("LocalContextGetResourceValueCall")
@@ -166,7 +164,7 @@ fun BusinessManagerScreen(
         }
 
         persist()
-        showDialog = false
+        showDialog.value = false
         Toast.makeText(
             context,
             context.getString(R.string.rear_widget_business_saved),
@@ -354,11 +352,11 @@ fun BusinessManagerScreen(
     }
 
     OverlayDialog(
-        show = showDialog,
+        show = showDialog.value,
         title = stringResource(
             if (editingId == null) R.string.rear_widget_add_business else R.string.rear_widget_edit_business,
         ),
-        onDismissRequest = { showDialog = false },
+        onDismissRequest = { showDialog.value = false },
     ) {
         Column(
             modifier = Modifier
@@ -402,7 +400,7 @@ fun BusinessManagerScreen(
                 ) {
                     Text(stringResource(R.string.rear_widget_confirm))
                 }
-                Button(onClick = { showDialog = false }, modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = { showDialog.value = false }, modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.rear_widget_cancel))
                 }
             }

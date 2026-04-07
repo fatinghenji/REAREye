@@ -168,9 +168,9 @@ fun RearWallpaperManagerScreen(
     var loading by remember { mutableStateOf(true) }
     var refreshing by remember { mutableStateOf(false) }
     var scheduleEnabled by remember { mutableStateOf(false) }
-    var pickerMode by remember { mutableStateOf<WallpaperPickerMode?>(null) }
+    val pickerMode = remember { mutableStateOf<WallpaperPickerMode?>(null) }
 
-    var editTargetId by remember { mutableStateOf<Int?>(null) }
+    val editTargetId = remember { mutableStateOf<Int?>(null) }
     var delayInput by remember { mutableStateOf("") }
 
     val scheduleItemBounds = remember { mutableStateMapOf<Int, ItemBounds>() }
@@ -241,7 +241,7 @@ fun RearWallpaperManagerScreen(
             }
             if (success) {
                 currentWallpaperId = wallpaperId
-                pickerMode = null
+                pickerMode.value = null
             } else {
                 toast(R.string.rear_wallpaper_switch_failed)
             }
@@ -260,7 +260,7 @@ fun RearWallpaperManagerScreen(
             )
         )
         persistSchedule()
-        pickerMode = null
+        pickerMode.value = null
         toast(R.string.rear_wallpaper_added)
     }
 
@@ -375,7 +375,8 @@ fun RearWallpaperManagerScreen(
                                     ) {
                                         Button(
                                             onClick = {
-                                                pickerMode = WallpaperPickerMode.ADD_TO_SCHEDULE
+                                                pickerMode.value =
+                                                    WallpaperPickerMode.ADD_TO_SCHEDULE
                                             },
                                             colors = ButtonDefaults.buttonColorsPrimary(),
                                             modifier = Modifier.fillMaxWidth(),
@@ -557,7 +558,7 @@ fun RearWallpaperManagerScreen(
                                 isDragPlaceholder = isDragged || isSettling,
                                 dragOffsetY = 0f,
                                 onEdit = {
-                                    editTargetId = entry.wallpaperId
+                                    editTargetId.value = entry.wallpaperId
                                     delayInput = entry.delayMs.toString()
                                 },
                                 onDelete = {
@@ -619,7 +620,7 @@ fun RearWallpaperManagerScreen(
                     dragOffsetY = 0f,
                     externalShadow = 18.dp,
                     onEdit = {
-                        editTargetId = entry.wallpaperId
+                        editTargetId.value = entry.wallpaperId
                         delayInput = entry.delayMs.toString()
                     },
                     onDelete = {
@@ -643,7 +644,7 @@ fun RearWallpaperManagerScreen(
                     startTranslationY = overlay.startTranslationY,
                     targetTranslationY = overlay.targetTranslationY,
                     onEdit = {
-                        editTargetId = overlay.entry.wallpaperId
+                        editTargetId.value = overlay.entry.wallpaperId
                         delayInput = overlay.entry.delayMs.toString()
                     },
                     onDelete = {
@@ -658,14 +659,14 @@ fun RearWallpaperManagerScreen(
     }
 
     OverlayBottomSheet(
-        show = pickerMode != null,
+        show = pickerMode.value != null,
         title = stringResource(
-            when (pickerMode) {
+            when (pickerMode.value) {
                 WallpaperPickerMode.ADD_TO_SCHEDULE -> R.string.rear_wallpaper_picker_add
                 null -> R.string.rear_wallpaper_manager
             }
         ),
-        onDismissRequest = { pickerMode = null },
+        onDismissRequest = { pickerMode.value = null },
     ) {
         LazyColumn(
             modifier = Modifier
@@ -701,9 +702,9 @@ fun RearWallpaperManagerScreen(
     }
 
     OverlayDialog(
-        show = editTargetId != null,
+        show = editTargetId.value != null,
         title = stringResource(R.string.rear_wallpaper_edit_interval),
-        onDismissRequest = { editTargetId = null },
+        onDismissRequest = { editTargetId.value = null },
     ) {
         Column(
             modifier = Modifier
@@ -721,7 +722,7 @@ fun RearWallpaperManagerScreen(
             )
             Button(
                 onClick = {
-                    val targetId = editTargetId ?: return@Button
+                    val targetId = editTargetId.value ?: return@Button
                     val delayMs = delayInput.toLongOrNull()
                     if (delayMs == null || delayMs < RearWallpaperScheduleCodec.MIN_DELAY_MS) {
                         toast(R.string.rear_wallpaper_interval_invalid)
@@ -732,7 +733,7 @@ fun RearWallpaperManagerScreen(
                         schedule[index] = schedule[index].copy(delayMs = delayMs)
                         persistSchedule()
                     }
-                    editTargetId = null
+                    editTargetId.value = null
                 },
                 colors = ButtonDefaults.buttonColorsPrimary(),
                 modifier = Modifier.fillMaxWidth(),
@@ -740,7 +741,7 @@ fun RearWallpaperManagerScreen(
                 Text(stringResource(R.string.rear_widget_confirm))
             }
             Button(
-                onClick = { editTargetId = null },
+                onClick = { editTargetId.value = null },
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(stringResource(R.string.rear_widget_cancel))
@@ -1085,7 +1086,7 @@ private fun formatDelay(delayMs: Long, locale: Locale): String {
         return if (isChinese) {
             "${totalSeconds}秒"
         } else {
-            "${totalSeconds} s"
+            "$totalSeconds s"
         }
     }
 
@@ -1093,13 +1094,13 @@ private fun formatDelay(delayMs: Long, locale: Locale): String {
         return if (isChinese) {
             "${minutes}分钟"
         } else {
-            "${minutes} min"
+            "$minutes min"
         }
     }
 
     return if (isChinese) {
         "${minutes}分钟 ${seconds}秒"
     } else {
-        "${minutes} min ${seconds} s"
+        "$minutes min $seconds s"
     }
 }

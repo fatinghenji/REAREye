@@ -30,7 +30,7 @@ fun rememberApplicationIconBitmap(
     applicationInfo: ApplicationInfo,
 ): ImageBitmap? {
     val packageName = applicationInfo.packageName
-    val bitmap by produceState<ImageBitmap?>(
+    val bitmap by produceState(
         initialValue = PackageIconBitmapCache.get(packageName),
         key1 = packageName,
         key2 = packageManager,
@@ -38,7 +38,7 @@ fun rememberApplicationIconBitmap(
         if (value != null) return@produceState
 
         val loadedBitmap = withContext(Dispatchers.IO) {
-            loadIconBitmap(packageManager) {
+            loadIconBitmap {
                 applicationInfo.loadIcon(packageManager)
             }
         }
@@ -57,7 +57,7 @@ fun rememberPackageIconBitmap(
     packageManager: PackageManager,
     packageName: String,
 ): ImageBitmap? {
-    val bitmap by produceState<ImageBitmap?>(
+    val bitmap by produceState(
         initialValue = PackageIconBitmapCache.get(packageName),
         key1 = packageName,
         key2 = packageManager,
@@ -65,7 +65,7 @@ fun rememberPackageIconBitmap(
         if (value != null) return@produceState
 
         val loadedBitmap = withContext(Dispatchers.IO) {
-            loadIconBitmap(packageManager) {
+            loadIconBitmap {
                 packageManager.getApplicationIcon(packageName)
             }
         }
@@ -80,7 +80,6 @@ fun rememberPackageIconBitmap(
 }
 
 private fun loadIconBitmap(
-    packageManager: PackageManager,
     drawableProvider: () -> android.graphics.drawable.Drawable,
 ): ImageBitmap? {
     return runCatching {

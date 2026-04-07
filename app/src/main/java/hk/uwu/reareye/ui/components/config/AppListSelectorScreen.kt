@@ -284,9 +284,9 @@ private fun AppSelectorRow(
     val density = LocalDensity.current
     val primaryColor = MiuixTheme.colorScheme.primary
     var previousIndex by remember(appItem.packageName) { mutableStateOf(currentIndex) }
-    var placementOffset by remember(appItem.packageName) { mutableFloatStateOf(0f) }
+    val placementOffset = remember(appItem.packageName) { mutableFloatStateOf(0f) }
     val animatedPlacementOffset by animateFloatAsState(
-        targetValue = placementOffset,
+        targetValue = placementOffset.floatValue,
         animationSpec = appRowPlacementSpec,
         label = "AppRowPlacementOffset",
     )
@@ -353,10 +353,10 @@ private fun AppSelectorRow(
             return@LaunchedEffect
         }
 
-        placementOffset = (previousIndex - currentIndex) * averageItemHeightPx
+        placementOffset.floatValue = (previousIndex - currentIndex) * averageItemHeightPx
         previousIndex = currentIndex
         withFrameNanos { }
-        placementOffset = 0f
+        placementOffset.floatValue = 0f
     }
 
     Card(
@@ -667,7 +667,7 @@ fun AppListSelectorScreen(
     var showSystemApps by remember(configItem.key) { mutableStateOf(false) }
     var searchInput by remember(configItem.key) { mutableStateOf("") }
     var searchQuery by remember(configItem.key) { mutableStateOf("") }
-    var searchFocused by remember(configItem.key) { mutableStateOf(false) }
+    val searchFocused = remember(configItem.key) { mutableStateOf(false) }
     val listState = rememberLazyListState()
     var sortMode by remember(configItem.key) { mutableStateOf(AppSortMode.LABEL) }
     var reverseOrder by remember(configItem.key) { mutableStateOf(false) }
@@ -679,7 +679,7 @@ fun AppListSelectorScreen(
     val hazeState = rememberAcrylicHazeState()
     val hazeStyle = rememberAcrylicHazeStyle()
 
-    BackHandler(enabled = searchFocused) {
+    BackHandler(enabled = searchFocused.value) {
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
     }
@@ -944,7 +944,7 @@ fun AppListSelectorScreen(
                         .padding(bottom = 12.dp),
                     searchQuery = searchInput,
                     onSearchQueryChange = { searchInput = it },
-                    onSearchFocusChange = { searchFocused = it },
+                    onSearchFocusChange = { searchFocused.value = it },
                 )
             }
         },

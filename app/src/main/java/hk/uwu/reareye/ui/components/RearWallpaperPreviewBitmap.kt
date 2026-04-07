@@ -23,7 +23,7 @@ private object RearWallpaperPreviewBitmapCache {
 
 @Composable
 fun rememberRearWallpaperPreviewBitmap(cachePath: String?): ImageBitmap? {
-    val bitmap by produceState<ImageBitmap?>(
+    val bitmap by produceState(
         initialValue = cachePath?.let(RearWallpaperPreviewBitmapCache::get),
         key1 = cachePath,
     ) {

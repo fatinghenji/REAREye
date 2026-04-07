@@ -153,16 +153,16 @@ fun BooleanConfigInput(
     onPreferenceChanged: (ConfigItem) -> Unit = {},
 ) {
     val context = LocalContext.current
-    var checked by remember(item.key) {
+    val checked = remember(item.key) {
         mutableStateOf(prefsManager.getBoolean(item.key, defaultValue))
     }
 
     SwitchPreference(
         title = stringResource(item.titleRes),
         summary = item.descriptionRes?.let { stringResource(it) },
-        checked = checked,
+        checked = checked.value,
         onCheckedChange = {
-            checked = it
+            checked.value = it
             prefsManager.putBoolean(item.key, it)
             if (item.key == ConfigKeys.MODULE_HIDE_LAUNCHER_ENTRY) {
                 ModuleSettingsController.syncLauncherEntryVisibility(context, hidden = it)
@@ -207,7 +207,7 @@ fun MaskMultiSelectConfigInput(
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val popupScope = rememberCoroutineScope()
-    var showModePopup by remember(item.key) { mutableStateOf(false) }
+    val showModePopup = remember(item.key) { mutableStateOf(false) }
     var selectedMask by remember(item.key) {
         mutableIntStateOf(prefsManager.getInt(item.key, defaultValue))
     }
@@ -238,17 +238,17 @@ fun MaskMultiSelectConfigInput(
     ArrowPreference(
         title = stringResource(item.titleRes),
         summary = summary,
-        holdDownState = showModePopup,
-        onClick = { showModePopup = true }
+        holdDownState = showModePopup.value,
+        onClick = { showModePopup.value = true }
     )
 
     OverlayListPopup(
-        show = showModePopup,
+        show = showModePopup.value,
         popupModifier = Modifier,
         popupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
         alignment = PopupPositionProvider.Align.End,
         enableWindowDim = true,
-        onDismissRequest = { showModePopup = false },
+        onDismissRequest = { showModePopup.value = false },
         maxHeight = null,
         minWidth = 220.dp,
         renderInRootScaffold = true,
@@ -263,7 +263,7 @@ fun MaskMultiSelectConfigInput(
                     spinnerColors = SpinnerDefaults.spinnerColors(),
                     onSelectedIndexChange = {
                         val nextMask = selectedMask xor option.maskValue
-                        showModePopup = false
+                        showModePopup.value = false
                         popupScope.launch {
                             withFrameNanos { }
                             selectedMask = nextMask
@@ -289,7 +289,7 @@ fun EnumSingleSelectConfigInput(
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val popupScope = rememberCoroutineScope()
-    var showEnumPopup by remember(item.key) { mutableStateOf(false) }
+    val showEnumPopup = remember(item.key) { mutableStateOf(false) }
     var selectedValue by remember(item.key) {
         mutableIntStateOf(prefsManager.getInt(item.key, defaultValue))
     }
@@ -315,17 +315,17 @@ fun EnumSingleSelectConfigInput(
     ArrowPreference(
         title = stringResource(item.titleRes),
         summary = summary,
-        holdDownState = showEnumPopup,
-        onClick = { showEnumPopup = true }
+        holdDownState = showEnumPopup.value,
+        onClick = { showEnumPopup.value = true }
     )
 
     OverlayListPopup(
-        show = showEnumPopup,
+        show = showEnumPopup.value,
         popupModifier = Modifier,
         popupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
         alignment = PopupPositionProvider.Align.End,
         enableWindowDim = true,
-        onDismissRequest = { showEnumPopup = false },
+        onDismissRequest = { showEnumPopup.value = false },
         maxHeight = null,
         minWidth = 220.dp,
         renderInRootScaffold = true,
@@ -339,7 +339,7 @@ fun EnumSingleSelectConfigInput(
                     index = index,
                     spinnerColors = SpinnerDefaults.spinnerColors(),
                     onSelectedIndexChange = {
-                        showEnumPopup = false
+                        showEnumPopup.value = false
                         popupScope.launch {
                             withFrameNanos { }
                             selectedValue = option.value
