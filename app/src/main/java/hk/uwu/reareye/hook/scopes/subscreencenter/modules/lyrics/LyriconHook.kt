@@ -196,6 +196,14 @@ class LyriconHook : YukiBaseHooker() {
             }.hook {
                 replaceUnit {
                     val metadata = args(0).cast<MediaMetadata>()
+                    val i = instance.asResolver().firstField {
+                        name = "this$0"
+                    }.get()
+                    if (i == null) {
+                        invokeOriginal(metadata)
+                        return@replaceUnit
+                    }
+                    elements.addIfAbsent(i)
                     if (prefs.getBoolean(ConfigKeys.HOOK_REMOVE_NATIVE_LYRIC_SUPPORT, false)) {
                         val moreDebug = prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)
                         val builder = MediaMetadata.Builder(metadata)
@@ -214,6 +222,8 @@ class LyriconHook : YukiBaseHooker() {
                 }
 
                 after {
+                    val moreDebug = prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)
+                    val metadata = args(0).cast<MediaMetadata>()
                     val i = instance.asResolver().firstField {
                         name = "this$0"
                     }.get() ?: return@after
@@ -222,9 +232,26 @@ class LyriconHook : YukiBaseHooker() {
                     val lrc = XposedHelpers.getAdditionalInstanceField(i, "TEMP_LRC") as? String
                     if (mLyric == null) {
                         if (lrc != null || latestLyricLrc.isNotEmpty()) {
-                            YLog.debug("onUpdateLrc $mLyric ${lrc == null} ${latestLyricLrc.isEmpty()}")
+                            if (moreDebug) {
+                                YLog.debug("onUpdateLrc $mLyric ${lrc == null} ${latestLyricLrc.isEmpty()}")
+                            }
                             forceUpdateLyric(i, lrc ?: latestLyricLrc)
                             return@after
+                        }
+                        val currentId = metadata?.description?.mediaId
+                        if (currentId != null && currentId == XposedHelpers.getAdditionalStaticField(
+                                clz,
+                                "LAST_LYRIC_ID"
+                            )
+                        ) {
+                            val lastLrc = XposedHelpers.getAdditionalStaticField(
+                                clz,
+                                "LAST_LYRIC_LRC"
+                            ) as String
+                            if (moreDebug) {
+                                YLog.debug("onUseLastLrc $lastLrc")
+                            }
+                            forceUpdateLyric(i, lastLrc)
                         }
                         val line =
                             XposedHelpers.getAdditionalInstanceField(
@@ -236,7 +263,9 @@ class LyriconHook : YukiBaseHooker() {
                         val currentLyric =
                             mLyricCurrentVar.asResolver().firstMethod { name = "get" }.invoke()
                         if (line != null && currentLyric == null) {
-                            YLog.debug("onUpdateLine $line")
+                            if (moreDebug) {
+                                YLog.debug("onUpdateLine $line")
+                            }
                             updateFallbackLine(i, line)
                         }
                     }
@@ -258,14 +287,20 @@ class LyriconHook : YukiBaseHooker() {
     }
 
     private fun createLyricListener(): ActivePlayerListener {
+        val clz = "com.miui.maml.elements.MusicControlScreenElement".toClass()
+
         return object : ActivePlayerListener {
             override fun onActiveProviderChanged(providerInfo: ProviderInfo?) {
                 currentProvider = providerInfo
-                YLog.debug("onProviderChanged $currentProvider")
+                if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+                    YLog.debug("onProviderChanged $currentProvider")
+                }
             }
 
             override fun onSongChanged(song: Song?) {
+                if (song == null) return
                 runCatching {
+                    song.id
                     val lrc = lyricParser.toLrc(
                         song = song,
                         displayMode = prefs.getInt(
@@ -278,13 +313,17 @@ class LyriconHook : YukiBaseHooker() {
                         ),
                     )
                     latestLyricLrc = normalizeForMiuiParser(lrc)
-                    YLog.debug("REAREye getSongLRC $latestLyricLrc")
-                    YLog.debug("onSongChanged converted LRC length=${latestLyricLrc.length}")
-                    YLog.debug("current instance size ${elements.size}")
-                    elements.forEach {
-                        forceUpdateLyric(it, latestLyricLrc)
+                    if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+                        YLog.debug("REAREye getSongLRC $latestLyricLrc")
+                        YLog.debug("onSongChanged converted LRC length=${latestLyricLrc.length}")
+                        YLog.debug("current instance size ${elements.size}")
                     }
+                    XposedHelpers.setAdditionalStaticField(clz, "LAST_LYRIC_ID", song.id)
+                    XposedHelpers.setAdditionalStaticField(clz, "LAST_LYRIC_LRC", latestLyricLrc)
                     if (elements.isNotEmpty()) {
+                        elements.forEach {
+                            forceUpdateLyric(it, latestLyricLrc)
+                        }
                         latestLyricLrc = ""
                     }
                 }.onFailure {
@@ -370,7 +409,9 @@ class LyriconHook : YukiBaseHooker() {
             nLyric.asResolver().firstMethod { name = "decorate" }.invoke()
             mLyric.set(nLyric)
             ref.firstMethod { name = "updateLyric" }.invoke(nLyric)
-            YLog.debug("Force Update Lyric")
+            if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+                YLog.debug("Force Update Lyric")
+            }
             ref.firstField { name = "mMetadata" }.get<MediaMetadata>()?.also {
                 XposedHelpers.setAdditionalInstanceField(
                     element,
