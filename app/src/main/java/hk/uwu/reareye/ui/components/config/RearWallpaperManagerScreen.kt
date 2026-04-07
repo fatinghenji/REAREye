@@ -4,9 +4,11 @@ package hk.uwu.reareye.ui.components.config
 
 import android.annotation.SuppressLint
 import android.widget.Toast
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -441,11 +443,17 @@ fun RearWallpaperManagerScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .animateItem(
-                                    placementSpec = spring(
-                                        dampingRatio = 0.9f,
-                                        stiffness = 360f,
-                                    )
+                                .then(
+                                    if (isDragged || isSettling) {
+                                        Modifier
+                                    } else {
+                                        Modifier.animateItem(
+                                            placementSpec = tween(
+                                                durationMillis = SETTLING_OVERLAY_DURATION_MS.toInt(),
+                                                easing = FastOutSlowInEasing,
+                                            )
+                                        )
+                                    }
                                 )
                                 .zIndex(if (isDragged) 1f else 0f)
                                 .onGloballyPositioned { coordinates ->
@@ -609,6 +617,7 @@ fun RearWallpaperManagerScreen(
                     isDragged = true,
                     isDragPlaceholder = false,
                     dragOffsetY = 0f,
+                    externalShadow = 18.dp,
                     onEdit = {
                         editTargetId = entry.wallpaperId
                         delayInput = entry.delayMs.toString()
@@ -807,7 +816,7 @@ private fun ScheduleItemCard(
     )
     val currentLabel = stringResource(R.string.rear_wallpaper_current)
     val animatedShadow by animateDpAsState(
-        targetValue = if (isDragged) 0.dp else 0.dp,
+        targetValue = if (isDragged) 18.dp else 0.dp,
         animationSpec = spring(
             dampingRatio = 0.86f,
             stiffness = 460f,
@@ -921,17 +930,17 @@ private fun SettlingScheduleItemOverlay(
 
     val translationY by animateFloatAsState(
         targetValue = if (settlingStarted) targetTranslationY else startTranslationY,
-        animationSpec = spring(
-            dampingRatio = 0.9f,
-            stiffness = 360f,
+        animationSpec = tween(
+            durationMillis = SETTLING_OVERLAY_DURATION_MS.toInt(),
+            easing = FastOutSlowInEasing,
         ),
         label = "settlingOverlayTranslation",
     )
     val scale by animateFloatAsState(
         targetValue = if (settlingStarted) 1f else 1.018f,
-        animationSpec = spring(
-            dampingRatio = 0.9f,
-            stiffness = 520f,
+        animationSpec = tween(
+            durationMillis = SETTLING_OVERLAY_DURATION_MS.toInt(),
+            easing = FastOutSlowInEasing,
         ),
         label = "settlingOverlayScale",
     )
