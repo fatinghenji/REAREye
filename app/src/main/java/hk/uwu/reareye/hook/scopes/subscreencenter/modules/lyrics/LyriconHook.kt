@@ -11,7 +11,6 @@ import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
-import de.robv.android.xposed.XposedHelpers
 import hk.uwu.reareye.lyrics.LyricParser
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.LyricProvider
@@ -26,6 +25,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.lang.ref.WeakReference
+import java.lang.reflect.Proxy
+import java.util.Collections
+import java.util.WeakHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.time.Duration.Companion.seconds
 
@@ -40,8 +43,16 @@ class LyriconHook : YukiBaseHooker() {
     private var latestLyricLrc: String = ""
 
     @Volatile
+    private var lastLyricId: String? = null
+
+    @Volatile
+    private var lastLyricLrc: String = ""
+
+    @Volatile
     private var currentProvider: ProviderInfo? = null
     private val elements: CopyOnWriteArrayList<Any> = CopyOnWriteArrayList<Any>()
+    private val managedElementStates =
+        Collections.synchronizedMap(WeakHashMap<Any, ManagedElementState>())
 
     @Volatile
     var monitor: LyriconSubscriber? = null
@@ -176,11 +187,7 @@ class LyriconHook : YukiBaseHooker() {
             }.hook().replaceUnit {
                 val iRef = instance.asResolver()
                 val mMetadata = iRef.firstField { name = "mMetadata" }.get<MediaMetadata>()
-                if (mMetadata != null && XposedHelpers.getAdditionalInstanceField(
-                        instance,
-                        "OLD_MEDIA_ID"
-                    ) == mMetadata.description.mediaId
-                ) {
+                if (mMetadata != null && stateOf(instance).oldMediaId == mMetadata.description.mediaId) {
                     YLog.debug("Reject reset lyric while media id is not changed")
                     return@replaceUnit
                 } else {
@@ -208,9 +215,22 @@ class LyriconHook : YukiBaseHooker() {
                     invokeOriginal(*args)
                     return@replaceUnit
                 }
+                val isPlaying = args(0).boolean()
+                if (isPlaying) {
+                    val state = stateOf(instance)
+                    state.lastLineIndex = Int.MIN_VALUE
+                    state.pendingSnapshot = null
+                    ensurePreTickerRegistered(instance)
+                    if (queueCurrentLyricSnapshot(instance)) {
+                        instance.asResolver().firstMethod {
+                            name = "requestUpdate"
+                            superclass()
+                        }.invoke()
+                    }
+                }
                 scheduleManagedProgressTick(
                     element = instance,
-                    isPlaying = args(0).boolean(),
+                    isPlaying = isPlaying,
                     delayMs = args(1).cast<Long>() ?: 0L
                 )
             }
@@ -224,13 +244,14 @@ class LyriconHook : YukiBaseHooker() {
                     YLog.debug("Release music control instance: $instance")
                     clearManagedLyricState(instance)
                     elements.remove(instance)
+                    removeStateOf(instance)
                 }
             }
 
             "com.miui.maml.elements.MusicControlScreenElement$4".toClass().resolve().firstMethod {
                 name = "run"
             }.hook().replaceUnit {
-                val element = XposedHelpers.getObjectField(instance, "this$0") ?: run {
+                val element = instance.readFieldValue("this$0") ?: run {
                     invokeOriginal()
                     return@replaceUnit
                 }
@@ -289,11 +310,11 @@ class LyriconHook : YukiBaseHooker() {
     }
 
     private fun checkLyricState(metadata: MediaMetadata?, instance: Any) {
-        val clz = "com.miui.maml.elements.MusicControlScreenElement".toClass()
         val moreDebug = prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)
         val iRef = instance.asResolver()
         val mLyric = iRef.firstField { name = "mLyric" }.get()
-        val lrc = XposedHelpers.getAdditionalInstanceField(instance, "TEMP_LRC") as? String
+        val state = stateOf(instance)
+        val lrc = state.tempLrc
         if (mLyric == null) {
             if (lrc != null || latestLyricLrc.isNotEmpty()) {
                 if (moreDebug) {
@@ -303,25 +324,14 @@ class LyriconHook : YukiBaseHooker() {
                 return
             }
             val currentId = metadata?.description?.mediaId
-            if (currentId != null && currentId == XposedHelpers.getAdditionalStaticField(
-                    clz,
-                    "LAST_LYRIC_ID"
-                )
-            ) {
-                val lastLrc = XposedHelpers.getAdditionalStaticField(
-                    clz,
-                    "LAST_LYRIC_LRC"
-                ) as String
+            if (currentId != null && currentId == lastLyricId) {
+                val lastLrc = lastLyricLrc
                 if (moreDebug) {
                     YLog.debug("onUseLastLrc $lastLrc")
                 }
                 updateLyric(instance, lastLrc)
             }
-            val line =
-                XposedHelpers.getAdditionalInstanceField(
-                    instance,
-                    "TEMP_LYRIC_LINE"
-                ) as? String
+            val line = state.tempLyricLine
             val mLyricCurrentVar =
                 iRef.firstField { name = "mLyricCurrentVar" }.get() ?: return
             val currentLyric =
@@ -348,8 +358,6 @@ class LyriconHook : YukiBaseHooker() {
     }
 
     private fun createLyricListener(): ActivePlayerListener {
-        val clz = "com.miui.maml.elements.MusicControlScreenElement".toClass()
-
         return object : ActivePlayerListener {
             override fun onActiveProviderChanged(providerInfo: ProviderInfo?) {
                 currentProvider = providerInfo
@@ -380,12 +388,8 @@ class LyriconHook : YukiBaseHooker() {
                             YLog.debug("onSongChanged converted LRC length=${latestLyricLrc.length}")
                             YLog.debug("current instance size ${elements.size}")
                         }
-                        XposedHelpers.setAdditionalStaticField(clz, "LAST_LYRIC_ID", song.id)
-                        XposedHelpers.setAdditionalStaticField(
-                            clz,
-                            "LAST_LYRIC_LRC",
-                            latestLyricLrc
-                        )
+                        lastLyricId = song.id
+                        lastLyricLrc = latestLyricLrc
                         if (elements.isNotEmpty()) {
                             elements.forEach {
                                 updateLyric(it, latestLyricLrc)
@@ -451,7 +455,7 @@ class LyriconHook : YukiBaseHooker() {
 
     private fun updateFallbackLyric(text: String) {
         elements.forEach { element ->
-            XposedHelpers.setAdditionalInstanceField(element, "TEMP_LYRIC_LINE", text)
+            stateOf(element).tempLyricLine = text
             updateFallbackLine(element, text)
         }
     }
@@ -476,7 +480,6 @@ class LyriconHook : YukiBaseHooker() {
         checkId: Boolean = false
     ) {
         val moreDebug = prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)
-        val clz = "com.miui.maml.elements.MusicControlScreenElement".toClass()
         if (moreDebug) {
             YLog.debug("handle instance: $element")
         }
@@ -492,14 +495,10 @@ class LyriconHook : YukiBaseHooker() {
         var vLrc = lrc
         if (checkId) {
             if (metadata == null) return
-            if (metadata.description.mediaId != XposedHelpers.getAdditionalStaticField(
-                    clz,
-                    "LAST_LYRIC_ID"
-                )
-            ) {
+            if (metadata.description.mediaId != lastLyricId) {
                 return
             }
-            vLrc = XposedHelpers.getAdditionalStaticField(clz, "LAST_LYRIC_LRC") as String
+            vLrc = lastLyricLrc
         }
         val parserClz = "com.miui.maml.elements.MusicLyricParser".toClass().resolve()
         val nLyric = parserClz.firstMethod {
@@ -516,45 +515,64 @@ class LyriconHook : YukiBaseHooker() {
                 YLog.debug("Force Update Lyric")
             }
             metadata?.also {
-                XposedHelpers.setAdditionalInstanceField(
-                    element,
-                    "OLD_MEDIA_ID",
-                    it.description.mediaId
-                )
+                stateOf(element).oldMediaId = it.description.mediaId
             }
-            XposedHelpers.setAdditionalInstanceField(element, "TEMP_LRC", vLrc)
-            XposedHelpers.setAdditionalInstanceField(element, MANAGED_FULL_LRC, true)
+            stateOf(element).apply {
+                tempLrc = vLrc
+                managedFullLyric = true
+            }
+            ensurePreTickerRegistered(element)
+            if (queueCurrentLyricSnapshot(element)) {
+                element.asResolver().firstMethod {
+                    name = "requestUpdate"
+                    superclass()
+                }.invoke()
+            }
         } else {
             clearManagedLyricState(element)
         }
     }
 
     private fun runManagedProgressTick(element: Any) {
-        val metadata =
-            XposedHelpers.getObjectField(element, "mMetadata") as? MediaMetadata ?: return
-        if (!XposedHelpers.getBooleanField(element, "mPlaying")) return
+        val isPlaying = element.readField<Boolean>("mPlaying") == true
+        if (!isPlaying) return
+        val metadata = element.readField<MediaMetadata>("mMetadata")
+        if (metadata == null) {
+            scheduleManagedProgressTick(element, true, MIN_PROGRESS_INTERVAL_MS)
+            return
+        }
         val duration = metadata.getLong(DURATION_METADATA)
-        val musicController = XposedHelpers.getObjectField(element, "mMusicController") ?: return
-        val position = (XposedHelpers.callMethod(musicController, "getPosition") as? Long) ?: return
-        if (duration <= 0 || position < 0) return
+        val musicController = element.readFieldValue("mMusicController")
+        if (musicController == null) {
+            scheduleManagedProgressTick(element, true, MIN_PROGRESS_INTERVAL_MS)
+            return
+        }
+        val position = musicController.invokeMethod("getPosition") as? Long
+        if (position == null || duration <= 0 || position < 0) {
+            scheduleManagedProgressTick(element, true, MIN_PROGRESS_INTERVAL_MS)
+            return
+        }
 
         setIndexedVariable(
-            XposedHelpers.getObjectField(element, "mDurationVar"),
+            element.readFieldValue("mDurationVar"),
             duration.toDouble()
         )
         setIndexedVariable(
-            XposedHelpers.getObjectField(element, "mPositionVar"),
+            element.readFieldValue("mPositionVar"),
             position.toDouble()
         )
 
         val lyricChanged = updateLyricVarsDiff(element, position)
         if (lyricChanged) {
-            XposedHelpers.callMethod(element, "requestUpdate")
+            element.asResolver().firstMethod {
+                name = "requestUpdate"
+                superclass()
+            }.invoke()
         }
 
-        val interval = XposedHelpers.getIntField(element, "mUpdateProgressInterval").toLong()
+        val interval = (element.readField<Int>("mUpdateProgressInterval") ?: 0).toLong()
             .coerceAtLeast(MIN_PROGRESS_INTERVAL_MS)
-        val lyric = XposedHelpers.getObjectField(element, "mLyric")
+        val lyric = element.readFieldValue("mLyric")
         val cache = lyric?.let { getOrBuildLyricCache(element, it) }
         val delay = cache?.let { computeNextTickDelay(it.times, position, interval) } ?: interval
         scheduleManagedProgressTick(element, true, delay)
@@ -570,108 +588,200 @@ class LyriconHook : YukiBaseHooker() {
             }
             runManagedProgressTick(element)
         }
-        XposedHelpers.setAdditionalInstanceField(element, MANAGED_PROGRESS_JOB, job)
+        stateOf(element).managedProgressJob = job
     }
 
     private fun updateLyricVarsDiff(element: Any, position: Long): Boolean {
-        val lyric = XposedHelpers.getObjectField(element, "mLyric") ?: return false
+        val lyric = element.readFieldValue("mLyric") ?: return false
         val cache = getOrBuildLyricCache(element, lyric) ?: return false
         val currentIndex = findLineIndex(cache.times, position)
-        val previousIndex =
-            XposedHelpers.getAdditionalInstanceField(element, LAST_LINE_INDEX) as? Int
-                ?: Int.MIN_VALUE
-
-        setIndexedVariable(
-            XposedHelpers.getObjectField(element, "mLyricCurrentLineProgressVar"),
-            computeLineProgress(cache.times, currentIndex, position)
-        )
+        val state = stateOf(element)
+        val previousIndex = state.pendingSnapshot?.lineIndex ?: state.lastLineIndex
 
         if (currentIndex == previousIndex) {
             return false
         }
 
-        XposedHelpers.setAdditionalInstanceField(element, LAST_LINE_INDEX, currentIndex)
-        applyLyricSnapshot(element, lyric, cache, currentIndex, position)
+        state.pendingSnapshot = buildLyricSnapshot(lyric, cache, currentIndex, position)
         return true
     }
 
-    private fun applyLyricSnapshot(
-        element: Any,
+    private fun buildLyricSnapshot(
         lyric: Any,
         cache: LyricCache,
         currentIndex: Int,
         position: Long
-    ) {
+    ): PendingLyricSnapshot {
         val currentText = cache.lines.getOrNull(currentIndex)?.toString()
-        setIndexedVariable(XposedHelpers.getObjectField(element, "mLyricCurrentVar"), currentText)
-        setIndexedVariable(
-            XposedHelpers.getObjectField(element, "mLyricBeforeVar"),
-            XposedHelpers.callMethod(lyric, "getBeforeLines", position)
-        )
-        setIndexedVariable(
-            XposedHelpers.getObjectField(element, "mLyricAfterVar"),
-            XposedHelpers.callMethod(lyric, "getAfterLines", position)
-        )
-        val lastLine = XposedHelpers.callMethod(lyric, "getLastLine", position)
-        setIndexedVariable(XposedHelpers.getObjectField(element, "mLyricLastVar"), lastLine)
-        setIndexedVariable(XposedHelpers.getObjectField(element, "mLyricPrevVar"), lastLine)
-        setIndexedVariable(
-            XposedHelpers.getObjectField(element, "mLyricNextVar"),
-            XposedHelpers.callMethod(lyric, "getNextLine", position)
+        val lastLine = lyric.invokeMethod("getLastLine", position)
+        return PendingLyricSnapshot(
+            lineIndex = currentIndex,
+            currentText = currentText,
+            beforeText = lyric.invokeMethod("getBeforeLines", position),
+            afterText = lyric.invokeMethod("getAfterLines", position),
+            lastText = lastLine,
+            nextText = lyric.invokeMethod("getNextLine", position),
+            lineProgress = computeLineProgress(cache.times, currentIndex, position)
         )
     }
 
-    private fun getOrBuildLyricCache(element: Any, lyric: Any): LyricCache? {
-        val cachedLyric = XposedHelpers.getAdditionalInstanceField(element, CACHED_LYRIC)
-        if (cachedLyric === lyric) {
-            val times = XposedHelpers.getAdditionalInstanceField(element, CACHED_TIMES) as? IntArray
+    private fun applyPendingLyricSnapshot(element: Any) {
+        val state = stateOf(element)
+        val snapshot = state.pendingSnapshot ?: return
+        setIndexedVariable(element.readFieldValue("mLyricCurrentVar"), snapshot.currentText)
+        setIndexedVariable(element.readFieldValue("mLyricBeforeVar"), snapshot.beforeText)
+        setIndexedVariable(element.readFieldValue("mLyricAfterVar"), snapshot.afterText)
+        setIndexedVariable(element.readFieldValue("mLyricLastVar"), snapshot.lastText)
+        setIndexedVariable(element.readFieldValue("mLyricPrevVar"), snapshot.lastText)
+        setIndexedVariable(element.readFieldValue("mLyricNextVar"), snapshot.nextText)
+        setIndexedVariable(
+            element.readFieldValue("mLyricCurrentLineProgressVar"),
+            snapshot.lineProgress
+        )
+        state.lastLineIndex = snapshot.lineIndex
+        state.pendingSnapshot = null
+    }
 
-            @Suppress("UNCHECKED_CAST")
-            val lines = XposedHelpers.getAdditionalInstanceField(
-                element,
-                CACHED_LINES
-            ) as? List<CharSequence>
+    private fun getOrBuildLyricCache(element: Any, lyric: Any): LyricCache? {
+        val state = stateOf(element)
+        val cachedLyric = state.cachedLyric
+        if (cachedLyric === lyric) {
+            val times = state.cachedTimes
+            val lines = state.cachedLines
             if (times != null && lines != null) {
                 return LyricCache(times, lines)
             }
         }
 
-        val times = (XposedHelpers.callMethod(lyric, "getTimeArr") as? IntArray) ?: return null
+        val times = (lyric.invokeMethod("getTimeArr") as? IntArray) ?: return null
 
         @Suppress("UNCHECKED_CAST")
-        val lines =
-            (XposedHelpers.callMethod(lyric, "getStringArr") as? List<CharSequence>) ?: return null
-        XposedHelpers.setAdditionalInstanceField(element, CACHED_LYRIC, lyric)
-        XposedHelpers.setAdditionalInstanceField(element, CACHED_TIMES, times)
-        XposedHelpers.setAdditionalInstanceField(element, CACHED_LINES, lines)
-        XposedHelpers.setAdditionalInstanceField(element, LAST_LINE_INDEX, Int.MIN_VALUE)
+        val lines = (lyric.invokeMethod("getStringArr") as? List<CharSequence>) ?: return null
+        state.cachedLyric = lyric
+        state.cachedTimes = times
+        state.cachedLines = lines
+        state.lastLineIndex = Int.MIN_VALUE
         return LyricCache(times, lines)
     }
 
     private fun isManagedFullLyric(element: Any): Boolean {
-        return XposedHelpers.getAdditionalInstanceField(
-            element,
-            MANAGED_FULL_LRC
-        ) as? Boolean == true
+        return stateOf(element).managedFullLyric
     }
 
     private fun clearManagedLyricState(element: Any) {
         cancelManagedProgressJob(element)
-        XposedHelpers.setAdditionalInstanceField(element, MANAGED_FULL_LRC, false)
-        XposedHelpers.setAdditionalInstanceField(element, CACHED_LYRIC, null)
-        XposedHelpers.setAdditionalInstanceField(element, CACHED_TIMES, null)
-        XposedHelpers.setAdditionalInstanceField(element, CACHED_LINES, null)
-        XposedHelpers.setAdditionalInstanceField(element, LAST_LINE_INDEX, Int.MIN_VALUE)
+        stateOf(element).apply {
+            managedFullLyric = false
+            cachedLyric = null
+            cachedTimes = null
+            cachedLines = null
+            lastLineIndex = Int.MIN_VALUE
+            pendingSnapshot = null
+        }
+        unregisterPreTicker(element)
     }
 
     private fun cancelManagedProgressJob(element: Any) {
-        (XposedHelpers.getAdditionalInstanceField(element, MANAGED_PROGRESS_JOB) as? Job)?.cancel()
-        XposedHelpers.setAdditionalInstanceField(element, MANAGED_PROGRESS_JOB, null)
+        val state = stateOf(element)
+        state.managedProgressJob?.cancel()
+        state.managedProgressJob = null
     }
 
     private fun setIndexedVariable(target: Any?, value: Any?) {
         if (target == null) return
-        XposedHelpers.callMethod(target, "set", value)
+        val ref = target.asResolver()
+        when (value) {
+            is Number -> ref.firstMethod {
+                name = "set"
+                parameters(Double::class.javaPrimitiveType!!)
+            }.invoke(value.toDouble())
+
+            else -> ref.firstMethod {
+                name = "set"
+                parameters(Any::class.java)
+            }.invoke(value)
+        }
+    }
+
+    private fun stateOf(element: Any): ManagedElementState {
+        return synchronized(managedElementStates) {
+            managedElementStates.getOrPut(element) { ManagedElementState() }
+        }
+    }
+
+    private fun ensurePreTickerRegistered(element: Any) {
+        val state = stateOf(element)
+        if (state.preTicker != null) return
+        val root = element.readSuperFieldValue("mRoot") ?: return
+        val tickerClass = "com.miui.maml.elements.ITicker".toClass()
+        val weakElement = WeakReference(element)
+        var proxyInstance: Any? = null
+        proxyInstance = Proxy.newProxyInstance(
+            tickerClass.classLoader,
+            arrayOf(tickerClass)
+        ) { _, method, args ->
+            when (method.name) {
+                "tick" -> {
+                    weakElement.get()?.let { applyPendingLyricSnapshot(it) }
+                    null
+                }
+
+                "hashCode" -> System.identityHashCode(proxyInstance)
+                "equals" -> proxyInstance === args?.firstOrNull()
+                "toString" -> "REAREyePreTicker($proxyInstance)"
+                else -> null
+            }
+        }
+        root.asResolver().firstMethod {
+            name = "addPreTicker"
+            parameters(tickerClass)
+        }.invoke(proxyInstance)
+        state.preTicker = proxyInstance
+    }
+
+    private fun unregisterPreTicker(element: Any) {
+        val state = stateOf(element)
+        val ticker = state.preTicker ?: return
+        val root = element.readSuperFieldValue("mRoot")
+        runCatching {
+            root?.asResolver()?.firstMethod {
+                name = "removePreTicker"
+                parameters("com.miui.maml.elements.ITicker".toClass())
+            }?.invoke(ticker)
+        }
+        state.preTicker = null
+    }
+
+    private fun queueCurrentLyricSnapshot(element: Any): Boolean {
+        val musicController = element.readFieldValue("mMusicController") ?: return false
+        val position = (musicController.invokeMethod("getPosition") as? Long) ?: return false
+        if (position < 0) return false
+        return updateLyricVarsDiff(element, position)
+    }
+
+    private inline fun <reified T> Any.readField(name: String): T? {
+        return asResolver().firstField { this.name = name }.get<T>()
+    }
+
+    private fun Any.readSuperFieldValue(name: String): Any? {
+        return asResolver().firstField {
+            this.name = name
+            superclass()
+        }.get()
+    }
+
+    private fun removeStateOf(element: Any) {
+        synchronized(managedElementStates) {
+            managedElementStates.remove(element)
+        }
+    }
+
+    private fun Any.readFieldValue(name: String): Any? {
+        return asResolver().firstField { this.name = name }.get()
+    }
+
+    private fun Any.invokeMethod(name: String, vararg args: Any?): Any? {
+        return asResolver().firstMethod { this.name = name }.invoke(*args)
     }
 
     private fun computeNextTickDelay(
@@ -747,17 +857,71 @@ class LyriconHook : YukiBaseHooker() {
         }
     }
 
+    private data class PendingLyricSnapshot(
+        val lineIndex: Int,
+        val currentText: String?,
+        val beforeText: Any?,
+        val afterText: Any?,
+        val lastText: Any?,
+        val nextText: Any?,
+        val lineProgress: Double,
+    )
+
+    private data class ManagedElementState(
+        var tempLrc: String? = null,
+        var tempLyricLine: String? = null,
+        var oldMediaId: String? = null,
+        var managedFullLyric: Boolean = false,
+        var cachedLyric: Any? = null,
+        var cachedTimes: IntArray? = null,
+        var cachedLines: List<CharSequence>? = null,
+        var lastLineIndex: Int = Int.MIN_VALUE,
+        var managedProgressJob: Job? = null,
+        var pendingSnapshot: PendingLyricSnapshot? = null,
+        var preTicker: Any? = null,
+    ) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+
+            other as ManagedElementState
+
+            if (managedFullLyric != other.managedFullLyric) return false
+            if (lastLineIndex != other.lastLineIndex) return false
+            if (tempLrc != other.tempLrc) return false
+            if (tempLyricLine != other.tempLyricLine) return false
+            if (oldMediaId != other.oldMediaId) return false
+            if (cachedLyric != other.cachedLyric) return false
+            if (!cachedTimes.contentEquals(other.cachedTimes)) return false
+            if (cachedLines != other.cachedLines) return false
+            if (managedProgressJob != other.managedProgressJob) return false
+            if (pendingSnapshot != other.pendingSnapshot) return false
+            if (preTicker != other.preTicker) return false
+
+            return true
+        }
+
+        override fun hashCode(): Int {
+            var result = managedFullLyric.hashCode()
+            result = 31 * result + lastLineIndex
+            result = 31 * result + (tempLrc?.hashCode() ?: 0)
+            result = 31 * result + (tempLyricLine?.hashCode() ?: 0)
+            result = 31 * result + (oldMediaId?.hashCode() ?: 0)
+            result = 31 * result + (cachedLyric?.hashCode() ?: 0)
+            result = 31 * result + (cachedTimes?.contentHashCode() ?: 0)
+            result = 31 * result + (cachedLines?.hashCode() ?: 0)
+            result = 31 * result + (managedProgressJob?.hashCode() ?: 0)
+            result = 31 * result + (pendingSnapshot?.hashCode() ?: 0)
+            result = 31 * result + (preTicker?.hashCode() ?: 0)
+            return result
+        }
+    }
+
     private companion object {
         private const val TARGET_LYRICON_PACKAGE = "io.github.proify.lyricon"
         private const val LYRICON_CORE_PACKAGE = "io.github.proify.lyricon.core"
         private const val XIAOMI_LYRIC_METADATA = "android.media.metadata.LYRIC"
         private const val DURATION_METADATA = "android.media.metadata.DURATION"
-        private const val MANAGED_FULL_LRC = "REAREYE_MANAGED_FULL_LRC"
-        private const val CACHED_LYRIC = "REAREYE_CACHED_LYRIC"
-        private const val CACHED_TIMES = "REAREYE_CACHED_TIMES"
-        private const val CACHED_LINES = "REAREYE_CACHED_LINES"
-        private const val LAST_LINE_INDEX = "REAREYE_LAST_LINE_INDEX"
-        private const val MANAGED_PROGRESS_JOB = "REAREYE_MANAGED_PROGRESS_JOB"
         private const val MIN_PROGRESS_INTERVAL_MS = 100L
         private const val LAST_LINE_DURATION_MS = 8000L
     }
