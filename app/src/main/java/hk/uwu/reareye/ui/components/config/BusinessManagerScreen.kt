@@ -1,6 +1,7 @@
 package hk.uwu.reareye.ui.components.config
 
 import android.annotation.SuppressLint
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -21,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -75,6 +77,7 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
 private const val DEFAULT_COMPONENT_ROUTE_PACKAGE = "com.xiaomi.subscreencenter"
+private const val REAR_WIDGET_DEBUG_TAG = "RearWidgetDebug"
 
 @SuppressLint("LocalContextGetResourceValueCall")
 @Composable
@@ -123,6 +126,20 @@ fun BusinessManagerScreen(
     }
 
     fun openEditDialog(item: RearBusinessConfig) {
+        if (item.downloadedFromStore) {
+            Log.d(
+                REAR_WIDGET_DEBUG_TAG,
+                "open business editor: business=${item.business}, renameable=${item.renameable}, storeWidgetId=${item.storeWidgetId}"
+            )
+        }
+        if (!item.renameable) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.rear_widget_business_locked_summary),
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
         editingId = item.id
         draftWidget = item.business
         draftFilePath = item.filePath
@@ -131,6 +148,16 @@ fun BusinessManagerScreen(
 
     @SuppressLint("LocalContextGetResourceValueCall")
     fun submitDialog() {
+        val editingBusiness = editingId?.let { id -> widgets.firstOrNull { it.id == id } }
+        if (editingBusiness?.renameable == false) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.rear_widget_business_locked_summary),
+                Toast.LENGTH_SHORT
+            ).show()
+            showDialog.value = false
+            return
+        }
         val widget = draftWidget.trim()
         val path = draftFilePath.trim()
         if (widget.isBlank() || path.isBlank()) {
@@ -142,13 +169,33 @@ fun BusinessManagerScreen(
             return
         }
 
+        val existingLockedBusiness = widgets.firstOrNull {
+            it.business == widget && !it.renameable && it.id != editingBusiness?.id
+        }
+        if (existingLockedBusiness != null) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.rear_widget_business_locked_summary),
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
         val config = RearBusinessConfig(
-            id = RearWidgetConfigCodec.newBusinessId(DEFAULT_COMPONENT_ROUTE_PACKAGE, widget),
+            id = editingBusiness?.id
+                ?: RearWidgetConfigCodec.newBusinessId(DEFAULT_COMPONENT_ROUTE_PACKAGE, widget),
             packageName = DEFAULT_COMPONENT_ROUTE_PACKAGE,
             business = widget,
             filePath = path,
-            defaultIndex = 0,
-            defaultPriority = 500,
+            defaultIndex = editingBusiness?.defaultIndex ?: 0,
+            defaultPriority = editingBusiness?.defaultPriority ?: 500,
+            renameable = editingBusiness?.renameable ?: true,
+            downloadedFromStore = editingBusiness?.downloadedFromStore ?: false,
+            storeWidgetId = editingBusiness?.storeWidgetId,
+            storeWidgetName = editingBusiness?.storeWidgetName,
+            storeReleaseTag = editingBusiness?.storeReleaseTag,
+            storeReleaseAssetName = editingBusiness?.storeReleaseAssetName,
+            storeReleasePublishedAt = editingBusiness?.storeReleasePublishedAt,
         )
 
         editingId?.let { id ->
@@ -313,13 +360,38 @@ fun BusinessManagerScreen(
                     ) {
                         ModuleStyleManagerCard(
                             title = item.business,
-                            summaryLines = listOf(item.filePath),
-                            onCardClick = { openEditDialog(item) },
+                            summaryLines = buildList {
+                                add(item.filePath)
+                                item.storeWidgetId?.takeIf { it.isNotBlank() }?.let {
+                                    add(
+                                        context.getString(
+                                            R.string.rear_widget_store_source_summary,
+                                            it,
+                                        )
+                                    )
+                                }
+                                if (!item.renameable) {
+                                    add(context.getString(R.string.rear_widget_business_locked_summary))
+                                }
+                            },
+                            onCardClick = if (item.renameable) {
+                                { openEditDialog(item) }
+                            } else {
+                                null
+                            },
                             leftAction = {
-                                ModuleStyleIconAction(
-                                    icon = Icons.Rounded.EditNote,
-                                    onClick = { openEditDialog(item) },
-                                )
+                                if (item.renameable) {
+                                    ModuleStyleIconAction(
+                                        icon = Icons.Rounded.EditNote,
+                                        onClick = { openEditDialog(item) },
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Lock,
+                                        contentDescription = null,
+                                        tint = Color.Unspecified,
+                                    )
+                                }
                             },
                             rightAction = {
                                 ModuleStyleDeleteAction(
@@ -351,13 +423,31 @@ fun BusinessManagerScreen(
         }
     }
 
+    val dialogEditingBusiness = editingId?.let { id -> widgets.firstOrNull { it.id == id } }
+    val lockedDialogBusiness = dialogEditingBusiness?.takeIf { !it.renameable }
+
+    LaunchedEffect(showDialog.value, lockedDialogBusiness?.id) {
+        if (showDialog.value && lockedDialogBusiness != null) {
+            if (lockedDialogBusiness.downloadedFromStore) {
+                Log.d(
+                    REAR_WIDGET_DEBUG_TAG,
+                    "blocked business dialog: business=${lockedDialogBusiness.business}, renameable=${lockedDialogBusiness.renameable}, storeWidgetId=${lockedDialogBusiness.storeWidgetId}"
+                )
+            }
+            showDialog.value = false
+            editingId = null
+        }
+    }
+
     OverlayDialog(
-        show = showDialog.value,
+        show = showDialog.value && lockedDialogBusiness == null,
         title = stringResource(
             if (editingId == null) R.string.rear_widget_add_business else R.string.rear_widget_edit_business,
         ),
         onDismissRequest = { showDialog.value = false },
     ) {
+        val editingBusiness = dialogEditingBusiness
+        val lockedBusiness = editingBusiness?.takeIf { !it.renameable }
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -370,6 +460,8 @@ fun BusinessManagerScreen(
                 onValueChange = { draftWidget = it },
                 modifier = Modifier.fillMaxWidth(),
                 label = stringResource(R.string.rear_widget_business_name),
+                enabled = lockedBusiness == null,
+                readOnly = lockedBusiness != null,
                 singleLine = true,
             )
             TextField(
@@ -377,11 +469,14 @@ fun BusinessManagerScreen(
                 onValueChange = { draftFilePath = it },
                 modifier = Modifier.fillMaxWidth(),
                 label = stringResource(R.string.rear_widget_template_file),
+                enabled = lockedBusiness == null,
+                readOnly = lockedBusiness != null,
                 singleLine = true,
             )
             Button(
                 modifier = Modifier.fillMaxWidth(),
-                onClick = { picker.launch(arrayOf("*/*")) }) {
+                enabled = lockedBusiness == null,
+                onClick = { if (lockedBusiness == null) picker.launch(arrayOf("*/*")) }) {
                 Icon(
                     imageVector = Icons.Filled.UploadFile,
                     contentDescription = null,

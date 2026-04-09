@@ -138,6 +138,7 @@ dependencies {
     implementation(libs.backdrop)
     implementation(libs.capsule)
     implementation(libs.okhttp)
+    implementation(libs.okhttp.logging)
     implementation(libs.gson)
     implementation(libs.lyricon.provider)
     implementation(libs.lyricon.central)

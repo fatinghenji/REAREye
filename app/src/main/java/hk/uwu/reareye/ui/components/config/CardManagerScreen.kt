@@ -1,6 +1,7 @@
 package hk.uwu.reareye.ui.components.config
 
 import android.annotation.SuppressLint
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,8 +37,11 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import hk.uwu.reareye.R
 import hk.uwu.reareye.repository.rearwidget.RearCardConfig
 import hk.uwu.reareye.repository.rearwidget.RearWidgetConfigCodec
@@ -72,8 +77,11 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.SwitchPreference
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+
+private const val REAR_WIDGET_DEBUG_TAG = "RearWidgetDebug"
 
 @Composable
 fun CardManagerScreen(
@@ -128,6 +136,12 @@ fun CardManagerScreen(
     }
 
     fun openEditDialog(item: RearCardConfig) {
+        if (item.downloadedFromStore) {
+            Log.d(
+                REAR_WIDGET_DEBUG_TAG,
+                "open card editor: title=${item.title}, renameable=${item.renameable}, storeWidgetId=${item.storeWidgetId}, priority=${item.priority}"
+            )
+        }
         editingCardId = item.id
         draftTitle = item.title
         draftPackageName = item.packageName
@@ -141,6 +155,14 @@ fun CardManagerScreen(
     fun submitDialog() {
         val pkg = draftPackageName.trim()
         val widget = draftBusiness.trim()
+        val editingCard = editingCardId?.let { id -> cards.firstOrNull { it.id == id } }
+        val lockedCard = editingCard?.takeIf { !it.renameable }
+        if (lockedCard != null && lockedCard.downloadedFromStore) {
+            Log.d(
+                REAR_WIDGET_DEBUG_TAG,
+                "submit locked card editor: title=${lockedCard.title}, storeWidgetId=${lockedCard.storeWidgetId}, oldPriority=${lockedCard.priority}, newPriority=${draftPriorityText}"
+            )
+        }
         if (pkg.isBlank() || widget.isBlank()) {
             Toast.makeText(
                 context,
@@ -150,16 +172,23 @@ fun CardManagerScreen(
             return
         }
 
-        val enabled =
-            editingCardId?.let { id -> cards.firstOrNull { it.id == id }?.enabled } ?: true
-        val card = RearCardConfig(
+        val card = lockedCard?.copy(
+            priority = draftPriorityText.toIntOrNull() ?: lockedCard.priority,
+        ) ?: RearCardConfig(
             id = editingCardId ?: RearWidgetConfigCodec.newCardId(),
             title = draftTitle.trim().ifBlank { widget },
             packageName = pkg,
             business = widget,
-            enabled = enabled,
+            enabled = editingCard?.enabled ?: true,
             sticky = draftSticky,
             priority = draftPriorityText.toIntOrNull() ?: 500,
+            renameable = editingCard?.renameable ?: true,
+            downloadedFromStore = editingCard?.downloadedFromStore ?: false,
+            storeWidgetId = editingCard?.storeWidgetId,
+            storeWidgetName = editingCard?.storeWidgetName,
+            storeReleaseTag = editingCard?.storeReleaseTag,
+            storeReleaseAssetName = editingCard?.storeReleaseAssetName,
+            storeReleasePublishedAt = editingCard?.storeReleasePublishedAt,
         )
 
         val editingIndex = cards.indexOfFirst { it.id == card.id }
@@ -294,42 +323,73 @@ fun CardManagerScreen(
                     ) {
                         ModuleStyleManagerCard(
                             title = item.title,
-                            summaryLines = listOf(
-                                stringResource(
-                                    R.string.rear_widget_card_summary,
-                                    item.packageName,
-                                    item.business,
-                                    item.priority,
-                                ),
-                                stringResource(
-                                    R.string.rear_widget_card_sticky_summary,
+                            summaryLines = buildList {
+                                add(
                                     stringResource(
-                                        if (item.sticky) {
-                                            R.string.rear_wallpaper_schedule_on
-                                        } else {
-                                            R.string.rear_wallpaper_schedule_off
-                                        }
-                                    ),
-                                ),
-                            ),
-                            trailing = {
-                                Switch(
-                                    checked = item.enabled,
-                                    onCheckedChange = { checked ->
-                                        val i = cards.indexOfFirst { it.id == item.id }
-                                        if (i >= 0) {
-                                            cards[i] = cards[i].copy(enabled = checked)
-                                            scope.launch(Dispatchers.IO) {
-                                                RearWidgetManagerRepository.setCardEnabled(
-                                                    context = context,
-                                                    prefsManager = prefsManager,
-                                                    cardId = item.id,
-                                                    enabled = checked,
-                                                )
-                                            }
-                                        }
-                                    },
+                                        R.string.rear_widget_card_summary,
+                                        item.packageName,
+                                        item.business,
+                                        item.priority,
+                                    )
                                 )
+                                add(
+                                    stringResource(
+                                        R.string.rear_widget_card_sticky_summary,
+                                        stringResource(
+                                            if (item.sticky) {
+                                                R.string.rear_wallpaper_schedule_on
+                                            } else {
+                                                R.string.rear_wallpaper_schedule_off
+                                            }
+                                        ),
+                                    )
+                                )
+                                item.storeWidgetId?.takeIf { it.isNotBlank() }?.let {
+                                    add(
+                                        stringResource(
+                                            R.string.rear_widget_store_source_summary,
+                                            it,
+                                        )
+                                    )
+                                }
+                                if (!item.renameable) {
+                                    add(stringResource(R.string.rear_widget_card_locked_summary))
+                                }
+                            },
+                            trailing = {
+                                if (item.renameable) {
+                                    Switch(
+                                        checked = item.enabled,
+                                        onCheckedChange = { checked ->
+                                            val i = cards.indexOfFirst { it.id == item.id }
+                                            if (i >= 0) {
+                                                cards[i] = cards[i].copy(enabled = checked)
+                                                scope.launch(Dispatchers.IO) {
+                                                    RearWidgetManagerRepository.setCardEnabled(
+                                                        context = context,
+                                                        prefsManager = prefsManager,
+                                                        cardId = item.id,
+                                                        enabled = checked,
+                                                    )
+                                                }
+                                            }
+                                        },
+                                    )
+                                } else {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Lock,
+                                            contentDescription = null,
+                                        )
+                                        Text(
+                                            text = stringResource(R.string.rear_store_locked),
+                                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                        )
+                                    }
+                                }
                             },
                             onCardClick = { openEditDialog(item) },
                             leftAction = {
@@ -339,14 +399,17 @@ fun CardManagerScreen(
                                 )
                             },
                             rightAction = {
-                                ModuleStyleDeleteAction(
-                                    icon = MiuixIcons.Delete,
-                                    text = stringResource(R.string.rear_widget_action_delete),
-                                    onClick = {
-                                        cards.remove(item)
-                                        persist()
-                                    },
-                                )
+                                if (item.renameable) {
+                                    ModuleStyleDeleteAction(
+                                        icon = MiuixIcons.Delete,
+                                        text = stringResource(R.string.rear_widget_action_delete),
+                                        onClick = {
+                                            if (!item.renameable) return@ModuleStyleDeleteAction
+                                            cards.remove(item)
+                                            persist()
+                                        },
+                                    )
+                                }
                             },
                         )
                     }
@@ -375,6 +438,8 @@ fun CardManagerScreen(
         ),
         onDismissRequest = { showDialog.value = false },
     ) {
+        val editingCard = editingCardId?.let { id -> cards.firstOrNull { it.id == id } }
+        val lockedCard = editingCard?.takeIf { !it.renameable }
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -382,27 +447,60 @@ fun CardManagerScreen(
                 .imePadding(),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            TextField(
-                value = draftTitle,
-                onValueChange = { draftTitle = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = stringResource(R.string.rear_widget_card_title),
-                singleLine = true,
-            )
-            TextField(
-                value = draftPackageName,
-                onValueChange = { draftPackageName = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = stringResource(R.string.rear_widget_target_package),
-                singleLine = true,
-            )
-            TextField(
-                value = draftBusiness,
-                onValueChange = { draftBusiness = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = stringResource(R.string.rear_widget_business_name),
-                singleLine = true,
-            )
+            if (lockedCard == null) {
+                TextField(
+                    value = draftTitle,
+                    onValueChange = { draftTitle = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = stringResource(R.string.rear_widget_card_title),
+                    singleLine = true,
+                )
+                TextField(
+                    value = draftPackageName,
+                    onValueChange = { draftPackageName = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = stringResource(R.string.rear_widget_target_package),
+                    singleLine = true,
+                )
+                TextField(
+                    value = draftBusiness,
+                    onValueChange = { draftBusiness = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = stringResource(R.string.rear_widget_business_name),
+                    singleLine = true,
+                )
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.rear_widget_card_locked_summary),
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 14.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.rear_widget_card_summary,
+                                lockedCard.packageName,
+                                lockedCard.business,
+                                lockedCard.priority,
+                            ),
+                            fontSize = 12.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                    }
+                }
+            }
             TextField(
                 value = draftPriorityText,
                 onValueChange = { draftPriorityText = it },
@@ -410,12 +508,14 @@ fun CardManagerScreen(
                 label = stringResource(R.string.rear_widget_default_priority),
                 singleLine = true,
             )
-            SwitchPreference(
-                title = stringResource(R.string.rear_widget_card_sticky),
-                summary = stringResource(R.string.rear_widget_card_sticky_desc),
-                checked = draftSticky,
-                onCheckedChange = { draftSticky = it },
-            )
+            if (lockedCard == null) {
+                SwitchPreference(
+                    title = stringResource(R.string.rear_widget_card_sticky),
+                    summary = stringResource(R.string.rear_widget_card_sticky_desc),
+                    checked = draftSticky,
+                    onCheckedChange = { draftSticky = it },
+                )
+            }
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),

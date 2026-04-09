@@ -32,10 +32,12 @@ object RearWidgetManagerRepository {
     fun saveBusinesses(
         context: Context,
         prefsManager: PrefsManager,
-        businesses: List<RearBusinessConfig>
+        businesses: List<RearBusinessConfig>,
+        allowLockedEdits: Boolean = false,
     ) {
         val oldBusinesses = loadBusinesses(prefsManager)
-        val preparedBusinesses = prepareBusinessesInManagedDir(context, businesses)
+        val mergedBusinesses = mergeLockedBusinesses(oldBusinesses, businesses, allowLockedEdits)
+        val preparedBusinesses = prepareBusinessesInManagedDir(context, mergedBusinesses)
         cacheBusinessTemplatesInPrefs(prefsManager, oldBusinesses, preparedBusinesses)
         prefsManager.putString(
             ConfigKeys.REAR_WIDGET_BUSINESS_DATA,
@@ -57,14 +59,20 @@ object RearWidgetManagerRepository {
         return RearWidgetConfigCodec.parseCards(raw)
     }
 
-    fun saveCards(context: Context, prefsManager: PrefsManager, cards: List<RearCardConfig>) {
+    fun saveCards(
+        context: Context,
+        prefsManager: PrefsManager,
+        cards: List<RearCardConfig>,
+        allowLockedEdits: Boolean = false,
+    ) {
         val oldCards = loadCards(prefsManager)
+        val mergedCards = mergeLockedCards(oldCards, cards, allowLockedEdits)
         prefsManager.putString(
             ConfigKeys.REAR_WIDGET_CARD_DATA,
-            RearWidgetConfigCodec.encodeCards(cards),
+            RearWidgetConfigCodec.encodeCards(mergedCards),
         )
         val businesses = loadBusinesses(prefsManager)
-        applyCardsViaApi(context, oldCards, cards, businesses)
+        applyCardsViaApi(context, oldCards, mergedCards, businesses)
     }
 
     fun setCardEnabled(
@@ -78,6 +86,7 @@ object RearWidgetManagerRepository {
         if (targetIndex < 0) return
 
         val oldCard = oldCards[targetIndex]
+        if (!oldCard.renameable) return
         if (oldCard.enabled == enabled) return
 
         val newCards = oldCards.toMutableList().apply {
@@ -130,6 +139,28 @@ object RearWidgetManagerRepository {
                 }
             } ?: return null
 
+            target.absolutePath
+        }.getOrNull()
+    }
+
+    fun saveTemplateBytesToManagedPath(
+        context: Context,
+        bytes: ByteArray,
+        businessNameHint: String,
+        fileNameHint: String,
+    ): String? {
+        return runCatching {
+            val root = resolveManagedTemplateRoot(context)
+            if (!root.exists()) root.mkdirs()
+
+            val extension = fileNameHint
+                .substringAfterLast('.', "")
+                .takeIf { it.isNotBlank() }
+                ?: "bin"
+            val safeBusiness = sanitizeFileName(businessNameHint.ifBlank { "business" })
+            val target = File(root, "${safeBusiness}_${System.currentTimeMillis()}.$extension")
+
+            writeBytesAtomically(target, bytes)
             target.absolutePath
         }.getOrNull()
     }
@@ -473,6 +504,65 @@ object RearWidgetManagerRepository {
 
     private fun normalizePath(path: String): String? {
         return runCatching { File(path).absolutePath.replace('\\', '/') }.getOrNull()
+    }
+
+    private fun mergeLockedBusinesses(
+        oldBusinesses: List<RearBusinessConfig>,
+        newBusinesses: List<RearBusinessConfig>,
+        allowLockedEdits: Boolean,
+    ): List<RearBusinessConfig> {
+        if (allowLockedEdits) return newBusinesses
+
+        val oldLockedBusinesses = oldBusinesses.filter { !it.renameable }
+        if (oldLockedBusinesses.isEmpty()) return newBusinesses
+
+        val merged = newBusinesses.map { candidate ->
+            val locked = oldLockedBusinesses.firstOrNull { existing ->
+                existing.id == candidate.id ||
+                        (existing.downloadedFromStore && candidate.storeWidgetId != null && existing.storeWidgetId == candidate.storeWidgetId) ||
+                        existing.business == candidate.business
+            }
+            locked ?: candidate
+        }.toMutableList()
+
+        return merged
+    }
+
+    private fun mergeLockedCards(
+        oldCards: List<RearCardConfig>,
+        newCards: List<RearCardConfig>,
+        allowLockedEdits: Boolean,
+    ): List<RearCardConfig> {
+        if (allowLockedEdits) return newCards
+
+        val oldLockedCards = oldCards.filter { !it.renameable }
+        if (oldLockedCards.isEmpty()) return newCards
+
+        val merged = newCards.map { candidate ->
+            val locked = oldLockedCards.firstOrNull { existing ->
+                existing.id == candidate.id ||
+                        (existing.downloadedFromStore && candidate.storeWidgetId != null && existing.storeWidgetId == candidate.storeWidgetId) ||
+                        (existing.packageName == candidate.packageName && existing.business == candidate.business)
+            }
+            if (locked == null) {
+                candidate
+            } else {
+                locked.copy(priority = candidate.priority)
+            }
+        }.toMutableList()
+
+        return merged
+    }
+
+    private fun writeBytesAtomically(target: File, bytes: ByteArray) {
+        target.parentFile?.mkdirs()
+        val tempFile = File(target.parentFile, "${target.name}.tmp")
+        tempFile.outputStream().use { it.write(bytes) }
+        if (target.exists()) target.delete()
+        if (!tempFile.renameTo(target)) {
+            tempFile.copyTo(target, overwrite = true)
+            tempFile.delete()
+        }
     }
 
     private fun queryDisplayName(context: Context, uri: Uri): String? {

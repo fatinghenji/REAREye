@@ -1,0 +1,1445 @@
+package hk.uwu.reareye.ui.screen
+
+import android.annotation.SuppressLint
+import android.content.Intent
+import android.graphics.BitmapFactory
+import android.view.View
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.AccessTime
+import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.net.toUri
+import hk.uwu.reareye.BuildConfig
+import hk.uwu.reareye.R
+import hk.uwu.reareye.repository.rearstore.RearStoreAuthor
+import hk.uwu.reareye.repository.rearstore.RearStoreInstalledWidget
+import hk.uwu.reareye.repository.rearstore.RearStoreListItem
+import hk.uwu.reareye.repository.rearstore.RearStoreRelease
+import hk.uwu.reareye.repository.rearstore.RearStoreReleaseAsset
+import hk.uwu.reareye.repository.rearstore.RearStoreRepository
+import hk.uwu.reareye.repository.rearstore.RearStoreWidgetDetail
+import hk.uwu.reareye.ui.components.card.SuperCard
+import hk.uwu.reareye.ui.components.motion.ArtRevealItem
+import hk.uwu.reareye.ui.components.motion.ArtStaggeredReveal
+import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
+import hk.uwu.reareye.ui.theme.rearAcrylicEffect
+import hk.uwu.reareye.ui.theme.rearAcrylicSource
+import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
+import hk.uwu.reareye.ui.theme.rememberAcrylicHazeStyle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.Headers
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.logging.HttpLoggingInterceptor
+import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.TabRowWithContour
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Download
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.overScrollVertical
+import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+import java.io.ByteArrayInputStream
+import java.nio.charset.StandardCharsets
+import java.text.DecimalFormat
+import java.util.concurrent.ConcurrentHashMap
+
+private val rearStoreAvatarHttpClient = OkHttpClient.Builder()
+    .apply {
+        if (BuildConfig.DEBUG) {
+            addInterceptor(
+                HttpLoggingInterceptor().apply {
+                    level = HttpLoggingInterceptor.Level.BASIC
+                }
+            )
+        }
+    }
+    .build()
+
+private sealed interface RearStoreRoute {
+    data object Root : RearStoreRoute
+    data class Detail(val widgetId: String) : RearStoreRoute
+}
+
+private enum class RearStoreDetailTab {
+    README,
+    DOWNLOADS,
+    INFO,
+}
+
+private object RearStoreAvatarCache {
+    private val cache = ConcurrentHashMap<String, ImageBitmap>()
+
+    fun peek(url: String?): ImageBitmap? {
+        val key = url?.trim().takeUnless { it.isNullOrEmpty() } ?: return null
+        return cache[key]
+    }
+
+    suspend fun load(url: String?): ImageBitmap? {
+        val key = url?.trim().takeUnless { it.isNullOrEmpty() } ?: return null
+        cache[key]?.let { return it }
+
+        val image = withContext(Dispatchers.IO) {
+            runCatching {
+                val request = Request.Builder()
+                    .url(key)
+                    .build()
+                rearStoreAvatarHttpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@withContext null
+                    BitmapFactory.decodeStream(response.body.byteStream())?.asImageBitmap()
+                }
+            }.getOrNull()
+        }
+
+        if (image != null) {
+            cache.putIfAbsent(key, image)
+        }
+        return cache[key] ?: image
+    }
+}
+
+private object RearStoreHtmlDocumentCache {
+    private const val TEMPLATE_LIGHT = "webview/template.html"
+    private const val TEMPLATE_DARK = "webview/template_dark.html"
+
+    private val htmlCache = ConcurrentHashMap<String, String>()
+    private val templateCache = ConcurrentHashMap<String, String>()
+
+    fun wrapDocument(
+        context: android.content.Context,
+        htmlBody: String,
+        darkMode: Boolean,
+    ): String? {
+        val normalizedHtml = htmlBody.trim()
+        if (normalizedHtml.isEmpty()) return null
+        val cacheKey = listOf(darkMode.toString(), normalizedHtml)
+            .joinToString(separator = "\u0000")
+        htmlCache[cacheKey]?.let { return it }
+
+        val direction =
+            if (context.resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL) {
+                "rtl"
+            } else {
+                "ltr"
+            }
+        val template = loadTemplate(context, darkMode)
+        val document = template
+            .replace("@dir@", direction)
+            .replace("@body@", normalizedHtml)
+        htmlCache[cacheKey] = document
+        return document
+    }
+
+    private fun loadTemplate(context: android.content.Context, darkMode: Boolean): String {
+        val assetName = if (darkMode) TEMPLATE_DARK else TEMPLATE_LIGHT
+        return templateCache.getOrPut(assetName) {
+            runCatching {
+                context.assets.open(assetName).bufferedReader(StandardCharsets.UTF_8)
+                    .use { it.readText() }
+            }.getOrDefault("<html dir=\"@dir@\"><body>@body@</body></html>")
+        }
+    }
+}
+
+private fun String?.normalizedOrNull(): String? {
+    return this?.trim()?.takeIf { it.isNotEmpty() }
+}
+
+private fun isoDateLabel(value: String?): String {
+    return value?.substringBefore('T')?.trim().takeUnless { it.isNullOrEmpty() } ?: "-"
+}
+
+private fun formatSize(size: Long): String {
+    if (size <= 0L) return "0 B"
+    val kb = size / 1024.0
+    if (kb < 1024.0) {
+        return DecimalFormat("0.#").format(kb) + " KB"
+    }
+    val mb = kb / 1024.0
+    return DecimalFormat("0.##").format(mb) + " MB"
+}
+
+@Composable
+private fun rememberSkeletonPulseAlpha(label: String): Float {
+    val infiniteTransition = rememberInfiniteTransition(label = label)
+    val alpha = infiniteTransition.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 0.9f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 850),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "$label-alpha",
+    )
+    return alpha.value
+}
+
+private fun defaultInstallInfo(detail: RearStoreWidgetDetail): Triple<String, Boolean, String?> {
+    val businessId = detail.widgetInfo?.businessSetup?.id.normalizedOrNull() ?: detail.widgetId
+    val hasCard = detail.widgetInfo?.cardSetup != null
+    val cardId = if (hasCard) businessId else null
+    return Triple(businessId, hasCard, cardId)
+}
+
+@Composable
+fun RearStoreScreen(bottomInnerPadding: Dp = 0.dp) {
+    val context = LocalContext.current
+    val prefsManager = remember { context.getPrefsManager() }
+    var route by remember { mutableStateOf<RearStoreRoute>(RearStoreRoute.Root) }
+    var installedWidgets by remember {
+        mutableStateOf<Map<String, RearStoreInstalledWidget>>(
+            emptyMap()
+        )
+    }
+
+    suspend fun reloadInstalledWidgets() {
+        installedWidgets = withContext(Dispatchers.IO) {
+            RearStoreRepository.loadInstalledWidgetSummaries(prefsManager)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        reloadInstalledWidgets()
+    }
+
+    BackHandler(enabled = route is RearStoreRoute.Detail) {
+        route = RearStoreRoute.Root
+    }
+
+    AnimatedContent(
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer { clip = true },
+        targetState = route,
+        contentKey = { it },
+        transitionSpec = {
+            val forward = targetState is RearStoreRoute.Detail
+            fadeIn(
+                animationSpec = tween(
+                    durationMillis = 210,
+                    delayMillis = 50,
+                    easing = LinearOutSlowInEasing,
+                )
+            ) + slideInHorizontally(
+                animationSpec = tween(
+                    durationMillis = 280,
+                    easing = FastOutSlowInEasing,
+                )
+            ) { fullWidth -> if (forward) fullWidth / 9 else -fullWidth / 9 } togetherWith (
+                    fadeOut(
+                        animationSpec = tween(
+                            durationMillis = 110,
+                            easing = FastOutLinearInEasing,
+                        )
+                    ) + slideOutHorizontally(
+                        animationSpec = tween(
+                            durationMillis = 190,
+                            easing = FastOutLinearInEasing,
+                        )
+                    ) { fullWidth -> if (forward) -fullWidth / 12 else fullWidth / 12 }
+                    )
+        },
+        label = "RearStoreRouteTransition",
+    ) { currentRoute ->
+        when (currentRoute) {
+            RearStoreRoute.Root -> RearStoreRootContent(
+                bottomInnerPadding = bottomInnerPadding,
+                onOpenDetail = { route = RearStoreRoute.Detail(it) },
+            )
+
+            is RearStoreRoute.Detail -> RearStoreDetailContent(
+                widgetId = currentRoute.widgetId,
+                bottomInnerPadding = bottomInnerPadding,
+                installedWidget = installedWidgets[currentRoute.widgetId],
+                onBack = { route = RearStoreRoute.Root },
+                onInstalled = { reloadInstalledWidgets() },
+            )
+        }
+    }
+}
+
+@Composable
+private fun RearStoreRootContent(
+    bottomInnerPadding: Dp,
+    onOpenDetail: (String) -> Unit,
+) {
+    val scrollBehavior = MiuixScrollBehavior()
+    val hazeState = rememberAcrylicHazeState()
+    val hazeStyle = rememberAcrylicHazeStyle()
+
+    var searchInput by remember { mutableStateOf("") }
+    var searchQuery by remember { mutableStateOf("") }
+    var searchFocused by remember { mutableStateOf(false) }
+    var loading by remember { mutableStateOf(true) }
+    var loadFailed by remember { mutableStateOf(false) }
+    var items by remember { mutableStateOf(emptyList<RearStoreListItem>()) }
+
+    suspend fun runSearch() {
+        loading = true
+        loadFailed = false
+        val normalizedQuery = searchQuery.normalizedOrNull()
+        val result = withContext(Dispatchers.IO) {
+            runCatching {
+                if (normalizedQuery == null) {
+                    RearStoreRepository.loadRecentUpdates()
+                } else {
+                    RearStoreRepository.searchWidgets(normalizedQuery)
+                }
+            }.getOrNull()
+        }
+        if (result == null) {
+            loadFailed = true
+            items = emptyList()
+        } else {
+            items = result
+        }
+        loading = false
+    }
+
+    fun submitSearch() {
+        val nextQuery = searchInput.trim()
+        if (nextQuery == searchQuery) return
+        searchQuery = nextQuery
+    }
+
+    LaunchedEffect(searchQuery) {
+        if (searchQuery == searchInput.trim()) {
+            runSearch()
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .rearAcrylicEffect(hazeState, hazeStyle),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                TopAppBar(
+                    color = Color.Transparent,
+                    title = stringResource(R.string.store_navigation),
+                    scrollBehavior = scrollBehavior,
+                )
+                RearStoreSearchField(
+                    value = searchInput,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                    onValueChange = { searchInput = it },
+                    onSearchSubmit = { submitSearch() },
+                    onSearchFocusChange = { focused ->
+                        if (searchFocused && !focused) {
+                            submitSearch()
+                        }
+                        searchFocused = focused
+                    },
+                )
+            }
+        },
+    ) { paddingValues ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .scrollEndHaptic()
+                .overScrollVertical()
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
+                .rearAcrylicSource(hazeState)
+                .padding(horizontal = 12.dp),
+            contentPadding = PaddingValues(
+                top = paddingValues.calculateTopPadding() + 12.dp,
+                bottom = paddingValues.calculateBottomPadding() + bottomInnerPadding,
+            ),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            overscrollEffect = null,
+        ) {
+            if (loading) {
+                item {
+                    RearStoreLoadingCard()
+                }
+            } else if (loadFailed) {
+                item {
+                    RearStoreMessageCard(text = stringResource(R.string.rear_store_load_failed))
+                }
+            } else if (items.isEmpty()) {
+                item {
+                    RearStoreMessageCard(text = stringResource(R.string.rear_store_search_empty))
+                }
+            } else {
+                itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
+                    ArtStaggeredReveal(
+                        visible = true,
+                        revealKey = item.id + searchQuery,
+                        delayMillis = (24 + index * 18).coerceAtMost(160),
+                    ) {
+                        RearStoreListCard(
+                            item = item,
+                            onClick = { onOpenDetail(item.id) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@SuppressLint("LocalContextGetResourceValueCall")
+@Composable
+private fun RearStoreDetailContent(
+    widgetId: String,
+    bottomInnerPadding: Dp,
+    installedWidget: RearStoreInstalledWidget?,
+    onBack: () -> Unit,
+    onInstalled: suspend () -> Unit,
+) {
+    val context = LocalContext.current
+    val prefsManager = remember { context.getPrefsManager() }
+    val layoutDirection = LocalLayoutDirection.current
+    val scope = rememberCoroutineScope()
+    val scrollBehavior = MiuixScrollBehavior()
+    val hazeState = rememberAcrylicHazeState()
+    val hazeStyle = rememberAcrylicHazeStyle()
+
+    var detail by remember(widgetId) { mutableStateOf<RearStoreWidgetDetail?>(null) }
+    var loading by remember(widgetId) { mutableStateOf(true) }
+    var loadFailed by remember(widgetId) { mutableStateOf(false) }
+    var selectedTab by remember(widgetId) { mutableStateOf(RearStoreDetailTab.README) }
+    var showAllReleases by remember(widgetId) { mutableStateOf(false) }
+    var activeAssetKey by remember(widgetId) { mutableStateOf<String?>(null) }
+    var readmeLoading by remember(widgetId) { mutableStateOf(false) }
+    var readmeLoaded by remember(widgetId) { mutableStateOf(false) }
+
+    suspend fun reloadDetail() {
+        loading = true
+        loadFailed = false
+        detail = withContext(Dispatchers.IO) {
+            runCatching { RearStoreRepository.loadWidgetDetail(widgetId) }.getOrNull()
+        }
+        readmeLoading = false
+        readmeLoaded = detail?.readme != null
+        loadFailed = detail == null
+        loading = false
+    }
+
+    LaunchedEffect(widgetId) {
+        reloadDetail()
+    }
+
+    LaunchedEffect(selectedTab, widgetId, detail?.repository?.fullName) {
+        if (selectedTab != RearStoreDetailTab.README || readmeLoaded || readmeLoading) return@LaunchedEffect
+        if (detail == null) return@LaunchedEffect
+        if (detail?.readme != null) {
+            readmeLoaded = true
+            return@LaunchedEffect
+        }
+        readmeLoading = true
+        val loadedReadme = withContext(Dispatchers.IO) {
+            runCatching { RearStoreRepository.loadWidgetReadme(widgetId) }.getOrNull()
+        }
+        detail = detail?.copy(readme = loadedReadme)
+        readmeLoaded = true
+        readmeLoading = false
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
+                color = Color.Transparent,
+                title = detail?.let { stringResource(R.string.rear_store_detail_header) }
+                    ?: stringResource(R.string.store_navigation),
+                navigationIconPadding = 12.dp,
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            modifier = Modifier.graphicsLayer {
+                                if (layoutDirection == LayoutDirection.Rtl) scaleX = -1f
+                            },
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = null,
+                        )
+                    }
+                },
+                scrollBehavior = scrollBehavior,
+            )
+        },
+    ) { paddingValues ->
+        if (loading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator()
+            }
+            return@Scaffold
+        }
+
+        val widgetDetail = detail
+        if (loadFailed || widgetDetail == null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 12.dp)
+                    .padding(paddingValues),
+                contentAlignment = Alignment.Center,
+            ) {
+                RearStoreMessageCard(text = stringResource(R.string.rear_store_detail_failed))
+            }
+            return@Scaffold
+        }
+
+        val authorPlaceholderAlpha = rememberSkeletonPulseAlpha("rear-store-author-avatar")
+        val visibleReleases = if (showAllReleases) {
+            widgetDetail.releases
+        } else {
+            widgetDetail.releases.take(5)
+        }
+        val markdownWebViewCache = remember(widgetId) { mutableMapOf<String, WebView>() }
+        val latestReleaseTag = widgetDetail.releases.firstOrNull { it.assets.isNotEmpty() }
+            ?.tagName
+            ?.normalizedOrNull()
+        val installedReleaseTag = installedWidget?.releaseTag?.normalizedOrNull()
+        val updateAvailable = installedReleaseTag != null &&
+                latestReleaseTag != null &&
+                installedReleaseTag != latestReleaseTag
+        val tabs = listOf(
+            stringResource(R.string.rear_store_tab_readme),
+            stringResource(R.string.rear_store_tab_downloads),
+            stringResource(R.string.rear_store_tab_info),
+        )
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .scrollEndHaptic()
+                .overScrollVertical()
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
+                .rearAcrylicSource(hazeState)
+                .padding(horizontal = 12.dp),
+            contentPadding = PaddingValues(
+                top = paddingValues.calculateTopPadding(),
+                bottom = paddingValues.calculateBottomPadding() + bottomInnerPadding,
+            ),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            overscrollEffect = null,
+        ) {
+            item {
+                ArtRevealItem(visible = true, delayMillis = 18) {
+                    RearStoreDetailHeroCard(
+                        detail = widgetDetail,
+                        installedWidget = installedWidget,
+                        latestReleaseTag = latestReleaseTag,
+                        updateAvailable = updateAvailable,
+                    )
+                }
+            }
+
+            item {
+                ArtRevealItem(visible = true, delayMillis = 30) {
+                    TabRowWithContour(
+                        tabs = tabs,
+                        selectedTabIndex = selectedTab.ordinal,
+                        onTabSelected = { selectedTab = RearStoreDetailTab.entries[it] },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+
+            when (selectedTab) {
+                RearStoreDetailTab.README -> {
+                    item {
+                        ArtRevealItem(visible = true, delayMillis = 42) {
+                            when {
+                                readmeLoading && widgetDetail.readme == null -> RearStoreLoadingCard()
+                                readmeLoaded && widgetDetail.readme?.content.isNullOrBlank() -> {
+                                    RearStoreMessageCard(text = stringResource(R.string.rear_store_readme_empty))
+                                }
+
+                                else -> RearStoreReadmeCard(
+                                    markdown = widgetDetail.readme?.content.orEmpty(),
+                                    repoBaseUrl = widgetDetail.repository?.url,
+                                    webViewCache = markdownWebViewCache,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                RearStoreDetailTab.DOWNLOADS -> {
+                    if (visibleReleases.isEmpty()) {
+                        item {
+                            RearStoreMessageCard(text = stringResource(R.string.rear_store_release_empty))
+                        }
+                    } else {
+                        itemsIndexed(
+                            visibleReleases,
+                            key = { _, item -> item.tagName + item.name }) { index, release ->
+                            ArtStaggeredReveal(
+                                visible = true,
+                                revealKey = release.tagName + selectedTab.name,
+                                delayMillis = (40 + index * 18).coerceAtMost(160),
+                            ) {
+                                RearStoreReleaseCard(
+                                    release = release,
+                                    widgetId = widgetDetail.widgetId,
+                                    repoBaseUrl = widgetDetail.repository?.url,
+                                    webViewCache = markdownWebViewCache,
+                                    activeAssetKey = activeAssetKey,
+                                    onInstallAsset = { asset ->
+                                        scope.launch {
+                                            val assetKey = release.tagName + ":" + asset.name
+                                            activeAssetKey = assetKey
+                                            val result = runCatching {
+                                                RearStoreRepository.quickInstallWidget(
+                                                    context = context,
+                                                    prefsManager = prefsManager,
+                                                    widgetId = widgetDetail.widgetId,
+                                                    releaseTag = release.tagName,
+                                                    assetName = asset.name,
+                                                )
+                                            }
+                                            activeAssetKey = null
+                                            result.onSuccess {
+                                                onInstalled()
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(
+                                                        if (it.cardInstalled) {
+                                                            R.string.rear_store_install_success_with_card
+                                                        } else if (it.fallbackUsed) {
+                                                            R.string.rear_store_install_success_fallback
+                                                        } else {
+                                                            R.string.rear_store_install_success
+                                                        },
+                                                        it.widgetName,
+                                                        it.releaseTag ?: asset.name,
+                                                    ),
+                                                    Toast.LENGTH_SHORT,
+                                                ).show()
+                                            }.onFailure {
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(
+                                                        R.string.rear_store_install_failed,
+                                                        it.message ?: "unknown",
+                                                    ),
+                                                    Toast.LENGTH_SHORT,
+                                                ).show()
+                                            }
+                                        }
+                                    },
+                                )
+                            }
+                        }
+
+                        if (!showAllReleases && widgetDetail.releases.size > 5) {
+                            item {
+                                ArtRevealItem(visible = true, delayMillis = 48) {
+                                    Card(modifier = Modifier.fillMaxWidth()) {
+                                        Button(
+                                            onClick = { showAllReleases = true },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = ButtonDefaults.buttonColorsPrimary(),
+                                        ) {
+                                            Text(text = stringResource(R.string.rear_store_show_older_releases))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                RearStoreDetailTab.INFO -> {
+                    item {
+                        ArtRevealItem(visible = true, delayMillis = 42) {
+                            RearStoreInstallInfoCard(detail = widgetDetail)
+                        }
+                    }
+                    item {
+                        ArtRevealItem(visible = true, delayMillis = 54) {
+                            RearStoreRepositoryCard(detail = widgetDetail)
+                        }
+                    }
+                    item {
+                        ArtRevealItem(visible = true, delayMillis = 66) {
+                            RearStoreAuthorCard(
+                                author = widgetDetail.author,
+                                placeholderAlpha = authorPlaceholderAlpha,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RearStoreListCard(
+    item: RearStoreListItem,
+    onClick: () -> Unit,
+) {
+    val descriptionText = item.description.normalizedOrNull()
+    Card(modifier = Modifier.fillMaxWidth()) {
+        SuperCard(
+            title = item.displayName,
+            summary = item.author.displayName.ifBlank {
+                stringResource(R.string.rear_store_unknown_author)
+            },
+            onClick = onClick,
+            bottomAction = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    HorizontalDivider(
+                        thickness = 0.5.dp,
+                        color = MiuixTheme.colorScheme.outline.copy(alpha = 0.4f),
+                    )
+                    descriptionText?.let {
+                        Text(
+                            text = it,
+                            fontSize = 15.sp,
+                            lineHeight = 22.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.StarBorder,
+                                contentDescription = null,
+                                tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Text(
+                                text = item.stargazersCount.toString(),
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                fontSize = 12.sp,
+                            )
+                        }
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.AccessTime,
+                                contentDescription = null,
+                                tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Text(
+                                text = isoDateLabel(item.updatedAt),
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                fontSize = 12.sp,
+                            )
+                        }
+                    }
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun RearStoreDetailHeroCard(
+    detail: RearStoreWidgetDetail,
+    installedWidget: RearStoreInstalledWidget?,
+    latestReleaseTag: String?,
+    updateAvailable: Boolean,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        SuperCard(
+            title = detail.name,
+            summary = detail.author.displayName.ifBlank {
+                stringResource(R.string.rear_store_unknown_author)
+            },
+            onClick = {},
+            bottomAction = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RearStoreStatusPill(
+                        text = buildString {
+                            append(stringResource(R.string.rear_store_installed_version_label))
+                            append("  ")
+                            append(
+                                installedWidget?.releaseTag?.takeIf { it.isNotBlank() }
+                                    ?: stringResource(R.string.rear_store_status_not_installed)
+                            )
+                        },
+                        emphasized = false,
+                    )
+                    if (updateAvailable) {
+                        RearStoreStatusPill(
+                            text = stringResource(R.string.rear_store_update_available_badge),
+                            emphasized = true,
+                        )
+                    } else if (latestReleaseTag != null && installedWidget != null) {
+                        RearStoreStatusPill(
+                            text = stringResource(R.string.rear_store_up_to_date),
+                            emphasized = false,
+                        )
+                    }
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun RearStoreStatusPill(
+    text: String,
+    emphasized: Boolean,
+) {
+    val backgroundColor = if (emphasized) {
+        MiuixTheme.colorScheme.primary.copy(alpha = 0.18f)
+    } else {
+        MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f)
+    }
+    val textColor = if (emphasized) {
+        MiuixTheme.colorScheme.primary
+    } else {
+        MiuixTheme.colorScheme.onSurface.copy(alpha = 0.82f)
+    }
+
+    Surface(
+        color = backgroundColor,
+        shape = RoundedCornerShape(18.dp),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+            color = textColor,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
+
+@Composable
+private fun RearStoreDownloadBadge(
+    text: String,
+    onClick: () -> Unit,
+) {
+    Surface(
+        color = MiuixTheme.colorScheme.primary.copy(alpha = 0.18f),
+        shape = RoundedCornerShape(18.dp),
+        onClick = onClick,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = text,
+                color = MiuixTheme.colorScheme.primary,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            Icon(
+                imageVector = MiuixIcons.Download,
+                contentDescription = null,
+                tint = MiuixTheme.colorScheme.primary,
+                modifier = Modifier.size(15.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun RearStoreReleaseCard(
+    release: RearStoreRelease,
+    widgetId: String,
+    repoBaseUrl: String?,
+    webViewCache: MutableMap<String, WebView>,
+    activeAssetKey: String?,
+    onInstallAsset: (RearStoreReleaseAsset) -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        SuperCard(
+            title = release.name.ifBlank {
+                release.tagName.ifBlank { stringResource(R.string.rear_store_unknown_release) }
+            },
+            summary = release.tagName.ifBlank { stringResource(R.string.rear_store_unknown_release) },
+            endActions = {
+                Text(
+                    text = isoDateLabel(release.publishedAt.ifBlank { release.createdAt }),
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    fontSize = 12.sp,
+                )
+            },
+            onClick = null,
+            bottomAction = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    MarkdownCardBody(
+                        markdown = release.body.ifBlank {
+                            stringResource(R.string.rear_store_release_body_empty)
+                        },
+                        repoBaseUrl = repoBaseUrl,
+                        webViewCache = webViewCache,
+                    )
+                    if (release.assets.isNotEmpty()) {
+                        HorizontalDivider(
+                            thickness = 0.5.dp,
+                            color = MiuixTheme.colorScheme.outline.copy(alpha = 0.35f),
+                        )
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        release.assets.forEachIndexed { index, asset ->
+                            RearStoreAssetRow(
+                                widgetId = widgetId,
+                                release = release,
+                                asset = asset,
+                                activeAssetKey = activeAssetKey,
+                                onInstall = { onInstallAsset(asset) },
+                            )
+                            if (index != release.assets.lastIndex) {
+                                HorizontalDivider(
+                                    thickness = 0.5.dp,
+                                    color = MiuixTheme.colorScheme.outline.copy(alpha = 0.35f),
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun RearStoreAssetRow(
+    widgetId: String,
+    release: RearStoreRelease,
+    asset: RearStoreReleaseAsset,
+    activeAssetKey: String?,
+    onInstall: () -> Unit,
+) {
+    val assetKey = widgetId + ":" + release.tagName + ":" + asset.name
+    val badgeText = if (activeAssetKey == assetKey) {
+        stringResource(R.string.rear_store_installing)
+    } else {
+        stringResource(R.string.rear_store_asset_install)
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = asset.name,
+                fontWeight = FontWeight.Medium,
+                fontSize = 14.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = stringResource(
+                    R.string.rear_store_asset_meta_summary,
+                    formatSize(asset.size),
+                    asset.downloadCount,
+                ),
+                fontSize = 12.sp,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
+        }
+        RearStoreDownloadBadge(
+            text = badgeText,
+            onClick = onInstall,
+        )
+    }
+}
+
+@Composable
+private fun RearStoreInstallInfoCard(detail: RearStoreWidgetDetail) {
+    val (businessId, hasCard, cardId) = defaultInstallInfo(detail)
+    Card(modifier = Modifier.fillMaxWidth()) {
+        BasicComponent(
+            title = stringResource(R.string.rear_store_install_info_title),
+            summary = buildString {
+                append(stringResource(R.string.rear_store_widget_id_summary, businessId))
+                append('\n')
+                append(
+                    stringResource(
+                        R.string.rear_store_will_install_card_summary,
+                        stringResource(
+                            if (hasCard) R.string.rear_store_yes else R.string.rear_store_no
+                        ),
+                    )
+                )
+                cardId?.let {
+                    append('\n')
+                    append(stringResource(R.string.rear_store_card_id_summary, it))
+                }
+                detail.widgetInfo?.cardSetup?.packageName?.normalizedOrNull()?.let {
+                    append('\n')
+                    append(stringResource(R.string.rear_store_card_package_summary, it))
+                }
+            },
+            summaryColor = BasicComponentDefaults.summaryColor(),
+            onClick = null,
+        )
+    }
+}
+
+@Composable
+private fun RearStoreRepositoryCard(detail: RearStoreWidgetDetail) {
+    val context = LocalContext.current
+    val repositoryUrl = detail.repository?.url?.normalizedOrNull()
+    Card(modifier = Modifier.fillMaxWidth()) {
+        BasicComponent(
+            title = stringResource(R.string.rear_store_repository_card_title),
+            summary = detail.repository?.fullName?.normalizedOrNull()
+                ?: stringResource(R.string.rear_store_repository_missing),
+            summaryColor = BasicComponentDefaults.summaryColor(),
+            onClick = repositoryUrl?.let {
+                { context.startActivity(Intent(Intent.ACTION_VIEW, it.toUri())) }
+            },
+        )
+    }
+}
+
+@Composable
+private fun RearStoreAuthorCard(
+    author: RearStoreAuthor,
+    placeholderAlpha: Float,
+) {
+    val context = LocalContext.current
+    val authorUrl = author.url.normalizedOrNull()
+    Card(modifier = Modifier.fillMaxWidth()) {
+        BasicComponent(
+            startAction = {
+                RearStoreAuthorAvatar(
+                    avatarUrl = author.avatarUrl,
+                    placeholderAlpha = placeholderAlpha,
+                )
+            },
+            onClick = authorUrl?.let {
+                { context.startActivity(Intent(Intent.ACTION_VIEW, it.toUri())) }
+            },
+            content = {
+                Text(
+                    text = stringResource(R.string.rear_store_author_card_title),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = author.displayName.ifBlank {
+                        stringResource(R.string.rear_store_unknown_author)
+                    },
+                    fontWeight = FontWeight.Medium,
+                )
+                author.login.normalizedOrNull()?.let {
+                    Text(
+                        text = it,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun RearStoreAuthorAvatar(
+    avatarUrl: String?,
+    placeholderAlpha: Float,
+    modifier: Modifier = Modifier,
+) {
+    var imageBitmap by remember(avatarUrl) {
+        mutableStateOf(RearStoreAvatarCache.peek(avatarUrl))
+    }
+
+    LaunchedEffect(avatarUrl) {
+        if (avatarUrl.isNullOrBlank()) return@LaunchedEffect
+        imageBitmap = RearStoreAvatarCache.load(avatarUrl)
+    }
+
+    if (imageBitmap != null) {
+        Image(
+            bitmap = imageBitmap!!,
+            contentDescription = null,
+            modifier = modifier
+                .size(48.dp)
+                .clip(CircleShape),
+        )
+    } else {
+        Box(
+            modifier = modifier
+                .size(48.dp)
+                .clip(CircleShape)
+                .background(MiuixTheme.colorScheme.secondaryContainer.copy(alpha = placeholderAlpha)),
+        )
+    }
+}
+
+@Composable
+private fun RearStoreReadmeCard(
+    markdown: String,
+    repoBaseUrl: String? = null,
+    webViewCache: MutableMap<String, WebView>,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        BasicComponent(
+            onClick = null,
+            content = {
+                MarkdownCardBody(
+                    markdown = markdown,
+                    repoBaseUrl = repoBaseUrl,
+                    webViewCache = webViewCache,
+                )
+            },
+        )
+    }
+}
+
+@Composable
+private fun MarkdownCardBody(
+    markdown: String,
+    repoBaseUrl: String? = null,
+    webViewCache: MutableMap<String, WebView>,
+) {
+    val context = LocalContext.current
+    val darkMode = MiuixTheme.colorScheme.background.luminance() < 0.5f
+    val normalizedBaseUrl = remember(repoBaseUrl) {
+        repoBaseUrl.normalizedOrNull()?.let {
+            if (it.endsWith('/')) it else "$it/"
+        }
+    }
+    val htmlDocument = remember(markdown, darkMode) {
+        RearStoreHtmlDocumentCache.wrapDocument(
+            context = context.applicationContext,
+            htmlBody = markdown,
+            darkMode = darkMode,
+        )
+    } ?: return
+    val webViewKey = remember(htmlDocument, normalizedBaseUrl) {
+        listOf(normalizedBaseUrl.orEmpty(), htmlDocument.hashCode().toString())
+            .joinToString(separator = "\u0000")
+    }
+
+    AndroidView(
+        modifier = Modifier.fillMaxWidth(),
+        factory = { viewContext ->
+            webViewCache.getOrPut(webViewKey) {
+                createGithubMarkdownWebView(viewContext).apply {
+                    tag = htmlDocument
+                    loadDataWithBaseURL(
+                        normalizedBaseUrl ?: "about:blank",
+                        htmlDocument,
+                        "text/html",
+                        StandardCharsets.UTF_8.name(),
+                        null,
+                    )
+                }
+            }
+        },
+        update = { webView ->
+            if (webView.tag != htmlDocument) {
+                webView.tag = htmlDocument
+                webView.loadDataWithBaseURL(
+                    normalizedBaseUrl ?: "about:blank",
+                    htmlDocument,
+                    "text/html",
+                    StandardCharsets.UTF_8.name(),
+                    null,
+                )
+            }
+        },
+    )
+}
+
+private fun createGithubMarkdownWebView(context: android.content.Context): WebView {
+    return WebView(context).apply {
+        setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        isVerticalScrollBarEnabled = false
+        isHorizontalScrollBarEnabled = false
+        overScrollMode = View.OVER_SCROLL_NEVER
+        settings.apply {
+            offscreenPreRaster = true
+            domStorageEnabled = true
+            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+            allowContentAccess = false
+            @Suppress("DEPRECATION")
+            allowFileAccessFromFileURLs = true
+            allowFileAccess = false
+            setGeolocationEnabled(false)
+            cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
+            textZoom = 80
+        }
+        webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(
+                view: WebView,
+                request: WebResourceRequest
+            ): Boolean {
+                runCatching {
+                    val intent = Intent(Intent.ACTION_VIEW, request.url).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                }
+                return true
+            }
+
+            override fun shouldInterceptRequest(
+                view: WebView,
+                request: WebResourceRequest,
+            ): WebResourceResponse? {
+                if (!request.url.scheme.orEmpty().startsWith("http")) return null
+                return runCatching {
+                    val headers = Headers.Builder().apply {
+                        request.requestHeaders.forEach { (key, value) -> add(key, value) }
+                    }.build()
+                    val networkRequest = Request.Builder()
+                        .url(request.url.toString())
+                        .headers(headers)
+                        .method(request.method, null)
+                        .build()
+                    rearStoreAvatarHttpClient.newCall(networkRequest).execute().use { response ->
+                        val header = response.header("content-type") ?: "text/plain; charset=utf-8"
+                        val contentTypes = header.split(";\\s*")
+                        val mimeType =
+                            contentTypes.getOrNull(0)?.trim().orEmpty().ifEmpty { "text/plain" }
+                        val charset = contentTypes.getOrNull(1)
+                            ?.substringAfter('=')
+                            ?.trim()
+                            .orEmpty()
+                            .ifEmpty { "utf-8" }
+                        val body = response.body
+                        WebResourceResponse(mimeType, charset, ByteArrayInputStream(body.bytes()))
+                    }
+                }.getOrElse { error ->
+                    WebResourceResponse(
+                        "text/plain",
+                        "utf-8",
+                        ByteArrayInputStream(
+                            error.stackTraceToString().toByteArray(StandardCharsets.UTF_8)
+                        ),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RearStoreSearchField(
+    value: String,
+    modifier: Modifier = Modifier,
+    onValueChange: (String) -> Unit,
+    onSearchSubmit: () -> Unit,
+    onSearchFocusChange: (Boolean) -> Unit,
+) {
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val searchAcrylicShape = RoundedCornerShape(14.dp)
+    val searchAcrylicBase = Color(0xFF9EA6B2).copy(alpha = 0.34f)
+    val searchAcrylicStroke = Color.White.copy(alpha = 0.34f)
+    val searchAcrylicOverlay = Brush.verticalGradient(
+        colors = listOf(
+            Color.White.copy(alpha = 0.18f),
+            Color.White.copy(alpha = 0.04f),
+        )
+    )
+    val searchHint = stringResource(R.string.rear_store_search_hint)
+    val searchTextStyle = TextStyle(
+        color = MiuixTheme.colorScheme.onBackground,
+        fontSize = 14.sp,
+    )
+
+    Card(
+        modifier = modifier
+            .border(1.dp, searchAcrylicStroke, searchAcrylicShape)
+            .fillMaxWidth(),
+        cornerRadius = 14.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+                .background(searchAcrylicBase)
+                .background(searchAcrylicOverlay)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Search,
+                contentDescription = null,
+                tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                modifier = Modifier
+                    .size(18.dp)
+                    .padding(end = 6.dp),
+            )
+
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier
+                    .weight(1f)
+                    .onFocusChanged { onSearchFocusChange(it.isFocused) },
+                singleLine = true,
+                textStyle = searchTextStyle,
+                cursorBrush = SolidColor(MiuixTheme.colorScheme.primary),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(
+                    onSearch = {
+                        focusManager.clearFocus(force = true)
+                        keyboardController?.hide()
+                        onSearchSubmit()
+                    }
+                ),
+                decorationBox = { innerTextField ->
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        if (value.isEmpty()) {
+                            Text(
+                                text = searchHint,
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            )
+                        }
+                        innerTextField()
+                    }
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun RearStoreLoadingCard() {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 24.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator()
+            Text(
+                text = stringResource(R.string.rear_widget_loading_data),
+                modifier = Modifier.padding(start = 10.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun RearStoreMessageCard(text: String) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(16.dp),
+        )
+    }
+}

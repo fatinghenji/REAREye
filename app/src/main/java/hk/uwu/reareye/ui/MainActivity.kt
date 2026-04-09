@@ -42,12 +42,13 @@ import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
 import hk.uwu.reareye.ui.screen.AboutScreen
 import hk.uwu.reareye.ui.screen.ConfigScreen
 import hk.uwu.reareye.ui.screen.HomeScreen
+import hk.uwu.reareye.ui.screen.RearStoreScreen
 import hk.uwu.reareye.ui.theme.AppTheme
 import hk.uwu.reareye.ui.theme.AppThemeMode
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-private val MainScreenOrder = listOf("home", "config", "about")
+private val MainScreenOrder = listOf("home", "store", "config", "about")
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -178,6 +179,8 @@ class MainActivity : ComponentActivity() {
                             ) { screen ->
                                 when (screen) {
                                     "home" -> HomeScreen(bottomInnerPadding = stableBottomInset)
+
+                                    "store" -> RearStoreScreen(bottomInnerPadding = stableBottomInset)
 
                                     "config" -> ConfigScreen(
                                         bottomInnerPadding = stableBottomInset,
