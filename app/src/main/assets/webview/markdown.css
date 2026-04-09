@@ -43,6 +43,7 @@ blockquote {
   font-size: inherit;
   line-height: 1.5;
   word-wrap: break-word;
+  background-color: transparent;
 }
 
 .markdown-body:after,
@@ -176,7 +177,7 @@ blockquote {
 }
 
 .markdown-body table tr {
-  background-color: var(--background);
+  background-color: transparent;
   border-top: 1px solid var(--border);
 }
 
@@ -187,7 +188,7 @@ blockquote {
 .markdown-body img {
   max-width: 100%;
   box-sizing: initial;
-  background-color: var(--background);
+  background-color: transparent;
 }
 
 .markdown-body code,

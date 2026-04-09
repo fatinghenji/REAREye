@@ -887,7 +887,6 @@ fun AppListSelectorScreen(
                             })
 
                         IconButton(
-                            modifier = Modifier.padding(end = 16.dp),
                             onClick = { showMoreMenu.value = true },
                             holdDownState = showMoreMenu.value,
                         ) {

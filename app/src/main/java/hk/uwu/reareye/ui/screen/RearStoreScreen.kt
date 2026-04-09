@@ -1,6 +1,7 @@
 package hk.uwu.reareye.ui.screen
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.view.View
@@ -38,6 +39,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -113,6 +115,7 @@ import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
@@ -125,6 +128,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Download
+import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
@@ -195,13 +199,14 @@ private object RearStoreHtmlDocumentCache {
     private val templateCache = ConcurrentHashMap<String, String>()
 
     fun wrapDocument(
-        context: android.content.Context,
+        context: Context,
         htmlBody: String,
         darkMode: Boolean,
+        themeCssVariables: String,
     ): String? {
         val normalizedHtml = htmlBody.trim()
         if (normalizedHtml.isEmpty()) return null
-        val cacheKey = listOf(darkMode.toString(), normalizedHtml)
+        val cacheKey = listOf(darkMode.toString(), themeCssVariables, normalizedHtml)
             .joinToString(separator = "\u0000")
         htmlCache[cacheKey]?.let { return it }
 
@@ -214,12 +219,13 @@ private object RearStoreHtmlDocumentCache {
         val template = loadTemplate(context, darkMode)
         val document = template
             .replace("@dir@", direction)
+            .replace("@theme_css@", themeCssVariables)
             .replace("@body@", normalizedHtml)
         htmlCache[cacheKey] = document
         return document
     }
 
-    private fun loadTemplate(context: android.content.Context, darkMode: Boolean): String {
+    private fun loadTemplate(context: Context, darkMode: Boolean): String {
         val assetName = if (darkMode) TEMPLATE_DARK else TEMPLATE_LIGHT
         return templateCache.getOrPut(assetName) {
             runCatching {
@@ -228,6 +234,13 @@ private object RearStoreHtmlDocumentCache {
             }.getOrDefault("<html dir=\"@dir@\"><body>@body@</body></html>")
         }
     }
+}
+
+private fun Color.toCssColor(): String {
+    val red = (this.red * 255).toInt().coerceIn(0, 255)
+    val green = (this.green * 255).toInt().coerceIn(0, 255)
+    val blue = (this.blue * 255).toInt().coerceIn(0, 255)
+    return "rgba($red, $green, $blue, ${this.alpha})"
 }
 
 private fun String?.normalizedOrNull(): String? {
@@ -408,11 +421,15 @@ private fun RearStoreRootContent(
                 TopAppBar(
                     color = Color.Transparent,
                     title = stringResource(R.string.store_navigation),
+                    navigationIconPadding = 12.dp,
+                    actionIconPadding = 12.dp,
                     scrollBehavior = scrollBehavior,
                 )
                 RearStoreSearchField(
                     value = searchInput,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp)
+                        .padding(bottom = 12.dp),
                     onValueChange = { searchInput = it },
                     onSearchSubmit = { submitSearch() },
                     onSearchFocusChange = { focused ->
@@ -424,6 +441,7 @@ private fun RearStoreRootContent(
                 )
             }
         },
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets.systemBars,
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier
@@ -530,12 +548,14 @@ private fun RearStoreDetailContent(
 
     Scaffold(
         topBar = {
+            val repositoryUrl = detail?.repository?.url?.normalizedOrNull()
             TopAppBar(
                 modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
                 color = Color.Transparent,
                 title = detail?.let { stringResource(R.string.rear_store_detail_header) }
                     ?: stringResource(R.string.store_navigation),
                 navigationIconPadding = 12.dp,
+                actionIconPadding = 12.dp,
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -545,6 +565,26 @@ private fun RearStoreDetailContent(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = null,
                         )
+                    }
+                },
+                actions = {
+                    if (repositoryUrl != null) {
+                        IconButton(
+                            onClick = {
+                                context.startActivity(
+                                    Intent(
+                                        Intent.ACTION_VIEW,
+                                        repositoryUrl.toUri()
+                                    )
+                                )
+                            }
+                        ) {
+                            Icon(
+                                imageVector = MiuixIcons.Regular.Link,
+                                contentDescription = stringResource(R.string.rear_store_open_repository),
+                                tint = MiuixTheme.colorScheme.onBackground,
+                            )
+                        }
                     }
                 },
                 scrollBehavior = scrollBehavior,
@@ -1207,17 +1247,43 @@ private fun MarkdownCardBody(
     webViewCache: MutableMap<String, WebView>,
 ) {
     val context = LocalContext.current
-    val darkMode = MiuixTheme.colorScheme.background.luminance() < 0.5f
+    val colorScheme = MiuixTheme.colorScheme
+    val backgroundColor = colorScheme.background
+    val onSurfaceColor = colorScheme.onSurface
+    val onSurfaceVariantColor = colorScheme.onSurfaceVariantSummary
+    val primaryColor = colorScheme.primary
+    val outlineColor = colorScheme.outline
+    val secondaryContainerColor = colorScheme.secondaryContainer
+    val darkMode = backgroundColor.luminance() < 0.5f
+    val themeCssVariables = remember(
+        backgroundColor,
+        onSurfaceColor,
+        onSurfaceVariantColor,
+        primaryColor,
+        outlineColor,
+        secondaryContainerColor,
+    ) {
+        buildString {
+            append("--background: transparent;")
+            append("--textPrimary:${onSurfaceColor.toCssColor()};")
+            append("--textSecondary:${onSurfaceVariantColor.toCssColor()};")
+            append("--link:${primaryColor.toCssColor()};")
+            append("--border:${outlineColor.copy(alpha = 0.42f).toCssColor()};")
+            append("--surface:${secondaryContainerColor.copy(alpha = 0.92f).toCssColor()};")
+            append("--quote:${onSurfaceVariantColor.toCssColor()};")
+        }
+    }
     val normalizedBaseUrl = remember(repoBaseUrl) {
         repoBaseUrl.normalizedOrNull()?.let {
             if (it.endsWith('/')) it else "$it/"
         }
     }
-    val htmlDocument = remember(markdown, darkMode) {
+    val htmlDocument = remember(markdown, darkMode, themeCssVariables) {
         RearStoreHtmlDocumentCache.wrapDocument(
             context = context.applicationContext,
             htmlBody = markdown,
             darkMode = darkMode,
+            themeCssVariables = themeCssVariables,
         )
     } ?: return
     val webViewKey = remember(htmlDocument, normalizedBaseUrl) {
@@ -1256,7 +1322,7 @@ private fun MarkdownCardBody(
     )
 }
 
-private fun createGithubMarkdownWebView(context: android.content.Context): WebView {
+private fun createGithubMarkdownWebView(context: Context): WebView {
     return WebView(context).apply {
         setBackgroundColor(android.graphics.Color.TRANSPARENT)
         isVerticalScrollBarEnabled = false
@@ -1359,12 +1425,15 @@ private fun RearStoreSearchField(
             .border(1.dp, searchAcrylicStroke, searchAcrylicShape)
             .fillMaxWidth(),
         cornerRadius = 14.dp,
+        colors = CardDefaults.defaultColors(
+            color = searchAcrylicBase,
+            contentColor = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(44.dp)
-                .background(searchAcrylicBase)
                 .background(searchAcrylicOverlay)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
