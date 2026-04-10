@@ -37,6 +37,13 @@
     <string name="module_navigation_bar_mode_normal">Standard</string>
     <string name="module_navigation_bar_mode_floating">Floating</string>
     <string name="module_navigation_bar_mode_floating_glass">Floating Liquid Glass</string>
+    <string name="module_store_api">Store API</string>
+    <string name="module_store_api_desc">Choose the widget repository API provider</string>
+    <string name="module_store_api_provider_aliyun">Aliyun</string>
+    <string name="module_store_api_provider_custom">Custom</string>
+    <string name="module_store_api_custom_domain">Custom API Domain</string>
+    <string name="module_store_api_custom_domain_help">Only enter the domain, without https:// or any path</string>
+    <string name="module_store_api_custom_domain_invalid">Invalid domain. Only the host is allowed, with no protocol, path, query, or fragment</string>
     <string name="module_theme_mode_miuix_system">Miuix Follow System</string>
     <string name="module_theme_mode_miuix_light">Miuix Light</string>
     <string name="module_theme_mode_miuix_dark">Miuix Dark</string>
@@ -331,4 +338,5 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="lyric_remove_native_lyrics_desc">Lyrics information provided through Xiaomi lyrics metadata will be removed</string>
     <string name="rear_wallpaper_refresh">Refresh Wallpaper Listst</string>
     <string name="rear_store_detail_header">Widget Detail</string>
+    <string name="module_store_api_provider_cf">Cloudflare</string>
 </resources>

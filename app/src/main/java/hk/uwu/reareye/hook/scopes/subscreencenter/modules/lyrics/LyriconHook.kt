@@ -110,6 +110,10 @@ class LyriconHook : YukiBaseHooker() {
                         }
 
                         LyricProvider.SUPER_LYRIC -> {
+                            if (!SuperLyricHelper.isAvailable()) {
+                                YLog.warn("SuperLyric is not available, it must be exists or higher than version 3.1")
+                                return@onCreate
+                            }
                             superLyricStub = object : ISuperLyricReceiver.Stub() {
                                 override fun onStop(publisher: String, data: SuperLyricData) {
                                 }

@@ -12,6 +12,8 @@ object ConfigKeys {
     const val MODULE_HIDE_LAUNCHER_ENTRY = "module_hide_launcher_entry"
     const val MODULE_THEME_MODE = "module_theme_mode"
     const val MODULE_NAVIGATION_BAR_MODE = "module_navigation_bar_mode"
+    const val MODULE_STORE_API_PROVIDER = "module_store_api_provider"
+    const val MODULE_STORE_API_CUSTOM_DOMAIN = "module_store_api_custom_domain"
 
     const val HOOK_ACTIVITIES_WHITELIST = "enable_activities_whitelist_hook"
     const val ACTIVITIES_WHITELIST_APPS = "activities_whitelist_apps"
@@ -148,6 +150,15 @@ val REAREyeConfig = listOf(
                             value = it.value,
                         )
                     },
+                ),
+            ),
+            ConfigItem(
+                key = ConfigKeys.MODULE_STORE_API_PROVIDER,
+                titleRes = R.string.module_store_api,
+                descriptionRes = R.string.module_store_api_desc,
+                type = ConfigType.RearStoreApi(
+                    defaultProviderValue = StoreApiProvider.default.value,
+                    customDomainKey = ConfigKeys.MODULE_STORE_API_CUSTOM_DOMAIN,
                 ),
             ),
             ConfigItem(

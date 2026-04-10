@@ -38,6 +38,13 @@
     <string name="module_navigation_bar_mode_normal">普通</string>
     <string name="module_navigation_bar_mode_floating">悬浮</string>
     <string name="module_navigation_bar_mode_floating_glass">悬浮液态玻璃</string>
+    <string name="module_store_api">仓库 API</string>
+    <string name="module_store_api_desc">选择组件仓库 API 提供方</string>
+    <string name="module_store_api_provider_aliyun">阿里云</string>
+    <string name="module_store_api_provider_custom">自定义</string>
+    <string name="module_store_api_custom_domain">自定义 API 域名</string>
+    <string name="module_store_api_custom_domain_help">只填写域名，不要包含 https:// 或路径</string>
+    <string name="module_store_api_custom_domain_invalid">域名无效。这里只能填写主机名，不能包含协议、路径、查询或片段</string>
     <string name="module_theme_mode_miuix_system">Miuix 跟随系统</string>
     <string name="module_theme_mode_miuix_light">Miuix 浅色</string>
     <string name="module_theme_mode_miuix_dark">Miuix 深色</string>
@@ -122,7 +129,7 @@
     <string name="rear_wallpaper_unavailable">不可用壁纸 #%1$d</string>
     <string name="rear_wallpaper_unavailable_desc">该壁纸已不在当前系统壁纸列表中</string>
     <string name="rear_widget_business_manager">组件模板管理器</string>
-    <string name="rear_widget_business_manager_desc">仅管理 Widget 到模板文件的映射，不注入包路由</string>
+    <string name="rear_widget_business_manager_desc">管理 组件 到模板文件的映射</string>
     <string name="rear_widget_business_extra_manager">组件额外设置管理器</string>
     <string name="rear_widget_business_extra_manager_desc">手动添加需要额外显示选项的组件</string>
     <string name="rear_widget_card_manager">卡片管理器</string>
@@ -130,9 +137,9 @@
     <string name="allow_rear_focus_notices">允许焦点通知在背屏显示</string>
     <string name="allow_rear_focus_notices_desc">必须先存在该焦点通知对应的组件或模板，否则系统仍会拒绝显示</string>
     <string name="rear_widget_target_package">目标包名</string>
-    <string name="rear_widget_business_name">组件名称（Widget）</string>
+    <string name="rear_widget_business_name">组件名称</string>
     <string name="rear_widget_business_file_mode_title">组件模板映射</string>
-    <string name="rear_widget_business_file_mode_hint">仅维护组件（Widget）到模板文件的映射，例如 music -&gt; 自定义模板</string>
+    <string name="rear_widget_business_file_mode_hint">维护 组件 到模板文件的映射，例如 music -&gt; 自定义模板</string>
     <string name="rear_widget_template_file">模板文件路径</string>
     <string name="rear_widget_default_priority">默认优先级 (数值越低优先级越高)</string>
     <string name="rear_widget_pick_file">选择文件</string>
@@ -330,4 +337,5 @@
     <string name="lyric_remove_native_lyrics">移除由原生API提供的歌词</string>
     <string name="lyric_remove_native_lyrics_desc">将会移除掉通过小米歌词元数据提供的歌词信息</string>
     <string name="rear_store_detail_header">组件信息</string>
+    <string name="module_store_api_provider_cf">Cloudflare</string>
 </resources>

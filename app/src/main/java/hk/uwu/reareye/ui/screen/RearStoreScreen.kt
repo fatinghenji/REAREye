@@ -502,6 +502,7 @@ fun RearStoreScreen(bottomInnerPadding: Dp = 0.dp) {
         if (currentWidgetId == null) {
             RearStoreRootContent(
                 bottomInnerPadding = bottomInnerPadding,
+                prefsManager = prefsManager,
                 installedWidgets = installedWidgets,
                 onOpenDetail = { selectedWidgetIdState.value = it },
             )
@@ -520,6 +521,7 @@ fun RearStoreScreen(bottomInnerPadding: Dp = 0.dp) {
 @Composable
 private fun RearStoreRootContent(
     bottomInnerPadding: Dp,
+    prefsManager: hk.uwu.reareye.ui.config.PrefsManager,
     installedWidgets: Map<String, RearStoreInstalledWidget>,
     onOpenDetail: (String) -> Unit,
 ) {
@@ -545,7 +547,7 @@ private fun RearStoreRootContent(
         loadFailed = false
         val result = withContext(Dispatchers.IO) {
             runCatching {
-                RearStoreRepository.loadWidgets()
+                RearStoreRepository.loadWidgets(prefsManager)
             }.getOrNull()
         }
         if (result == null) {
@@ -776,7 +778,7 @@ private fun RearStoreDetailContent(
         loading = true
         loadFailed = false
         detail = withContext(Dispatchers.IO) {
-            runCatching { RearStoreRepository.loadWidgetDetail(widgetId) }.getOrNull()
+            runCatching { RearStoreRepository.loadWidgetDetail(prefsManager, widgetId) }.getOrNull()
         }
         readmeLoading = false
         readmeLoaded = detail?.readme != null
@@ -797,7 +799,7 @@ private fun RearStoreDetailContent(
         }
         readmeLoading = true
         val loadedReadme = withContext(Dispatchers.IO) {
-            runCatching { RearStoreRepository.loadWidgetReadme(widgetId) }.getOrNull()
+            runCatching { RearStoreRepository.loadWidgetReadme(prefsManager, widgetId) }.getOrNull()
         }
         detail = detail?.copy(readme = loadedReadme)
         readmeLoaded = true

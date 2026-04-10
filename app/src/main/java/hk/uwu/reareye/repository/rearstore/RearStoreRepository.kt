@@ -10,6 +10,7 @@ import hk.uwu.reareye.repository.rearwidget.RearCardConfig
 import hk.uwu.reareye.repository.rearwidget.RearWidgetConfigCodec
 import hk.uwu.reareye.repository.rearwidget.RearWidgetManagerRepository
 import hk.uwu.reareye.ui.config.PrefsManager
+import hk.uwu.reareye.ui.config.resolveRearStoreApiBaseUrl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -24,7 +25,6 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
-private const val REAR_STORE_BASE_URL = "https://rearstore-api.uwu.hk"
 private const val DEFAULT_COMPONENT_ROUTE_PACKAGE = "com.xiaomi.subscreencenter"
 
 private fun String?.normalizedOrNull(): String? {
@@ -277,7 +277,7 @@ object RearStoreRepository {
         .build()
     private val gson = Gson()
     private val widgetsCache =
-        java.util.concurrent.atomic.AtomicReference<List<RearStoreListItem>?>(null)
+        java.util.concurrent.ConcurrentHashMap<String, List<RearStoreListItem>>()
     private val descriptionCache =
         java.util.concurrent.ConcurrentHashMap<String, RearStoreDescriptionResponse>()
     private val authorCache = java.util.concurrent.ConcurrentHashMap<String, RearStoreAuthor>()
@@ -289,10 +289,11 @@ object RearStoreRepository {
         java.util.concurrent.ConcurrentHashMap<String, RearStoreWidgetDetail>()
     private val readmeCache = java.util.concurrent.ConcurrentHashMap<String, RearStoreReadme>()
 
-    suspend fun loadWidgets(): List<RearStoreListItem> {
+    suspend fun loadWidgets(prefsManager: PrefsManager): List<RearStoreListItem> {
         return withContext(Dispatchers.IO) {
-            widgetsCache.get()?.let { return@withContext it }
-            val loaded = fetchJson<Array<RearStoreWidgetCatalogItemResponse>>("/widgets")
+            val baseUrl = resolveRearStoreApiBaseUrl(prefsManager)
+            widgetsCache[baseUrl]?.let { return@withContext it }
+            val loaded = fetchJson<Array<RearStoreWidgetCatalogItemResponse>>(baseUrl, "/widgets")
                 ?.map { item ->
                     val authorId = item.authorId.normalizedOrNull().orEmpty()
                     val authorName = item.authorName.normalizedOrNull().orEmpty()
@@ -310,25 +311,31 @@ object RearStoreRepository {
                         latestReleasePublishedAt = item.latestReleasePublishedAt.normalizedOrNull(),
                     )
                 }
-            if (loaded != null) widgetsCache.set(loaded)
-            loaded ?: widgetsCache.get().orEmpty()
+            if (loaded != null) widgetsCache[baseUrl] = loaded
+            loaded ?: widgetsCache[baseUrl].orEmpty()
         }
     }
 
-    suspend fun loadWidgetDetail(widgetId: String): RearStoreWidgetDetail? {
+    suspend fun loadWidgetDetail(
+        prefsManager: PrefsManager,
+        widgetId: String
+    ): RearStoreWidgetDetail? {
         val normalizedWidgetId = widgetId.normalizedOrNull() ?: return null
-        detailCache[normalizedWidgetId]?.let { return it }
+        val baseUrl = resolveRearStoreApiBaseUrl(prefsManager)
+        val detailCacheKey = cacheKey(baseUrl, normalizedWidgetId)
+        detailCache[detailCacheKey]?.let { return it }
         return withContext(Dispatchers.IO) {
             coroutineScope {
-                val descriptionDeferred = async { loadDescriptionCached(normalizedWidgetId) }
-                val authorDeferred = async { loadAuthorCached(normalizedWidgetId) }
-                val infoDeferred = async { loadWidgetInfoCached(normalizedWidgetId) }
-                val releasesDeferred = async { loadReleasesCached(normalizedWidgetId) }
+                val descriptionDeferred =
+                    async { loadDescriptionCached(baseUrl, normalizedWidgetId) }
+                val authorDeferred = async { loadAuthorCached(baseUrl, normalizedWidgetId) }
+                val infoDeferred = async { loadWidgetInfoCached(baseUrl, normalizedWidgetId) }
+                val releasesDeferred = async { loadReleasesCached(baseUrl, normalizedWidgetId) }
 
                 val description = descriptionDeferred.await()
-                    ?: detailCache[normalizedWidgetId]?.let { cached ->
+                    ?: detailCache[detailCacheKey]?.let { cached ->
                         return@coroutineScope cached.copy(
-                            readme = readmeCache[normalizedWidgetId] ?: cached.readme
+                            readme = readmeCache[detailCacheKey] ?: cached.readme
                         )
                     }
                     ?: return@coroutineScope null
@@ -344,27 +351,30 @@ object RearStoreRepository {
                     author = resolvedAuthor,
                     repository = repository,
                     widgetInfo = widgetInfo,
-                    readme = readmeCache[normalizedWidgetId],
+                    readme = readmeCache[detailCacheKey],
                     releases = releasesDeferred.await().orEmpty(),
                 )
-                detailCache[normalizedWidgetId] = detail
+                detailCache[detailCacheKey] = detail
                 detail
             }
         }
     }
 
-    suspend fun loadWidgetReadme(widgetId: String): RearStoreReadme? {
+    suspend fun loadWidgetReadme(prefsManager: PrefsManager, widgetId: String): RearStoreReadme? {
         val normalizedWidgetId = widgetId.normalizedOrNull() ?: return null
-        readmeCache[normalizedWidgetId]?.let { return it }
+        val baseUrl = resolveRearStoreApiBaseUrl(prefsManager)
+        val readmeCacheKey = cacheKey(baseUrl, normalizedWidgetId)
+        readmeCache[readmeCacheKey]?.let { return it }
         return withContext(Dispatchers.IO) {
             val readme = fetchJson<RearStoreReadmeResponse>(
+                baseUrl,
                 "/widget/${Uri.encode(normalizedWidgetId)}/readme"
-            )?.readme ?: readmeCache[normalizedWidgetId]
+            )?.readme ?: readmeCache[readmeCacheKey]
             if (readme != null) {
-                readmeCache[normalizedWidgetId] = readme
-                detailCache[normalizedWidgetId] = detailCache[normalizedWidgetId]
+                readmeCache[readmeCacheKey] = readme
+                detailCache[readmeCacheKey] = detailCache[readmeCacheKey]
                     ?.copy(readme = readme)
-                    ?: loadWidgetDetail(normalizedWidgetId)?.copy(readme = readme)
+                    ?: loadWidgetDetail(prefsManager, normalizedWidgetId)?.copy(readme = readme)
                             ?: return@withContext readme
             }
             readme
@@ -401,11 +411,12 @@ object RearStoreRepository {
         assetName: String? = null,
         onProgress: (RearStoreInstallProgress) -> Unit = {},
     ): RearStoreQuickInstallResult = withContext(Dispatchers.IO) {
+        val baseUrl = resolveRearStoreApiBaseUrl(prefsManager)
         emitInstallProgress(
             onProgress,
             RearStoreInstallProgress(stage = RearStoreInstallProgressStage.CONNECTING),
         )
-        val detail = loadWidgetDetail(widgetId)
+        val detail = loadWidgetDetail(prefsManager, widgetId)
             ?: error("Unable to load widget detail")
         val selectedAsset = selectAsset(
             releases = detail.releases,
@@ -414,6 +425,7 @@ object RearStoreRepository {
         )
             ?: error("No downloadable release asset found")
         val assetBytes = downloadAssetBytes(
+            baseUrl = baseUrl,
             widgetId = detail.widgetId,
             selectedAsset = selectedAsset,
             onProgress = onProgress,
@@ -594,23 +606,30 @@ object RearStoreRepository {
         }
     }
 
-    private fun loadDescriptionCached(widgetId: String): RearStoreDescriptionResponse? {
-        descriptionCache[widgetId]?.let { return it }
+    private fun loadDescriptionCached(
+        baseUrl: String,
+        widgetId: String
+    ): RearStoreDescriptionResponse? {
+        val cacheKey = cacheKey(baseUrl, widgetId)
+        descriptionCache[cacheKey]?.let { return it }
         val loaded = fetchJson<RearStoreDescriptionResponse>(
+            baseUrl,
             "/widget/${Uri.encode(widgetId)}/description"
         )
-        if (loaded != null) descriptionCache[widgetId] = loaded
-        return loaded ?: descriptionCache[widgetId]
+        if (loaded != null) descriptionCache[cacheKey] = loaded
+        return loaded ?: descriptionCache[cacheKey]
     }
 
-    private fun loadAuthorCached(widgetId: String): RearStoreAuthor? {
-        authorCache[widgetId]?.let { return it }
+    private fun loadAuthorCached(baseUrl: String, widgetId: String): RearStoreAuthor? {
+        val cacheKey = cacheKey(baseUrl, widgetId)
+        authorCache[cacheKey]?.let { return it }
         val loaded = fetchJson<RearStoreAuthorResponse>(
+            baseUrl,
             "/widget/${Uri.encode(widgetId)}/author"
         )?.author
         val normalizedLoaded = loaded?.takeIf { it.displayName.isNotBlank() }
-        if (normalizedLoaded != null) authorCache[widgetId] = normalizedLoaded
-        return normalizedLoaded ?: authorCache[widgetId]
+        if (normalizedLoaded != null) authorCache[cacheKey] = normalizedLoaded
+        return normalizedLoaded ?: authorCache[cacheKey]
     }
 
     private fun resolveAuthor(
@@ -626,28 +645,32 @@ object RearStoreRepository {
         )
     }
 
-    private fun loadWidgetInfoCached(widgetId: String): RearStoreWidgetInfo? {
-        widgetInfoCache[widgetId]?.let { return it }
+    private fun loadWidgetInfoCached(baseUrl: String, widgetId: String): RearStoreWidgetInfo? {
+        val cacheKey = cacheKey(baseUrl, widgetId)
+        widgetInfoCache[cacheKey]?.let { return it }
         val loaded = fetchJson<RearStoreWidgetInfoResponse>(
+            baseUrl,
             "/widget/${Uri.encode(widgetId)}/widget-info"
         )?.widgetInfo
-        if (loaded != null) widgetInfoCache[widgetId] = loaded
-        return loaded ?: widgetInfoCache[widgetId]
+        if (loaded != null) widgetInfoCache[cacheKey] = loaded
+        return loaded ?: widgetInfoCache[cacheKey]
     }
 
-    private fun loadReleasesCached(widgetId: String): List<RearStoreRelease>? {
-        releasesCache[widgetId]?.let { return it }
+    private fun loadReleasesCached(baseUrl: String, widgetId: String): List<RearStoreRelease>? {
+        val cacheKey = cacheKey(baseUrl, widgetId)
+        releasesCache[cacheKey]?.let { return it }
         val loaded = fetchJson<RearStoreReleasesResponse>(
+            baseUrl,
             "/widget/${Uri.encode(widgetId)}/releases"
         )?.releases
-        if (loaded != null) releasesCache[widgetId] = loaded
-        return loaded ?: releasesCache[widgetId]
+        if (loaded != null) releasesCache[cacheKey] = loaded
+        return loaded ?: releasesCache[cacheKey]
     }
 
-    private inline fun <reified T> fetchJson(path: String): T? {
+    private inline fun <reified T> fetchJson(baseUrl: String, path: String): T? {
         return runCatching {
             val request = Request.Builder()
-                .url(REAR_STORE_BASE_URL + path)
+                .url(baseUrl + path)
                 .build()
             httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return null
@@ -657,6 +680,7 @@ object RearStoreRepository {
     }
 
     private suspend fun downloadAssetBytes(
+        baseUrl: String,
         widgetId: String,
         selectedAsset: RearStoreSelectedAsset,
         onProgress: (RearStoreInstallProgress) -> Unit,
@@ -664,7 +688,7 @@ object RearStoreRepository {
         val tagName = selectedAsset.release.tagName.normalizedOrNull() ?: return null
         val assetName = selectedAsset.asset.name.normalizedOrNull() ?: return null
         val apiBytes = fetchBytes(
-            REAR_STORE_BASE_URL + "/widget/${Uri.encode(widgetId)}/releases/${Uri.encode(tagName)}/${
+            baseUrl + "/widget/${Uri.encode(widgetId)}/releases/${Uri.encode(tagName)}/${
                 Uri.encode(
                     assetName
                 )
@@ -684,6 +708,10 @@ object RearStoreRepository {
         withContext(Dispatchers.Main) {
             onProgress(progress)
         }
+    }
+
+    private fun cacheKey(baseUrl: String, widgetId: String): String {
+        return "$baseUrl\u0000$widgetId"
     }
 
     private fun selectAsset(

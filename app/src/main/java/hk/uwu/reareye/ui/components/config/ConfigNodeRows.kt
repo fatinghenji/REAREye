@@ -36,6 +36,9 @@ import hk.uwu.reareye.ui.config.ConfigNode
 import hk.uwu.reareye.ui.config.ConfigType
 import hk.uwu.reareye.ui.config.ModuleSettingsController
 import hk.uwu.reareye.ui.config.PrefsManager
+import hk.uwu.reareye.ui.config.StoreApiProvider
+import hk.uwu.reareye.ui.config.normalizeRearStoreCustomDomainInput
+import hk.uwu.reareye.ui.config.validateRearStoreCustomDomain
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.ListPopupColumn
@@ -46,6 +49,7 @@ import top.yukonga.miuix.kmp.basic.SpinnerDefaults
 import top.yukonga.miuix.kmp.basic.SpinnerEntry
 import top.yukonga.miuix.kmp.basic.SpinnerItemImpl
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.overlay.OverlayListPopup
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
@@ -235,43 +239,45 @@ fun MaskMultiSelectConfigInput(
         "$description\n$selectedSummary"
     }
 
-    ArrowPreference(
-        title = stringResource(item.titleRes),
-        summary = summary,
-        holdDownState = showModePopup.value,
-        onClick = { showModePopup.value = true }
-    )
+    Box {
+        ArrowPreference(
+            title = stringResource(item.titleRes),
+            summary = summary,
+            holdDownState = showModePopup.value,
+            onClick = { showModePopup.value = true }
+        )
 
-    OverlayListPopup(
-        show = showModePopup.value,
-        popupModifier = Modifier,
-        popupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
-        alignment = PopupPositionProvider.Align.End,
-        enableWindowDim = true,
-        onDismissRequest = { showModePopup.value = false },
-        maxHeight = null,
-        minWidth = 220.dp,
-        renderInRootScaffold = true,
-    ) {
-        ListPopupColumn {
-            options.forEachIndexed { index, option ->
-                SpinnerItemImpl(
-                    entry = optionEntries[index],
-                    entryCount = options.size,
-                    isSelected = (selectedMask and option.maskValue) != 0,
-                    index = index,
-                    spinnerColors = SpinnerDefaults.spinnerColors(),
-                    onSelectedIndexChange = {
-                        val nextMask = selectedMask xor option.maskValue
-                        showModePopup.value = false
-                        popupScope.launch {
-                            withFrameNanos { }
-                            selectedMask = nextMask
-                            prefsManager.putInt(item.key, selectedMask)
-                            onPreferenceChanged(item)
-                        }
-                    },
-                )
+        OverlayListPopup(
+            show = showModePopup.value,
+            popupModifier = Modifier,
+            popupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
+            alignment = PopupPositionProvider.Align.End,
+            enableWindowDim = true,
+            onDismissRequest = { showModePopup.value = false },
+            maxHeight = null,
+            minWidth = 220.dp,
+            renderInRootScaffold = true,
+        ) {
+            ListPopupColumn {
+                options.forEachIndexed { index, option ->
+                    SpinnerItemImpl(
+                        entry = optionEntries[index],
+                        entryCount = options.size,
+                        isSelected = (selectedMask and option.maskValue) != 0,
+                        index = index,
+                        spinnerColors = SpinnerDefaults.spinnerColors(),
+                        onSelectedIndexChange = {
+                            val nextMask = selectedMask xor option.maskValue
+                            showModePopup.value = false
+                            popupScope.launch {
+                                withFrameNanos { }
+                                selectedMask = nextMask
+                                prefsManager.putInt(item.key, selectedMask)
+                                onPreferenceChanged(item)
+                            }
+                        },
+                    )
+                }
             }
         }
     }
@@ -312,41 +318,165 @@ fun EnumSingleSelectConfigInput(
         "$description\n$selectedLabel"
     }
 
-    ArrowPreference(
-        title = stringResource(item.titleRes),
-        summary = summary,
-        holdDownState = showEnumPopup.value,
-        onClick = { showEnumPopup.value = true }
-    )
+    Box {
+        ArrowPreference(
+            title = stringResource(item.titleRes),
+            summary = summary,
+            holdDownState = showEnumPopup.value,
+            onClick = { showEnumPopup.value = true }
+        )
 
-    OverlayListPopup(
-        show = showEnumPopup.value,
-        popupModifier = Modifier,
-        popupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
-        alignment = PopupPositionProvider.Align.End,
-        enableWindowDim = true,
-        onDismissRequest = { showEnumPopup.value = false },
-        maxHeight = null,
-        minWidth = 220.dp,
-        renderInRootScaffold = true,
-    ) {
-        ListPopupColumn {
-            options.forEachIndexed { index, option ->
-                SpinnerItemImpl(
-                    entry = optionEntries[index],
-                    entryCount = options.size,
-                    isSelected = selectedValue == option.value,
-                    index = index,
-                    spinnerColors = SpinnerDefaults.spinnerColors(),
-                    onSelectedIndexChange = {
-                        showEnumPopup.value = false
-                        popupScope.launch {
-                            withFrameNanos { }
-                            selectedValue = option.value
-                            prefsManager.putInt(item.key, selectedValue)
-                            onPreferenceChanged(item)
-                        }
+        OverlayListPopup(
+            show = showEnumPopup.value,
+            popupModifier = Modifier,
+            popupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
+            alignment = PopupPositionProvider.Align.End,
+            enableWindowDim = true,
+            onDismissRequest = { showEnumPopup.value = false },
+            maxHeight = null,
+            minWidth = 220.dp,
+            renderInRootScaffold = true,
+        ) {
+            ListPopupColumn {
+                options.forEachIndexed { index, option ->
+                    SpinnerItemImpl(
+                        entry = optionEntries[index],
+                        entryCount = options.size,
+                        isSelected = selectedValue == option.value,
+                        index = index,
+                        spinnerColors = SpinnerDefaults.spinnerColors(),
+                        onSelectedIndexChange = {
+                            showEnumPopup.value = false
+                            popupScope.launch {
+                                withFrameNanos { }
+                                selectedValue = option.value
+                                prefsManager.putInt(item.key, selectedValue)
+                                onPreferenceChanged(item)
+                            }
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@SuppressLint("LocalContextGetResourceValueCall")
+@Composable
+fun RearStoreApiConfigInput(
+    item: ConfigItem,
+    apiConfig: ConfigType.RearStoreApi,
+    prefsManager: PrefsManager,
+    onPreferenceChanged: (ConfigItem) -> Unit = {},
+) {
+    val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val popupScope = rememberCoroutineScope()
+    val showApiPopup = remember(item.key) { mutableStateOf(false) }
+    var selectedProviderValue by remember(item.key) {
+        mutableIntStateOf(prefsManager.getInt(item.key, apiConfig.defaultProviderValue))
+    }
+    var customDomain by remember(apiConfig.customDomainKey) {
+        mutableStateOf(prefsManager.getString(apiConfig.customDomainKey, ""))
+    }
+    val provider = StoreApiProvider.fromValue(selectedProviderValue)
+    val validation = remember(customDomain) { validateRearStoreCustomDomain(customDomain) }
+    val optionTitles = remember(configuration) {
+        StoreApiProvider.selectableEntries.map { context.getString(it.titleRes) }
+    }
+    val optionEntries = remember(optionTitles) {
+        optionTitles.map { SpinnerEntry(title = it) }
+    }
+    val selectedLabel = optionTitles[StoreApiProvider.selectableEntries.indexOf(provider)]
+    val description = item.descriptionRes?.let { stringResource(it) }
+    val summary = buildString {
+        if (!description.isNullOrBlank()) {
+            append(description)
+            append('\n')
+        }
+        append(selectedLabel)
+        if (provider == StoreApiProvider.CUSTOM && validation != null) {
+            append('\n')
+            append(validation.baseUrl)
+        }
+    }
+    val customHelperText = when {
+        customDomain.isBlank() -> stringResource(R.string.module_store_api_custom_domain_help)
+        validation == null -> stringResource(R.string.module_store_api_custom_domain_invalid)
+        else -> validation.baseUrl
+    }
+    val customHelperColor = when {
+        customDomain.isBlank() -> MiuixTheme.colorScheme.onSurfaceVariantSummary
+        validation == null -> MiuixTheme.colorScheme.error
+        else -> MiuixTheme.colorScheme.onSurfaceVariantSummary
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Box {
+            ArrowPreference(
+                title = stringResource(item.titleRes),
+                summary = summary,
+                holdDownState = showApiPopup.value,
+                onClick = { showApiPopup.value = true },
+            )
+
+            OverlayListPopup(
+                show = showApiPopup.value,
+                popupModifier = Modifier,
+                popupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
+                alignment = PopupPositionProvider.Align.End,
+                enableWindowDim = true,
+                onDismissRequest = { showApiPopup.value = false },
+                maxHeight = null,
+                minWidth = 220.dp,
+                renderInRootScaffold = true,
+            ) {
+                ListPopupColumn {
+                    StoreApiProvider.selectableEntries.forEachIndexed { index, option ->
+                        SpinnerItemImpl(
+                            entry = optionEntries[index],
+                            entryCount = StoreApiProvider.selectableEntries.size,
+                            isSelected = provider == option,
+                            index = index,
+                            spinnerColors = SpinnerDefaults.spinnerColors(),
+                            onSelectedIndexChange = {
+                                showApiPopup.value = false
+                                popupScope.launch {
+                                    withFrameNanos { }
+                                    selectedProviderValue = option.value
+                                    prefsManager.putInt(item.key, selectedProviderValue)
+                                    onPreferenceChanged(item)
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
+        if (provider == StoreApiProvider.CUSTOM) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 14.dp),
+            ) {
+                TextField(
+                    value = customDomain,
+                    onValueChange = {
+                        customDomain = normalizeRearStoreCustomDomainInput(it)
+                        prefsManager.putString(apiConfig.customDomainKey, customDomain)
+                        onPreferenceChanged(item)
                     },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = stringResource(R.string.module_store_api_custom_domain),
+                    singleLine = true,
+                )
+                Text(
+                    text = customHelperText,
+                    fontSize = 12.sp,
+                    color = customHelperColor,
+                    modifier = Modifier.padding(top = 6.dp),
                 )
             }
         }
