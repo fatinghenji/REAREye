@@ -118,6 +118,8 @@ dependencies {
     implementation(libs.kavaref.core)
     implementation(libs.kavaref.extension)
 
+    implementation(libs.dexkit)
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.espresso.core)
