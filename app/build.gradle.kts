@@ -69,6 +69,9 @@ android {
             storePassword = getProp("KEYSTORE_PASSWORD")
             keyAlias = getProp("KEY_ALIAS")
             keyPassword = getProp("KEY_PASSWORD")
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
         }
     }
 
