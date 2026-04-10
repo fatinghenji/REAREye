@@ -12,16 +12,19 @@ import hk.uwu.reareye.repository.rearwidget.RearWidgetManagerRepository
 import hk.uwu.reareye.ui.config.PrefsManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.logging.HttpLoggingInterceptor
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 private const val REAR_STORE_BASE_URL = "https://rearstore-api.uwu.hk"
-private const val REAR_STORE_DOWNLOAD_FOLDER = "REAREye"
 private const val DEFAULT_COMPONENT_ROUTE_PACKAGE = "com.xiaomi.subscreencenter"
 
 private fun String?.normalizedOrNull(): String? {
@@ -88,19 +91,30 @@ data class RearStoreListItem(
     @SerializedName("repository")
     val repository: RearStoreRepositoryLink? = null,
     val stargazersCount: Int = 0,
+    val latestReleaseTag: String? = null,
+    val latestReleasePublishedAt: String? = null,
 ) {
     val displayName: String
         get() = name.normalizedOrNull() ?: id.normalizedOrNull().orEmpty()
 }
 
-private data class RearStoreSearchResponse(
-    @SerializedName("items")
-    val items: List<RearStoreListItem> = emptyList(),
-)
-
-private data class RearStoreRecentUpdatesResponse(
-    @SerializedName("items")
-    val items: List<RearStoreListItem> = emptyList(),
+private data class RearStoreWidgetCatalogItemResponse(
+    @SerializedName("id")
+    val id: String = "",
+    @SerializedName("name")
+    val name: String = "",
+    @SerializedName("authorName")
+    val authorName: String = "",
+    @SerializedName("authorId")
+    val authorId: String = "",
+    @SerializedName("description")
+    val description: String = "",
+    @SerializedName("latestReleaseTag")
+    val latestReleaseTag: String = "",
+    @SerializedName("latestReleasePublishedAt")
+    val latestReleasePublishedAt: String = "",
+    @SerializedName("stars")
+    val stars: Int = 0,
 )
 
 private data class RearStoreDescriptionResponse(
@@ -219,6 +233,7 @@ data class RearStoreInstalledWidget(
     val businessId: String,
     val releaseTag: String?,
     val releasePublishedAt: String?,
+    val installedAt: String?,
     val renameable: Boolean,
 )
 
@@ -231,9 +246,16 @@ data class RearStoreQuickInstallResult(
     val updatedExistingInstall: Boolean,
 )
 
-private data class RearStoreSavedFile(
-    val fileName: String,
-    val locationLabel: String,
+enum class RearStoreInstallProgressStage {
+    CONNECTING,
+    DOWNLOADING,
+    INSTALLING,
+}
+
+data class RearStoreInstallProgress(
+    val stage: RearStoreInstallProgressStage,
+    val downloadedBytes: Long = 0L,
+    val totalBytes: Long = -1L,
 )
 
 private data class RearStoreSelectedAsset(
@@ -254,10 +276,8 @@ object RearStoreRepository {
         }
         .build()
     private val gson = Gson()
-    private val recentUpdatesCache =
+    private val widgetsCache =
         java.util.concurrent.atomic.AtomicReference<List<RearStoreListItem>?>(null)
-    private val searchCache =
-        java.util.concurrent.ConcurrentHashMap<String, List<RearStoreListItem>>()
     private val descriptionCache =
         java.util.concurrent.ConcurrentHashMap<String, RearStoreDescriptionResponse>()
     private val authorCache = java.util.concurrent.ConcurrentHashMap<String, RearStoreAuthor>()
@@ -269,25 +289,29 @@ object RearStoreRepository {
         java.util.concurrent.ConcurrentHashMap<String, RearStoreWidgetDetail>()
     private val readmeCache = java.util.concurrent.ConcurrentHashMap<String, RearStoreReadme>()
 
-    suspend fun loadRecentUpdates(): List<RearStoreListItem> {
+    suspend fun loadWidgets(): List<RearStoreListItem> {
         return withContext(Dispatchers.IO) {
-            recentUpdatesCache.get()?.let { return@withContext it }
-            val loaded = fetchJson<RearStoreRecentUpdatesResponse>("/recent-updates")?.items
-                ?.let { enrichListItems(it) }
-            if (loaded != null) recentUpdatesCache.set(loaded)
-            loaded ?: recentUpdatesCache.get().orEmpty()
-        }
-    }
-
-    suspend fun searchWidgets(query: String): List<RearStoreListItem> {
-        val normalizedQuery = query.normalizedOrNull() ?: return emptyList()
-        return withContext(Dispatchers.IO) {
-            searchCache[normalizedQuery]?.let { return@withContext it }
-            val loaded =
-                fetchJson<RearStoreSearchResponse>("/search?q=${Uri.encode(normalizedQuery)}")?.items
-                    ?.let { enrichListItems(it) }
-            if (loaded != null) searchCache[normalizedQuery] = loaded
-            loaded ?: searchCache[normalizedQuery].orEmpty()
+            widgetsCache.get()?.let { return@withContext it }
+            val loaded = fetchJson<Array<RearStoreWidgetCatalogItemResponse>>("/widgets")
+                ?.map { item ->
+                    val authorId = item.authorId.normalizedOrNull().orEmpty()
+                    val authorName = item.authorName.normalizedOrNull().orEmpty()
+                    RearStoreListItem(
+                        id = item.id,
+                        name = item.name,
+                        description = item.description,
+                        author = RearStoreAuthor(
+                            login = authorId,
+                            name = authorName.ifBlank { authorId },
+                        ),
+                        updatedAt = item.latestReleasePublishedAt,
+                        stargazersCount = item.stars,
+                        latestReleaseTag = item.latestReleaseTag.normalizedOrNull(),
+                        latestReleasePublishedAt = item.latestReleasePublishedAt.normalizedOrNull(),
+                    )
+                }
+            if (loaded != null) widgetsCache.set(loaded)
+            loaded ?: widgetsCache.get().orEmpty()
         }
     }
 
@@ -361,6 +385,8 @@ object RearStoreRepository {
                     businessId = business.business,
                     releaseTag = business.storeReleaseTag.normalizedOrNull(),
                     releasePublishedAt = business.storeReleasePublishedAt.normalizedOrNull(),
+                    installedAt = business.storeInstalledAt.normalizedOrNull()
+                        ?: business.storeReleasePublishedAt.normalizedOrNull(),
                     renameable = business.renameable,
                 )
             }
@@ -373,7 +399,12 @@ object RearStoreRepository {
         widgetId: String,
         releaseTag: String? = null,
         assetName: String? = null,
+        onProgress: (RearStoreInstallProgress) -> Unit = {},
     ): RearStoreQuickInstallResult = withContext(Dispatchers.IO) {
+        emitInstallProgress(
+            onProgress,
+            RearStoreInstallProgress(stage = RearStoreInstallProgressStage.CONNECTING),
+        )
         val detail = loadWidgetDetail(widgetId)
             ?: error("Unable to load widget detail")
         val selectedAsset = selectAsset(
@@ -382,8 +413,16 @@ object RearStoreRepository {
             preferredAssetName = assetName,
         )
             ?: error("No downloadable release asset found")
-        val assetBytes = downloadAssetBytes(detail.widgetId, selectedAsset)
+        val assetBytes = downloadAssetBytes(
+            widgetId = detail.widgetId,
+            selectedAsset = selectedAsset,
+            onProgress = onProgress,
+        )
             ?: error("Failed to download widget asset")
+        emitInstallProgress(
+            onProgress,
+            RearStoreInstallProgress(stage = RearStoreInstallProgressStage.INSTALLING),
+        )
 
         val businessSetup = detail.widgetInfo?.businessSetup
         val businessId = businessSetup?.id.normalizedOrNull() ?: detail.widgetId
@@ -399,6 +438,7 @@ object RearStoreRepository {
         val previousBusiness = businesses.firstOrNull {
             it.matchesStoreBusiness(detail.widgetId, businessId)
         }
+        val installedAt = currentUtcTimestamp()
         val nextBusinesses = businesses
             .filterNot { it.matchesStoreBusiness(detail.widgetId, businessId) }
             .plus(
@@ -421,6 +461,7 @@ object RearStoreRepository {
                     storeReleaseAssetName = selectedAsset.asset.name.normalizedOrNull(),
                     storeReleasePublishedAt = selectedAsset.release.publishedAt.normalizedOrNull()
                         ?: selectedAsset.release.createdAt.normalizedOrNull(),
+                    storeInstalledAt = installedAt,
                 )
             )
         RearWidgetManagerRepository.saveBusinesses(
@@ -479,49 +520,77 @@ object RearStoreRepository {
         )
     }
 
-    private fun fetchBytes(url: String): ByteArray? {
-        return runCatching {
+    private suspend fun fetchBytes(
+        url: String,
+        onProgress: (RearStoreInstallProgress) -> Unit,
+    ): ByteArray? {
+        return try {
             val request = Request.Builder()
                 .url(url)
                 .build()
             httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return null
-                response.body.bytes()
-            }
-        }.getOrNull()
-    }
+                val body = response.body
+                val totalBytes = body.contentLength().takeIf { it > 0L } ?: -1L
+                emitInstallProgress(
+                    onProgress,
+                    RearStoreInstallProgress(
+                        stage = RearStoreInstallProgressStage.DOWNLOADING,
+                        downloadedBytes = 0L,
+                        totalBytes = totalBytes,
+                    ),
+                )
 
-    private suspend fun enrichListItems(items: List<RearStoreListItem>): List<RearStoreListItem> {
-        if (items.isEmpty()) return emptyList()
-        return coroutineScope {
-            items.map { item ->
-                async {
-                    val description = loadDescriptionCached(item.id)
-                    val repository = description?.repository
-                    val resolvedAuthor = resolveAuthor(
-                        item.author.takeIf { it.displayName.isNotBlank() }
-                            ?: loadAuthorCached(item.id),
-                        repository,
-                    )
-                    item.copy(
-                        name = description?.name.normalizedOrNull() ?: item.name,
-                        description = repository?.description.normalizedOrNull()
-                            ?: item.description,
-                        author = resolvedAuthor,
-                        updatedAt = item.updatedAt.normalizedOrNull()
-                            ?: repository?.updatedAt.normalizedOrNull()
-                            ?: repository?.pushedAt.normalizedOrNull()
-                            ?: "",
-                        repository = item.repository ?: repository?.let {
-                            RearStoreRepositoryLink(
-                                fullName = it.fullName,
-                                url = it.url,
+                body.byteStream().use { input ->
+                    ByteArrayOutputStream().use { output ->
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        var downloadedBytes = 0L
+                        var lastReportedBytes = 0L
+                        var lastReportedAtNanos = System.nanoTime()
+
+                        while (true) {
+                            val readCount = input.read(buffer)
+                            if (readCount < 0) break
+
+                            output.write(buffer, 0, readCount)
+                            downloadedBytes += readCount
+
+                            val now = System.nanoTime()
+                            val shouldReport =
+                                downloadedBytes == totalBytes ||
+                                        downloadedBytes - lastReportedBytes >= 64 * 1024 ||
+                                        now - lastReportedAtNanos >= 100_000_000L
+                            if (shouldReport) {
+                                emitInstallProgress(
+                                    onProgress,
+                                    RearStoreInstallProgress(
+                                        stage = RearStoreInstallProgressStage.DOWNLOADING,
+                                        downloadedBytes = downloadedBytes,
+                                        totalBytes = totalBytes,
+                                    ),
+                                )
+                                lastReportedBytes = downloadedBytes
+                                lastReportedAtNanos = now
+                            }
+                        }
+
+                        if (downloadedBytes != lastReportedBytes) {
+                            emitInstallProgress(
+                                onProgress,
+                                RearStoreInstallProgress(
+                                    stage = RearStoreInstallProgressStage.DOWNLOADING,
+                                    downloadedBytes = downloadedBytes,
+                                    totalBytes = totalBytes,
+                                ),
                             )
-                        },
-                        stargazersCount = repository?.stargazersCount ?: item.stargazersCount,
-                    )
+                        }
+
+                        output.toByteArray()
+                    }
                 }
-            }.awaitAll()
+            }
+        } catch (_: Throwable) {
+            null
         }
     }
 
@@ -587,9 +656,10 @@ object RearStoreRepository {
         }.getOrNull()
     }
 
-    private fun downloadAssetBytes(
+    private suspend fun downloadAssetBytes(
         widgetId: String,
         selectedAsset: RearStoreSelectedAsset,
+        onProgress: (RearStoreInstallProgress) -> Unit,
     ): ByteArray? {
         val tagName = selectedAsset.release.tagName.normalizedOrNull() ?: return null
         val assetName = selectedAsset.asset.name.normalizedOrNull() ?: return null
@@ -598,9 +668,22 @@ object RearStoreRepository {
                 Uri.encode(
                     assetName
                 )
-            }"
+            }",
+            onProgress = onProgress,
         )
-        return apiBytes ?: fetchBytes(selectedAsset.asset.downloadUrl)
+        return apiBytes ?: fetchBytes(
+            url = selectedAsset.asset.downloadUrl,
+            onProgress = onProgress,
+        )
+    }
+
+    private suspend fun emitInstallProgress(
+        onProgress: (RearStoreInstallProgress) -> Unit,
+        progress: RearStoreInstallProgress,
+    ) {
+        withContext(Dispatchers.Main) {
+            onProgress(progress)
+        }
     }
 
     private fun selectAsset(
@@ -630,6 +713,12 @@ object RearStoreRepository {
             fileName.endsWith(".zip") -> 1
             else -> 2
         }
+    }
+
+    private fun currentUtcTimestamp(): String {
+        return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }.format(Date())
     }
 
     private fun writeBytesAtomically(target: File, bytes: ByteArray) {

@@ -4,9 +4,9 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.media.MediaMetadata
 import android.os.Build
-import com.hchen.superlyricapi.ISuperLyric
+import com.hchen.superlyricapi.ISuperLyricReceiver
 import com.hchen.superlyricapi.SuperLyricData
-import com.hchen.superlyricapi.SuperLyricTool
+import com.hchen.superlyricapi.SuperLyricHelper
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
@@ -58,7 +58,7 @@ class LyriconHook : YukiBaseHooker() {
     var monitor: LyriconSubscriber? = null
 
     @Volatile
-    var superLyricStub: ISuperLyric.Stub? = null
+    var superLyricStub: ISuperLyricReceiver.Stub? = null
 
     override fun onHook() {
         loadApp("com.android.systemui") {
@@ -110,39 +110,45 @@ class LyriconHook : YukiBaseHooker() {
                         }
 
                         LyricProvider.SUPER_LYRIC -> {
-                            superLyricStub = object : ISuperLyric.Stub() {
-                                override fun onStop(data: SuperLyricData) {
+                            superLyricStub = object : ISuperLyricReceiver.Stub() {
+                                override fun onStop(publisher: String, data: SuperLyricData) {
                                 }
 
-                                override fun onSuperLyric(data: SuperLyricData) {
+                                override fun onLyric(publisher: String, data: SuperLyricData) {
                                     scope.launch {
                                         runCatching {
                                             if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
                                                 YLog.debug("onSuperLyric ${data.lyric} ${data.translation}")
                                             }
-                                            val mode = prefs.getInt(
-                                                ConfigKeys.SUPER_LYRIC_DISPLAY_MODE,
-                                                ConfigKeys.SUPER_LYRIC_DISPLAY_MODE_DEFAULT
-                                            )
-                                            val originalLines = data.lyric.split("\n")
-                                            val lyric = when {
-                                                LyricParser.DisplayMode.shouldShowTranslation(mode) -> {
-                                                    val translation = data.translation
-                                                    if (!translation.isNullOrEmpty()) {
-                                                        translation
-                                                    } else if (originalLines.size > 1) {
-                                                        originalLines[1]
-                                                    } else {
-                                                        data.lyric
+                                            if (data.hasLyric()) {
+                                                val mode = prefs.getInt(
+                                                    ConfigKeys.SUPER_LYRIC_DISPLAY_MODE,
+                                                    ConfigKeys.SUPER_LYRIC_DISPLAY_MODE_DEFAULT
+                                                )
+                                                val rawLyric = data.lyric!!
+                                                val originalLines = rawLyric.text.split("\n")
+                                                val lyric = when {
+                                                    LyricParser.DisplayMode.shouldShowTranslation(
+                                                        mode
+                                                    ) -> {
+                                                        if (data.hasTranslation()) {
+                                                            val translation = data.translation!!
+                                                            translation.text
+                                                        } else if (originalLines.size > 1) {
+                                                            originalLines[1]
+                                                        } else {
+                                                            rawLyric.text
+                                                        }
+                                                    }
+
+                                                    else -> {
+                                                        originalLines[0]
                                                     }
                                                 }
 
-                                                else -> {
-                                                    originalLines[0]
+                                                if (lyric.isNotEmpty()) {
+                                                    updateFallbackLyric(lyric)
                                                 }
-                                            }
-                                            if (lyric.isNotEmpty()) {
-                                                updateFallbackLyric(lyric)
                                             }
                                         }.onFailure {
                                             YLog.error(it)
@@ -150,7 +156,7 @@ class LyriconHook : YukiBaseHooker() {
                                     }
                                 }
                             }
-                            SuperLyricTool.registerSuperLyric(context, superLyricStub!!)
+                            SuperLyricHelper.registerReceiver(superLyricStub!!)
                             YLog.info("Registered super-lyric listener")
                         }
                     }
@@ -161,9 +167,8 @@ class LyriconHook : YukiBaseHooker() {
                         it.unregister()
                         it.destroy()
                     }
-                    val context = appContext ?: return@onTerminate
                     superLyricStub?.also {
-                        SuperLyricTool.unregisterSuperLyric(context, it)
+                        SuperLyricHelper.unregisterReceiver(it)
                     }
                     YLog.debug("Terminated music lyric services")
                 }

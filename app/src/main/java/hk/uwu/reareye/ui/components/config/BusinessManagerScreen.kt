@@ -73,6 +73,7 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
@@ -196,6 +197,7 @@ fun BusinessManagerScreen(
             storeReleaseTag = editingBusiness?.storeReleaseTag,
             storeReleaseAssetName = editingBusiness?.storeReleaseAssetName,
             storeReleasePublishedAt = editingBusiness?.storeReleasePublishedAt,
+            storeInstalledAt = editingBusiness?.storeInstalledAt,
         )
 
         editingId?.let { id ->
@@ -389,7 +391,7 @@ fun BusinessManagerScreen(
                                     Icon(
                                         imageVector = Icons.Outlined.Lock,
                                         contentDescription = null,
-                                        tint = Color.Unspecified,
+                                        tint = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.82f),
                                     )
                                 }
                             },
@@ -446,8 +448,7 @@ fun BusinessManagerScreen(
         ),
         onDismissRequest = { showDialog.value = false },
     ) {
-        val editingBusiness = dialogEditingBusiness
-        val lockedBusiness = editingBusiness?.takeIf { !it.renameable }
+        val lockedBusiness = dialogEditingBusiness?.takeIf { !it.renameable }
         Column(
             modifier = Modifier
                 .fillMaxWidth()

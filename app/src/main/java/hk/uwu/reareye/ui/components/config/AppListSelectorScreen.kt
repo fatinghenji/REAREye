@@ -774,165 +774,171 @@ fun AppListSelectorScreen(
                         }
                     },
                     actions = {
-                        IconButton(
-                            onClick = { showSortMenu.value = true },
-                            holdDownState = showSortMenu.value
-                        ) {
-                            Icon(
-                                imageVector = MiuixIcons.Regular.Sort,
-                                contentDescription = stringResource(R.string.app_list_sort),
-                                tint = MiuixTheme.colorScheme.onBackground,
-                            )
-                        }
-                        OverlayListPopup(
-                            show = showSortMenu.value,
-                            popupModifier = Modifier,
-                            popupPositionProvider = ListPopupDefaults.ContextMenuPositionProvider,
-                            alignment = PopupPositionProvider.Align.TopEnd,
-                            enableWindowDim = true,
-                            onDismissRequest = { showSortMenu.value = false },
-                            maxHeight = null,
-                            minWidth = 200.dp,
-                            renderInRootScaffold = true,
-                            content = {
-                                ListPopupColumn {
-                                    SpinnerItemImpl(
-                                        entry = SpinnerEntry(title = stringResource(R.string.app_list_sort_by_name)),
-                                        entryCount = 3,
-                                        isSelected = sortMode == AppSortMode.LABEL,
-                                        index = 0,
-                                        spinnerColors = SpinnerDefaults.spinnerColors(),
-                                        onSelectedIndexChange = {
-                                            dismissThenApply(
-                                                { showSortMenu.value = false },
-                                                { sortMode = AppSortMode.LABEL },
-                                            )
-                                        },
-                                    )
-                                    SpinnerItemImpl(
-                                        entry = SpinnerEntry(title = stringResource(R.string.app_list_sort_by_package)),
-                                        entryCount = 3,
-                                        isSelected = sortMode == AppSortMode.PACKAGE,
-                                        index = 1,
-                                        spinnerColors = SpinnerDefaults.spinnerColors(),
-                                        onSelectedIndexChange = {
-                                            dismissThenApply(
-                                                { showSortMenu.value = false },
-                                                { sortMode = AppSortMode.PACKAGE },
-                                            )
-                                        },
-                                    )
-                                    SpinnerItemImpl(
-                                        entry = SpinnerEntry(title = stringResource(R.string.app_list_sort_reverse)),
-                                        entryCount = 3,
-                                        isSelected = reverseOrder,
-                                        index = 2,
-                                        spinnerColors = SpinnerDefaults.spinnerColors(),
-                                        onSelectedIndexChange = {
-                                            dismissThenApply(
-                                                { showSortMenu.value = false },
-                                                { reverseOrder = !reverseOrder },
-                                            )
-                                        },
-                                    )
-                                }
-                            })
-
-                        IconButton(
-                            onClick = { showFilterMenu.value = true },
-                            holdDownState = showFilterMenu.value
-                        ) {
-                            Icon(
-                                imageVector = MiuixIcons.Regular.Tune,
-                                contentDescription = stringResource(R.string.app_list_filter),
-                                tint = MiuixTheme.colorScheme.onBackground,
-                            )
-                        }
-                        OverlayListPopup(
-                            show = showFilterMenu.value,
-                            popupModifier = Modifier,
-                            popupPositionProvider = ListPopupDefaults.ContextMenuPositionProvider,
-                            alignment = PopupPositionProvider.Align.TopEnd,
-                            enableWindowDim = true,
-                            onDismissRequest = { showFilterMenu.value = false },
-                            maxHeight = null,
-                            minWidth = 200.dp,
-                            renderInRootScaffold = true,
-                            content = {
-                                ListPopupColumn {
-                                    SpinnerItemImpl(
-                                        entry = SpinnerEntry(
-                                            icon = { modifier ->
-                                                Icon(
-                                                    imageVector = Icons.Filled.Apps,
-                                                    contentDescription = null,
-                                                    modifier = modifier,
-                                                    tint = MiuixTheme.colorScheme.onBackground,
+                        Box {
+                            IconButton(
+                                onClick = { showSortMenu.value = true },
+                                holdDownState = showSortMenu.value
+                            ) {
+                                Icon(
+                                    imageVector = MiuixIcons.Regular.Sort,
+                                    contentDescription = stringResource(R.string.app_list_sort),
+                                    tint = MiuixTheme.colorScheme.onBackground,
+                                )
+                            }
+                            OverlayListPopup(
+                                show = showSortMenu.value,
+                                popupModifier = Modifier,
+                                popupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
+                                alignment = PopupPositionProvider.Align.End,
+                                enableWindowDim = true,
+                                onDismissRequest = { showSortMenu.value = false },
+                                maxHeight = null,
+                                minWidth = 200.dp,
+                                renderInRootScaffold = true,
+                                content = {
+                                    ListPopupColumn {
+                                        SpinnerItemImpl(
+                                            entry = SpinnerEntry(title = stringResource(R.string.app_list_sort_by_name)),
+                                            entryCount = 3,
+                                            isSelected = sortMode == AppSortMode.LABEL,
+                                            index = 0,
+                                            spinnerColors = SpinnerDefaults.spinnerColors(),
+                                            onSelectedIndexChange = {
+                                                dismissThenApply(
+                                                    { showSortMenu.value = false },
+                                                    { sortMode = AppSortMode.LABEL },
                                                 )
                                             },
-                                            title = stringResource(R.string.show_system_apps),
-                                        ),
-                                        entryCount = 1,
-                                        isSelected = showSystemApps,
-                                        index = 0,
-                                        spinnerColors = SpinnerDefaults.spinnerColors(),
-                                        onSelectedIndexChange = {
-                                            dismissThenApply(
-                                                { showFilterMenu.value = false },
-                                                { showSystemApps = !showSystemApps },
-                                            )
-                                        },
-                                    )
-                                }
-                            })
-
-                        IconButton(
-                            onClick = { showMoreMenu.value = true },
-                            holdDownState = showMoreMenu.value,
-                        ) {
-                            Icon(
-                                imageVector = MiuixIcons.MoreCircle,
-                                contentDescription = stringResource(R.string.app_list_more_actions),
-                                tint = MiuixTheme.colorScheme.onBackground,
-                            )
-                        }
-                        OverlayListPopup(
-                            show = showMoreMenu.value,
-                            popupModifier = Modifier,
-                            popupPositionProvider = ListPopupDefaults.ContextMenuPositionProvider,
-                            alignment = PopupPositionProvider.Align.TopEnd,
-                            enableWindowDim = true,
-                            onDismissRequest = { showMoreMenu.value = false },
-                            maxHeight = null,
-                            minWidth = 200.dp,
-                            renderInRootScaffold = true,
-                            content = {
-                                ListPopupColumn {
-                                    SpinnerItemImpl(
-                                        entry = SpinnerEntry(
-                                            icon = { modifier ->
-                                                Icon(
-                                                    imageVector = Icons.Filled.Delete,
-                                                    contentDescription = null,
-                                                    modifier = modifier,
-                                                    tint = MiuixTheme.colorScheme.onBackground,
+                                        )
+                                        SpinnerItemImpl(
+                                            entry = SpinnerEntry(title = stringResource(R.string.app_list_sort_by_package)),
+                                            entryCount = 3,
+                                            isSelected = sortMode == AppSortMode.PACKAGE,
+                                            index = 1,
+                                            spinnerColors = SpinnerDefaults.spinnerColors(),
+                                            onSelectedIndexChange = {
+                                                dismissThenApply(
+                                                    { showSortMenu.value = false },
+                                                    { sortMode = AppSortMode.PACKAGE },
                                                 )
                                             },
-                                            title = stringResource(R.string.selection_clear),
-                                        ),
-                                        entryCount = 1,
-                                        isSelected = false,
-                                        index = 0,
-                                        spinnerColors = SpinnerDefaults.spinnerColors(),
-                                        onSelectedIndexChange = {
-                                            dismissThenApply(
-                                                { showMoreMenu.value = false },
-                                                { selectedOrder.clear() },
-                                            )
-                                        },
-                                    )
-                                }
-                            })
+                                        )
+                                        SpinnerItemImpl(
+                                            entry = SpinnerEntry(title = stringResource(R.string.app_list_sort_reverse)),
+                                            entryCount = 3,
+                                            isSelected = reverseOrder,
+                                            index = 2,
+                                            spinnerColors = SpinnerDefaults.spinnerColors(),
+                                            onSelectedIndexChange = {
+                                                dismissThenApply(
+                                                    { showSortMenu.value = false },
+                                                    { reverseOrder = !reverseOrder },
+                                                )
+                                            },
+                                        )
+                                    }
+                                })
+                        }
+
+                        Box {
+                            IconButton(
+                                onClick = { showFilterMenu.value = true },
+                                holdDownState = showFilterMenu.value
+                            ) {
+                                Icon(
+                                    imageVector = MiuixIcons.Regular.Tune,
+                                    contentDescription = stringResource(R.string.app_list_filter),
+                                    tint = MiuixTheme.colorScheme.onBackground,
+                                )
+                            }
+                            OverlayListPopup(
+                                show = showFilterMenu.value,
+                                popupModifier = Modifier,
+                                popupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
+                                alignment = PopupPositionProvider.Align.End,
+                                enableWindowDim = true,
+                                onDismissRequest = { showFilterMenu.value = false },
+                                maxHeight = null,
+                                minWidth = 200.dp,
+                                renderInRootScaffold = true,
+                                content = {
+                                    ListPopupColumn {
+                                        SpinnerItemImpl(
+                                            entry = SpinnerEntry(
+                                                icon = { modifier ->
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Apps,
+                                                        contentDescription = null,
+                                                        modifier = modifier,
+                                                        tint = MiuixTheme.colorScheme.onBackground,
+                                                    )
+                                                },
+                                                title = stringResource(R.string.show_system_apps),
+                                            ),
+                                            entryCount = 1,
+                                            isSelected = showSystemApps,
+                                            index = 0,
+                                            spinnerColors = SpinnerDefaults.spinnerColors(),
+                                            onSelectedIndexChange = {
+                                                dismissThenApply(
+                                                    { showFilterMenu.value = false },
+                                                    { showSystemApps = !showSystemApps },
+                                                )
+                                            },
+                                        )
+                                    }
+                                })
+                        }
+
+                        Box {
+                            IconButton(
+                                onClick = { showMoreMenu.value = true },
+                                holdDownState = showMoreMenu.value,
+                            ) {
+                                Icon(
+                                    imageVector = MiuixIcons.MoreCircle,
+                                    contentDescription = stringResource(R.string.app_list_more_actions),
+                                    tint = MiuixTheme.colorScheme.onBackground,
+                                )
+                            }
+                            OverlayListPopup(
+                                show = showMoreMenu.value,
+                                popupModifier = Modifier,
+                                popupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
+                                alignment = PopupPositionProvider.Align.End,
+                                enableWindowDim = true,
+                                onDismissRequest = { showMoreMenu.value = false },
+                                maxHeight = null,
+                                minWidth = 200.dp,
+                                renderInRootScaffold = true,
+                                content = {
+                                    ListPopupColumn {
+                                        SpinnerItemImpl(
+                                            entry = SpinnerEntry(
+                                                icon = { modifier ->
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Delete,
+                                                        contentDescription = null,
+                                                        modifier = modifier,
+                                                        tint = MiuixTheme.colorScheme.onBackground,
+                                                    )
+                                                },
+                                                title = stringResource(R.string.selection_clear),
+                                            ),
+                                            entryCount = 1,
+                                            isSelected = false,
+                                            index = 0,
+                                            spinnerColors = SpinnerDefaults.spinnerColors(),
+                                            onSelectedIndexChange = {
+                                                dismissThenApply(
+                                                    { showMoreMenu.value = false },
+                                                    { selectedOrder.clear() },
+                                                )
+                                            },
+                                        )
+                                    }
+                                })
+                        }
                     },
                     scrollBehavior = scrollBehavior,
                 )

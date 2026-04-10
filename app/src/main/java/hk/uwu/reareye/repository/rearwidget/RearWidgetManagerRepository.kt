@@ -544,11 +544,7 @@ object RearWidgetManagerRepository {
                         (existing.downloadedFromStore && candidate.storeWidgetId != null && existing.storeWidgetId == candidate.storeWidgetId) ||
                         (existing.packageName == candidate.packageName && existing.business == candidate.business)
             }
-            if (locked == null) {
-                candidate
-            } else {
-                locked.copy(priority = candidate.priority)
-            }
+            locked?.copy(priority = candidate.priority) ?: candidate
         }.toMutableList()
 
         return merged

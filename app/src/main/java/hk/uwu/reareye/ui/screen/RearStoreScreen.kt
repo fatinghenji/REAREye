@@ -89,6 +89,7 @@ import androidx.core.net.toUri
 import hk.uwu.reareye.BuildConfig
 import hk.uwu.reareye.R
 import hk.uwu.reareye.repository.rearstore.RearStoreAuthor
+import hk.uwu.reareye.repository.rearstore.RearStoreInstallProgressStage
 import hk.uwu.reareye.repository.rearstore.RearStoreInstalledWidget
 import hk.uwu.reareye.repository.rearstore.RearStoreListItem
 import hk.uwu.reareye.repository.rearstore.RearStoreRelease
@@ -104,6 +105,7 @@ import hk.uwu.reareye.ui.theme.rearAcrylicSource
 import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
 import hk.uwu.reareye.ui.theme.rememberAcrylicHazeStyle
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Headers
@@ -120,8 +122,14 @@ import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.ListPopupColumn
+import top.yukonga.miuix.kmp.basic.ListPopupDefaults
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import top.yukonga.miuix.kmp.basic.PopupPositionProvider
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SpinnerDefaults
+import top.yukonga.miuix.kmp.basic.SpinnerEntry
+import top.yukonga.miuix.kmp.basic.SpinnerItemImpl
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.TabRowWithContour
 import top.yukonga.miuix.kmp.basic.Text
@@ -129,12 +137,17 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Download
 import top.yukonga.miuix.kmp.icon.extended.Link
+import top.yukonga.miuix.kmp.icon.extended.Sort
+import top.yukonga.miuix.kmp.overlay.OverlayListPopup
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.text.DecimalFormat
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 import java.util.concurrent.ConcurrentHashMap
 
 private val rearStoreAvatarHttpClient = OkHttpClient.Builder()
@@ -149,16 +162,25 @@ private val rearStoreAvatarHttpClient = OkHttpClient.Builder()
     }
     .build()
 
-private sealed interface RearStoreRoute {
-    data object Root : RearStoreRoute
-    data class Detail(val widgetId: String) : RearStoreRoute
-}
-
 private enum class RearStoreDetailTab {
     README,
     DOWNLOADS,
     INFO,
 }
+
+private enum class RearStoreSortMode {
+    UPDATED_AT,
+    INSTALLED_AT,
+    NAME,
+    STARS,
+}
+
+private data class RearStoreActiveInstall(
+    val assetKey: String,
+    val phase: RearStoreInstallProgressStage = RearStoreInstallProgressStage.CONNECTING,
+    val downloadedBytes: Long = 0L,
+    val totalBytes: Long = -1L,
+)
 
 private object RearStoreAvatarCache {
     private val cache = ConcurrentHashMap<String, ImageBitmap>()
@@ -283,11 +305,145 @@ private fun defaultInstallInfo(detail: RearStoreWidgetDetail): Triple<String, Bo
     return Triple(businessId, hasCard, cardId)
 }
 
+private fun parseIsoEpochMillis(value: String?): Long {
+    val normalized = value.normalizedOrNull() ?: return Long.MIN_VALUE
+    val patterns = listOf(
+        "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+        "yyyy-MM-dd'T'HH:mm:ss'Z'",
+        "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
+        "yyyy-MM-dd'T'HH:mm:ssXXX",
+    )
+    patterns.forEach { pattern ->
+        val parsed = runCatching {
+            SimpleDateFormat(pattern, Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
+            }.parse(normalized)
+        }.getOrNull()
+        if (parsed != null) {
+            return parsed.time
+        }
+    }
+    return Long.MIN_VALUE
+}
+
+private fun RearStoreListItem.matchesLocalQuery(query: String): Boolean {
+    val tokens = query.trim()
+        .split(Regex("\\s+"))
+        .mapNotNull(String::normalizedOrNull)
+    if (tokens.isEmpty()) return true
+
+    val searchableFields = listOf(
+        id,
+        displayName,
+        description,
+        author.displayName,
+        author.login,
+        repository?.fullName.orEmpty(),
+        latestReleaseTag.orEmpty(),
+    )
+
+    return tokens.all { token ->
+        searchableFields.any { field -> field.contains(token, ignoreCase = true) }
+    }
+}
+
+private fun RearStoreListItem.hasAvailableUpdate(
+    installedWidgets: Map<String, RearStoreInstalledWidget>,
+): Boolean {
+    val installedReleaseTag = installedWidgets[id]?.releaseTag.normalizedOrNull() ?: return false
+    val latestReleaseTag = latestReleaseTag.normalizedOrNull() ?: return false
+    return installedReleaseTag != latestReleaseTag
+}
+
+private fun RearStoreListItem.updatedAtSortValue(): Long {
+    return maxOf(
+        parseIsoEpochMillis(latestReleasePublishedAt),
+        parseIsoEpochMillis(updatedAt),
+    )
+}
+
+private fun RearStoreListItem.installedAtSortValue(
+    installedWidgets: Map<String, RearStoreInstalledWidget>,
+): Long {
+    val installedWidget = installedWidgets[id] ?: return Long.MIN_VALUE
+    return maxOf(
+        parseIsoEpochMillis(installedWidget.installedAt),
+        parseIsoEpochMillis(installedWidget.releasePublishedAt),
+    )
+}
+
+private fun compareStoreItemNames(
+    left: RearStoreListItem,
+    right: RearStoreListItem,
+): Int {
+    val displayNameComparison =
+        left.displayName.lowercase().compareTo(right.displayName.lowercase())
+    if (displayNameComparison != 0) return displayNameComparison
+    return left.id.lowercase().compareTo(right.id.lowercase())
+}
+
+private fun buildVisibleStoreItems(
+    allItems: List<RearStoreListItem>,
+    query: String,
+    sortMode: RearStoreSortMode,
+    prioritizeUpdates: Boolean,
+    installedWidgets: Map<String, RearStoreInstalledWidget>,
+): List<RearStoreListItem> {
+    return allItems
+        .asSequence()
+        .filter { it.matchesLocalQuery(query) }
+        .sortedWith { left, right ->
+            if (prioritizeUpdates) {
+                val leftHasUpdate = left.hasAvailableUpdate(installedWidgets)
+                val rightHasUpdate = right.hasAvailableUpdate(installedWidgets)
+                if (leftHasUpdate != rightHasUpdate) {
+                    return@sortedWith rightHasUpdate.compareTo(leftHasUpdate)
+                }
+            }
+
+            when (sortMode) {
+                RearStoreSortMode.UPDATED_AT -> {
+                    val updatedComparison =
+                        right.updatedAtSortValue().compareTo(left.updatedAtSortValue())
+                    if (updatedComparison != 0) return@sortedWith updatedComparison
+                }
+
+                RearStoreSortMode.INSTALLED_AT -> {
+                    val installedComparison = right.installedAtSortValue(installedWidgets)
+                        .compareTo(left.installedAtSortValue(installedWidgets))
+                    if (installedComparison != 0) return@sortedWith installedComparison
+
+                    val updatedComparison =
+                        right.updatedAtSortValue().compareTo(left.updatedAtSortValue())
+                    if (updatedComparison != 0) return@sortedWith updatedComparison
+                }
+
+                RearStoreSortMode.NAME -> {
+                    val nameComparison = compareStoreItemNames(left, right)
+                    if (nameComparison != 0) return@sortedWith nameComparison
+                }
+
+                RearStoreSortMode.STARS -> {
+                    val starsComparison = right.stargazersCount.compareTo(left.stargazersCount)
+                    if (starsComparison != 0) return@sortedWith starsComparison
+
+                    val updatedComparison =
+                        right.updatedAtSortValue().compareTo(left.updatedAtSortValue())
+                    if (updatedComparison != 0) return@sortedWith updatedComparison
+                }
+            }
+
+            compareStoreItemNames(left, right)
+        }
+        .toList()
+}
+
 @Composable
 fun RearStoreScreen(bottomInnerPadding: Dp = 0.dp) {
     val context = LocalContext.current
     val prefsManager = remember { context.getPrefsManager() }
-    var route by remember { mutableStateOf<RearStoreRoute>(RearStoreRoute.Root) }
+    val selectedWidgetIdState = remember { mutableStateOf<String?>(null) }
+    val selectedWidgetId = selectedWidgetIdState.value
     var installedWidgets by remember {
         mutableStateOf<Map<String, RearStoreInstalledWidget>>(
             emptyMap()
@@ -304,18 +460,18 @@ fun RearStoreScreen(bottomInnerPadding: Dp = 0.dp) {
         reloadInstalledWidgets()
     }
 
-    BackHandler(enabled = route is RearStoreRoute.Detail) {
-        route = RearStoreRoute.Root
+    BackHandler(enabled = selectedWidgetId != null) {
+        selectedWidgetIdState.value = null
     }
 
     AnimatedContent(
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer { clip = true },
-        targetState = route,
-        contentKey = { it },
+        targetState = selectedWidgetId,
+        contentKey = { it ?: "rear-store-root" },
         transitionSpec = {
-            val forward = targetState is RearStoreRoute.Detail
+            val forward = targetState != null
             fadeIn(
                 animationSpec = tween(
                     durationMillis = 210,
@@ -342,18 +498,19 @@ fun RearStoreScreen(bottomInnerPadding: Dp = 0.dp) {
                     )
         },
         label = "RearStoreRouteTransition",
-    ) { currentRoute ->
-        when (currentRoute) {
-            RearStoreRoute.Root -> RearStoreRootContent(
+    ) { currentWidgetId ->
+        if (currentWidgetId == null) {
+            RearStoreRootContent(
                 bottomInnerPadding = bottomInnerPadding,
-                onOpenDetail = { route = RearStoreRoute.Detail(it) },
+                installedWidgets = installedWidgets,
+                onOpenDetail = { selectedWidgetIdState.value = it },
             )
-
-            is RearStoreRoute.Detail -> RearStoreDetailContent(
-                widgetId = currentRoute.widgetId,
+        } else {
+            RearStoreDetailContent(
+                widgetId = currentWidgetId,
                 bottomInnerPadding = bottomInnerPadding,
-                installedWidget = installedWidgets[currentRoute.widgetId],
-                onBack = { route = RearStoreRoute.Root },
+                installedWidget = installedWidgets[currentWidgetId],
+                onBack = { selectedWidgetIdState.value = null },
                 onInstalled = { reloadInstalledWidgets() },
             )
         }
@@ -363,51 +520,68 @@ fun RearStoreScreen(bottomInnerPadding: Dp = 0.dp) {
 @Composable
 private fun RearStoreRootContent(
     bottomInnerPadding: Dp,
+    installedWidgets: Map<String, RearStoreInstalledWidget>,
     onOpenDetail: (String) -> Unit,
 ) {
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val scrollBehavior = MiuixScrollBehavior()
     val hazeState = rememberAcrylicHazeState()
     val hazeStyle = rememberAcrylicHazeStyle()
 
     var searchInput by remember { mutableStateOf("") }
     var searchQuery by remember { mutableStateOf("") }
-    var searchFocused by remember { mutableStateOf(false) }
+    val searchFocusedState = remember { mutableStateOf(false) }
+    val searchFocused = searchFocusedState.value
     var loading by remember { mutableStateOf(true) }
     var loadFailed by remember { mutableStateOf(false) }
-    var items by remember { mutableStateOf(emptyList<RearStoreListItem>()) }
+    var allItems by remember { mutableStateOf(emptyList<RearStoreListItem>()) }
+    var sortMode by remember { mutableStateOf(RearStoreSortMode.UPDATED_AT) }
+    var prioritizeUpdates by remember { mutableStateOf(true) }
+    val showSortMenu = remember { mutableStateOf(false) }
 
-    suspend fun runSearch() {
+    suspend fun loadWidgets() {
         loading = true
         loadFailed = false
-        val normalizedQuery = searchQuery.normalizedOrNull()
         val result = withContext(Dispatchers.IO) {
             runCatching {
-                if (normalizedQuery == null) {
-                    RearStoreRepository.loadRecentUpdates()
-                } else {
-                    RearStoreRepository.searchWidgets(normalizedQuery)
-                }
+                RearStoreRepository.loadWidgets()
             }.getOrNull()
         }
         if (result == null) {
             loadFailed = true
-            items = emptyList()
+            allItems = emptyList()
         } else {
-            items = result
+            allItems = result
         }
         loading = false
     }
 
-    fun submitSearch() {
-        val nextQuery = searchInput.trim()
-        if (nextQuery == searchQuery) return
-        searchQuery = nextQuery
+    BackHandler(enabled = searchFocused) {
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
     }
 
-    LaunchedEffect(searchQuery) {
-        if (searchQuery == searchInput.trim()) {
-            runSearch()
+    LaunchedEffect(Unit) {
+        loadWidgets()
+    }
+
+    LaunchedEffect(searchInput) {
+        delay(90)
+        val nextQuery = searchInput.trim()
+        if (searchQuery != nextQuery) {
+            searchQuery = nextQuery
         }
+    }
+
+    val items = remember(allItems, searchQuery, sortMode, prioritizeUpdates, installedWidgets) {
+        buildVisibleStoreItems(
+            allItems = allItems,
+            query = searchQuery,
+            sortMode = sortMode,
+            prioritizeUpdates = prioritizeUpdates,
+            installedWidgets = installedWidgets,
+        )
     }
 
     Scaffold(
@@ -423,6 +597,93 @@ private fun RearStoreRootContent(
                     title = stringResource(R.string.store_navigation),
                     navigationIconPadding = 12.dp,
                     actionIconPadding = 12.dp,
+                    actions = {
+                        Box {
+                            IconButton(
+                                onClick = { showSortMenu.value = true },
+                                holdDownState = showSortMenu.value,
+                            ) {
+                                Icon(
+                                    imageVector = MiuixIcons.Regular.Sort,
+                                    contentDescription = stringResource(R.string.app_list_sort),
+                                    tint = MiuixTheme.colorScheme.onBackground,
+                                )
+                            }
+                            OverlayListPopup(
+                                show = showSortMenu.value,
+                                popupModifier = Modifier,
+                                popupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
+                                alignment = PopupPositionProvider.Align.End,
+                                enableWindowDim = true,
+                                onDismissRequest = { showSortMenu.value = false },
+                                maxHeight = null,
+                                minWidth = 220.dp,
+                                renderInRootScaffold = true,
+                                content = {
+                                    ListPopupColumn {
+                                        SpinnerItemImpl(
+                                            entry = SpinnerEntry(title = stringResource(R.string.rear_store_prioritize_updates)),
+                                            entryCount = 5,
+                                            isSelected = prioritizeUpdates,
+                                            index = 0,
+                                            spinnerColors = SpinnerDefaults.spinnerColors(),
+                                            onSelectedIndexChange = {
+                                                prioritizeUpdates = !prioritizeUpdates
+                                            },
+                                        )
+                                        HorizontalDivider(
+                                            thickness = 0.5.dp,
+                                            color = MiuixTheme.colorScheme.outline.copy(alpha = 0.35f),
+                                        )
+                                        SpinnerItemImpl(
+                                            entry = SpinnerEntry(title = stringResource(R.string.rear_store_sort_by_updated_at)),
+                                            entryCount = 5,
+                                            isSelected = sortMode == RearStoreSortMode.UPDATED_AT,
+                                            index = 1,
+                                            spinnerColors = SpinnerDefaults.spinnerColors(),
+                                            onSelectedIndexChange = {
+                                                showSortMenu.value = false
+                                                sortMode = RearStoreSortMode.UPDATED_AT
+                                            },
+                                        )
+                                        SpinnerItemImpl(
+                                            entry = SpinnerEntry(title = stringResource(R.string.rear_store_sort_by_installed_at)),
+                                            entryCount = 5,
+                                            isSelected = sortMode == RearStoreSortMode.INSTALLED_AT,
+                                            index = 2,
+                                            spinnerColors = SpinnerDefaults.spinnerColors(),
+                                            onSelectedIndexChange = {
+                                                showSortMenu.value = false
+                                                sortMode = RearStoreSortMode.INSTALLED_AT
+                                            },
+                                        )
+                                        SpinnerItemImpl(
+                                            entry = SpinnerEntry(title = stringResource(R.string.rear_store_sort_by_name)),
+                                            entryCount = 5,
+                                            isSelected = sortMode == RearStoreSortMode.NAME,
+                                            index = 3,
+                                            spinnerColors = SpinnerDefaults.spinnerColors(),
+                                            onSelectedIndexChange = {
+                                                showSortMenu.value = false
+                                                sortMode = RearStoreSortMode.NAME
+                                            },
+                                        )
+                                        SpinnerItemImpl(
+                                            entry = SpinnerEntry(title = stringResource(R.string.rear_store_sort_by_stars)),
+                                            entryCount = 5,
+                                            isSelected = sortMode == RearStoreSortMode.STARS,
+                                            index = 4,
+                                            spinnerColors = SpinnerDefaults.spinnerColors(),
+                                            onSelectedIndexChange = {
+                                                showSortMenu.value = false
+                                                sortMode = RearStoreSortMode.STARS
+                                            },
+                                        )
+                                    }
+                                },
+                            )
+                        }
+                    },
                     scrollBehavior = scrollBehavior,
                 )
                 RearStoreSearchField(
@@ -431,13 +692,8 @@ private fun RearStoreRootContent(
                         .padding(horizontal = 12.dp)
                         .padding(bottom = 12.dp),
                     onValueChange = { searchInput = it },
-                    onSearchSubmit = { submitSearch() },
-                    onSearchFocusChange = { focused ->
-                        if (searchFocused && !focused) {
-                            submitSearch()
-                        }
-                        searchFocused = focused
-                    },
+                    onSearchSubmit = { searchQuery = searchInput.trim() },
+                    onSearchFocusChange = { focused -> searchFocusedState.value = focused },
                 )
             }
         },
@@ -479,6 +735,8 @@ private fun RearStoreRootContent(
                     ) {
                         RearStoreListCard(
                             item = item,
+                            installedWidget = installedWidgets[item.id],
+                            updateAvailable = item.hasAvailableUpdate(installedWidgets),
                             onClick = { onOpenDetail(item.id) },
                         )
                     }
@@ -510,7 +768,7 @@ private fun RearStoreDetailContent(
     var loadFailed by remember(widgetId) { mutableStateOf(false) }
     var selectedTab by remember(widgetId) { mutableStateOf(RearStoreDetailTab.README) }
     var showAllReleases by remember(widgetId) { mutableStateOf(false) }
-    var activeAssetKey by remember(widgetId) { mutableStateOf<String?>(null) }
+    var activeInstall by remember(widgetId) { mutableStateOf<RearStoreActiveInstall?>(null) }
     var readmeLoading by remember(widgetId) { mutableStateOf(false) }
     var readmeLoaded by remember(widgetId) { mutableStateOf(false) }
 
@@ -674,105 +932,182 @@ private fun RearStoreDetailContent(
                 }
             }
 
-            when (selectedTab) {
-                RearStoreDetailTab.README -> {
-                    item {
-                        ArtRevealItem(visible = true, delayMillis = 42) {
-                            when {
-                                readmeLoading && widgetDetail.readme == null -> RearStoreLoadingCard()
-                                readmeLoaded && widgetDetail.readme?.content.isNullOrBlank() -> {
-                                    RearStoreMessageCard(text = stringResource(R.string.rear_store_readme_empty))
-                                }
-
-                                else -> RearStoreReadmeCard(
-                                    markdown = widgetDetail.readme?.content.orEmpty(),
-                                    repoBaseUrl = widgetDetail.repository?.url,
-                                    webViewCache = markdownWebViewCache,
+            item {
+                RearStoreDetailTabContent(
+                    selectedTab = selectedTab,
+                    widgetDetail = widgetDetail,
+                    visibleReleases = visibleReleases,
+                    showAllReleases = showAllReleases,
+                    readmeLoading = readmeLoading,
+                    readmeLoaded = readmeLoaded,
+                    webViewCache = markdownWebViewCache,
+                    activeInstall = activeInstall,
+                    authorPlaceholderAlpha = authorPlaceholderAlpha,
+                    onShowAllReleases = { showAllReleases = true },
+                    onInstallAsset = { release, asset ->
+                        scope.launch {
+                            val assetKey =
+                                widgetDetail.widgetId + ":" + release.tagName + ":" + asset.name
+                            activeInstall = RearStoreActiveInstall(assetKey = assetKey)
+                            val result = runCatching {
+                                RearStoreRepository.quickInstallWidget(
+                                    context = context,
+                                    prefsManager = prefsManager,
+                                    widgetId = widgetDetail.widgetId,
+                                    releaseTag = release.tagName,
+                                    assetName = asset.name,
+                                    onProgress = { progress ->
+                                        if (activeInstall?.assetKey == assetKey) {
+                                            activeInstall = activeInstall?.copy(
+                                                phase = progress.stage,
+                                                downloadedBytes = progress.downloadedBytes,
+                                                totalBytes = progress.totalBytes,
+                                            )
+                                        }
+                                    },
                                 )
                             }
+                            val installResult = result.getOrNull()
+                            if (installResult != null) {
+                                activeInstall =
+                                    activeInstall?.takeIf { it.assetKey == assetKey }?.let {
+                                        if (it.totalBytes > 0L) {
+                                            it.copy(
+                                                phase = RearStoreInstallProgressStage.DOWNLOADING,
+                                                downloadedBytes = it.totalBytes,
+                                            )
+                                        } else {
+                                            it
+                                        }
+                                    }
+                                delay(360)
+                                activeInstall = null
+                                onInstalled()
+                                Toast.makeText(
+                                    context,
+                                    context.getString(
+                                        if (installResult.cardInstalled) {
+                                            R.string.rear_store_install_success_with_card
+                                        } else if (installResult.fallbackUsed) {
+                                            R.string.rear_store_install_success_fallback
+                                        } else {
+                                            R.string.rear_store_install_success
+                                        },
+                                        installResult.widgetName,
+                                        installResult.releaseTag ?: asset.name,
+                                    ),
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            } else {
+                                activeInstall = null
+                                Toast.makeText(
+                                    context,
+                                    context.getString(
+                                        R.string.rear_store_install_failed,
+                                        result.exceptionOrNull()?.message ?: "unknown",
+                                    ),
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            }
                         }
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RearStoreDetailTabContent(
+    selectedTab: RearStoreDetailTab,
+    widgetDetail: RearStoreWidgetDetail,
+    visibleReleases: List<RearStoreRelease>,
+    showAllReleases: Boolean,
+    readmeLoading: Boolean,
+    readmeLoaded: Boolean,
+    webViewCache: MutableMap<String, WebView>,
+    activeInstall: RearStoreActiveInstall?,
+    authorPlaceholderAlpha: Float,
+    onShowAllReleases: () -> Unit,
+    onInstallAsset: (RearStoreRelease, RearStoreReleaseAsset) -> Unit,
+) {
+    AnimatedContent(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer { clip = true },
+        targetState = selectedTab,
+        transitionSpec = {
+            val forward = targetState.ordinal > initialState.ordinal
+            fadeIn(
+                animationSpec = tween(
+                    durationMillis = 210,
+                    delayMillis = 50,
+                    easing = LinearOutSlowInEasing,
+                )
+            ) + slideInHorizontally(
+                animationSpec = tween(
+                    durationMillis = 280,
+                    easing = FastOutSlowInEasing,
+                )
+            ) { fullWidth -> if (forward) fullWidth / 9 else -fullWidth / 9 } togetherWith (
+                    fadeOut(
+                        animationSpec = tween(
+                            durationMillis = 110,
+                            easing = FastOutLinearInEasing,
+                        )
+                    ) + slideOutHorizontally(
+                        animationSpec = tween(
+                            durationMillis = 190,
+                            easing = FastOutLinearInEasing,
+                        )
+                    ) { fullWidth -> if (forward) -fullWidth / 12 else fullWidth / 12 }
+                    )
+        },
+        label = "RearStoreDetailTabTransition",
+    ) { activeTab ->
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            when (activeTab) {
+                RearStoreDetailTab.README -> {
+                    when {
+                        readmeLoading && widgetDetail.readme == null -> RearStoreLoadingCard()
+                        readmeLoaded && widgetDetail.readme?.content.isNullOrBlank() -> {
+                            RearStoreMessageCard(text = stringResource(R.string.rear_store_readme_empty))
+                        }
+
+                        else -> RearStoreReadmeCard(
+                            markdown = widgetDetail.readme?.content.orEmpty(),
+                            repoBaseUrl = widgetDetail.repository?.url,
+                            webViewCache = webViewCache,
+                        )
                     }
                 }
 
                 RearStoreDetailTab.DOWNLOADS -> {
                     if (visibleReleases.isEmpty()) {
-                        item {
-                            RearStoreMessageCard(text = stringResource(R.string.rear_store_release_empty))
-                        }
+                        RearStoreMessageCard(text = stringResource(R.string.rear_store_release_empty))
                     } else {
-                        itemsIndexed(
-                            visibleReleases,
-                            key = { _, item -> item.tagName + item.name }) { index, release ->
-                            ArtStaggeredReveal(
-                                visible = true,
-                                revealKey = release.tagName + selectedTab.name,
-                                delayMillis = (40 + index * 18).coerceAtMost(160),
-                            ) {
-                                RearStoreReleaseCard(
-                                    release = release,
-                                    widgetId = widgetDetail.widgetId,
-                                    repoBaseUrl = widgetDetail.repository?.url,
-                                    webViewCache = markdownWebViewCache,
-                                    activeAssetKey = activeAssetKey,
-                                    onInstallAsset = { asset ->
-                                        scope.launch {
-                                            val assetKey = release.tagName + ":" + asset.name
-                                            activeAssetKey = assetKey
-                                            val result = runCatching {
-                                                RearStoreRepository.quickInstallWidget(
-                                                    context = context,
-                                                    prefsManager = prefsManager,
-                                                    widgetId = widgetDetail.widgetId,
-                                                    releaseTag = release.tagName,
-                                                    assetName = asset.name,
-                                                )
-                                            }
-                                            activeAssetKey = null
-                                            result.onSuccess {
-                                                onInstalled()
-                                                Toast.makeText(
-                                                    context,
-                                                    context.getString(
-                                                        if (it.cardInstalled) {
-                                                            R.string.rear_store_install_success_with_card
-                                                        } else if (it.fallbackUsed) {
-                                                            R.string.rear_store_install_success_fallback
-                                                        } else {
-                                                            R.string.rear_store_install_success
-                                                        },
-                                                        it.widgetName,
-                                                        it.releaseTag ?: asset.name,
-                                                    ),
-                                                    Toast.LENGTH_SHORT,
-                                                ).show()
-                                            }.onFailure {
-                                                Toast.makeText(
-                                                    context,
-                                                    context.getString(
-                                                        R.string.rear_store_install_failed,
-                                                        it.message ?: "unknown",
-                                                    ),
-                                                    Toast.LENGTH_SHORT,
-                                                ).show()
-                                            }
-                                        }
-                                    },
-                                )
-                            }
+                        visibleReleases.forEach { release ->
+                            RearStoreReleaseCard(
+                                release = release,
+                                widgetId = widgetDetail.widgetId,
+                                repoBaseUrl = widgetDetail.repository?.url,
+                                webViewCache = webViewCache,
+                                activeInstall = activeInstall,
+                                onInstallAsset = { asset -> onInstallAsset(release, asset) },
+                            )
                         }
 
                         if (!showAllReleases && widgetDetail.releases.size > 5) {
-                            item {
-                                ArtRevealItem(visible = true, delayMillis = 48) {
-                                    Card(modifier = Modifier.fillMaxWidth()) {
-                                        Button(
-                                            onClick = { showAllReleases = true },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            colors = ButtonDefaults.buttonColorsPrimary(),
-                                        ) {
-                                            Text(text = stringResource(R.string.rear_store_show_older_releases))
-                                        }
-                                    }
+                            Card(modifier = Modifier.fillMaxWidth()) {
+                                Button(
+                                    onClick = onShowAllReleases,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColorsPrimary(),
+                                ) {
+                                    Text(text = stringResource(R.string.rear_store_show_older_releases))
                                 }
                             }
                         }
@@ -780,24 +1115,12 @@ private fun RearStoreDetailContent(
                 }
 
                 RearStoreDetailTab.INFO -> {
-                    item {
-                        ArtRevealItem(visible = true, delayMillis = 42) {
-                            RearStoreInstallInfoCard(detail = widgetDetail)
-                        }
-                    }
-                    item {
-                        ArtRevealItem(visible = true, delayMillis = 54) {
-                            RearStoreRepositoryCard(detail = widgetDetail)
-                        }
-                    }
-                    item {
-                        ArtRevealItem(visible = true, delayMillis = 66) {
-                            RearStoreAuthorCard(
-                                author = widgetDetail.author,
-                                placeholderAlpha = authorPlaceholderAlpha,
-                            )
-                        }
-                    }
+                    RearStoreInstallInfoCard(detail = widgetDetail)
+                    RearStoreRepositoryCard(detail = widgetDetail)
+                    RearStoreAuthorCard(
+                        author = widgetDetail.author,
+                        placeholderAlpha = authorPlaceholderAlpha,
+                    )
                 }
             }
         }
@@ -807,6 +1130,8 @@ private fun RearStoreDetailContent(
 @Composable
 private fun RearStoreListCard(
     item: RearStoreListItem,
+    installedWidget: RearStoreInstalledWidget?,
+    updateAvailable: Boolean,
     onClick: () -> Unit,
 ) {
     val descriptionText = item.description.normalizedOrNull()
@@ -815,6 +1140,19 @@ private fun RearStoreListCard(
             title = item.displayName,
             summary = item.author.displayName.ifBlank {
                 stringResource(R.string.rear_store_unknown_author)
+            },
+            endActions = {
+                if (updateAvailable) {
+                    RearStoreStatusPill(
+                        text = stringResource(R.string.rear_store_update_available_badge),
+                        emphasized = true,
+                    )
+                } else if (installedWidget != null && item.latestReleaseTag.normalizedOrNull() != null) {
+                    RearStoreStatusPill(
+                        text = stringResource(R.string.rear_store_up_to_date),
+                        emphasized = false,
+                    )
+                }
             },
             onClick = onClick,
             bottomAction = {
@@ -992,7 +1330,7 @@ private fun RearStoreReleaseCard(
     widgetId: String,
     repoBaseUrl: String?,
     webViewCache: MutableMap<String, WebView>,
-    activeAssetKey: String?,
+    activeInstall: RearStoreActiveInstall?,
     onInstallAsset: (RearStoreReleaseAsset) -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -1030,7 +1368,7 @@ private fun RearStoreReleaseCard(
                                 widgetId = widgetId,
                                 release = release,
                                 asset = asset,
-                                activeAssetKey = activeAssetKey,
+                                activeInstall = activeInstall,
                                 onInstall = { onInstallAsset(asset) },
                             )
                             if (index != release.assets.lastIndex) {
@@ -1052,15 +1390,11 @@ private fun RearStoreAssetRow(
     widgetId: String,
     release: RearStoreRelease,
     asset: RearStoreReleaseAsset,
-    activeAssetKey: String?,
+    activeInstall: RearStoreActiveInstall?,
     onInstall: () -> Unit,
 ) {
     val assetKey = widgetId + ":" + release.tagName + ":" + asset.name
-    val badgeText = if (activeAssetKey == assetKey) {
-        stringResource(R.string.rear_store_installing)
-    } else {
-        stringResource(R.string.rear_store_asset_install)
-    }
+    val installState = activeInstall?.takeIf { it.assetKey == assetKey }
 
     Row(
         modifier = Modifier
@@ -1090,10 +1424,65 @@ private fun RearStoreAssetRow(
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
         }
-        RearStoreDownloadBadge(
-            text = badgeText,
-            onClick = onInstall,
-        )
+        AnimatedContent(
+            targetState = installState,
+            transitionSpec = {
+                fadeIn(
+                    animationSpec = tween(
+                        durationMillis = 180,
+                        delayMillis = 50,
+                        easing = LinearOutSlowInEasing,
+                    )
+                ) togetherWith fadeOut(
+                    animationSpec = tween(
+                        durationMillis = 130,
+                        easing = FastOutLinearInEasing,
+                    )
+                )
+            },
+            label = "RearStoreAssetInstallState",
+        ) { currentInstallState ->
+            if (currentInstallState != null) {
+                RearStoreInstallProgressView(installState = currentInstallState)
+            } else {
+                RearStoreDownloadBadge(
+                    text = stringResource(R.string.rear_store_asset_install),
+                    onClick = onInstall,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RearStoreInstallProgressView(installState: RearStoreActiveInstall) {
+    val totalBytes = installState.totalBytes
+    val downloadedBytes = installState.downloadedBytes.coerceAtLeast(0L)
+    val determinateProgress = if (totalBytes > 0L) {
+        (downloadedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
+    } else {
+        null
+    }
+    Box(
+        modifier = Modifier.size(28.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (determinateProgress != null && installState.phase == RearStoreInstallProgressStage.DOWNLOADING) {
+            androidx.compose.material3.CircularProgressIndicator(
+                progress = { determinateProgress },
+                modifier = Modifier.size(24.dp),
+                strokeWidth = 2.5.dp,
+                color = MiuixTheme.colorScheme.primary,
+                trackColor = MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f),
+            )
+        } else {
+            androidx.compose.material3.CircularProgressIndicator(
+                modifier = Modifier.size(24.dp),
+                strokeWidth = 2.5.dp,
+                color = MiuixTheme.colorScheme.primary,
+                trackColor = MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f),
+            )
+        }
     }
 }
 

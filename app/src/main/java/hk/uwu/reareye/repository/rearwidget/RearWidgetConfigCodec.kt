@@ -18,6 +18,7 @@ data class RearBusinessConfig(
     val storeReleaseTag: String? = null,
     val storeReleaseAssetName: String? = null,
     val storeReleasePublishedAt: String? = null,
+    val storeInstalledAt: String? = null,
 )
 
 data class RearCardConfig(
@@ -87,6 +88,7 @@ object RearWidgetConfigCodec {
                     .ifBlank { null },
                 storeReleasePublishedAt = obj.optString("storeReleasePublishedAt").trim()
                     .ifBlank { null },
+                storeInstalledAt = obj.optString("storeInstalledAt").trim().ifBlank { null },
             )
         }
         return out
@@ -143,6 +145,7 @@ object RearWidgetConfigCodec {
                         .put("storeReleaseTag", item.storeReleaseTag)
                         .put("storeReleaseAssetName", item.storeReleaseAssetName)
                         .put("storeReleasePublishedAt", item.storeReleasePublishedAt)
+                        .put("storeInstalledAt", item.storeInstalledAt)
                 )
             }
         }.toString()

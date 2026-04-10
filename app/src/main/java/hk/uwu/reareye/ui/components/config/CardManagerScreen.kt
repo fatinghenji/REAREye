@@ -383,6 +383,7 @@ fun CardManagerScreen(
                                         Icon(
                                             imageVector = Icons.Outlined.Lock,
                                             contentDescription = null,
+                                            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                         )
                                         Text(
                                             text = stringResource(R.string.rear_store_locked),
