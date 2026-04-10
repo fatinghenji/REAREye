@@ -54,3 +54,9 @@ jobs:
         with:
           name: app-release
           path: app/build/outputs/apk/release/*.apk
+
+      - name: Upload Release Mapping
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-mapping
+          path: app/build/outputs/mapping/release/*
