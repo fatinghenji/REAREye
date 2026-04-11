@@ -40,6 +40,8 @@
     <string name="module_navigation_bar_mode_floating_glass">悬浮液态玻璃</string>
     <string name="module_store_api">仓库 API</string>
     <string name="module_store_api_desc">选择组件仓库 API 提供方</string>
+    <string name="module_store_webview_hardware_acceleration">WebView 硬件加速</string>
+    <string name="module_store_webview_hardware_acceleration_desc">默认开启。如果设备在渲染 Markdown 预览时崩溃，可以关闭此选项切换到软件渲染</string>
     <string name="module_store_api_provider_aliyun">阿里云</string>
     <string name="module_store_api_provider_custom">自定义</string>
     <string name="module_store_api_custom_domain">自定义 API 域名</string>

@@ -99,6 +99,7 @@ import hk.uwu.reareye.repository.rearstore.RearStoreWidgetDetail
 import hk.uwu.reareye.ui.components.card.SuperCard
 import hk.uwu.reareye.ui.components.motion.ArtRevealItem
 import hk.uwu.reareye.ui.components.motion.ArtStaggeredReveal
+import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
 import hk.uwu.reareye.ui.theme.rearAcrylicEffect
 import hk.uwu.reareye.ui.theme.rearAcrylicSource
@@ -1033,97 +1034,62 @@ private fun RearStoreDetailTabContent(
     onShowAllReleases: () -> Unit,
     onInstallAsset: (RearStoreRelease, RearStoreReleaseAsset) -> Unit,
 ) {
-    AnimatedContent(
-        modifier = Modifier
-            .fillMaxWidth()
-            .graphicsLayer { clip = true },
-        targetState = selectedTab,
-        transitionSpec = {
-            val forward = targetState.ordinal > initialState.ordinal
-            fadeIn(
-                animationSpec = tween(
-                    durationMillis = 210,
-                    delayMillis = 50,
-                    easing = LinearOutSlowInEasing,
-                )
-            ) + slideInHorizontally(
-                animationSpec = tween(
-                    durationMillis = 280,
-                    easing = FastOutSlowInEasing,
-                )
-            ) { fullWidth -> if (forward) fullWidth / 9 else -fullWidth / 9 } togetherWith (
-                    fadeOut(
-                        animationSpec = tween(
-                            durationMillis = 110,
-                            easing = FastOutLinearInEasing,
-                        )
-                    ) + slideOutHorizontally(
-                        animationSpec = tween(
-                            durationMillis = 190,
-                            easing = FastOutLinearInEasing,
-                        )
-                    ) { fullWidth -> if (forward) -fullWidth / 12 else fullWidth / 12 }
-                    )
-        },
-        label = "RearStoreDetailTabTransition",
-    ) { activeTab ->
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            when (activeTab) {
-                RearStoreDetailTab.README -> {
-                    when {
-                        readmeLoading && widgetDetail.readme == null -> RearStoreLoadingCard()
-                        readmeLoaded && widgetDetail.readme?.content.isNullOrBlank() -> {
-                            RearStoreMessageCard(text = stringResource(R.string.rear_store_readme_empty))
-                        }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        when (selectedTab) {
+            RearStoreDetailTab.README -> {
+                when {
+                    readmeLoading && widgetDetail.readme == null -> RearStoreLoadingCard()
+                    readmeLoaded && widgetDetail.readme?.content.isNullOrBlank() -> {
+                        RearStoreMessageCard(text = stringResource(R.string.rear_store_readme_empty))
+                    }
 
-                        else -> RearStoreReadmeCard(
-                            markdown = widgetDetail.readme?.content.orEmpty(),
+                    else -> RearStoreReadmeCard(
+                        markdown = widgetDetail.readme?.content.orEmpty(),
+                        repoBaseUrl = widgetDetail.repository?.url,
+                        webViewCache = webViewCache,
+                    )
+                }
+            }
+
+            RearStoreDetailTab.DOWNLOADS -> {
+                if (visibleReleases.isEmpty()) {
+                    RearStoreMessageCard(text = stringResource(R.string.rear_store_release_empty))
+                } else {
+                    visibleReleases.forEach { release ->
+                        RearStoreReleaseCard(
+                            release = release,
+                            widgetId = widgetDetail.widgetId,
                             repoBaseUrl = widgetDetail.repository?.url,
                             webViewCache = webViewCache,
+                            activeInstall = activeInstall,
+                            onInstallAsset = { asset -> onInstallAsset(release, asset) },
                         )
                     }
-                }
 
-                RearStoreDetailTab.DOWNLOADS -> {
-                    if (visibleReleases.isEmpty()) {
-                        RearStoreMessageCard(text = stringResource(R.string.rear_store_release_empty))
-                    } else {
-                        visibleReleases.forEach { release ->
-                            RearStoreReleaseCard(
-                                release = release,
-                                widgetId = widgetDetail.widgetId,
-                                repoBaseUrl = widgetDetail.repository?.url,
-                                webViewCache = webViewCache,
-                                activeInstall = activeInstall,
-                                onInstallAsset = { asset -> onInstallAsset(release, asset) },
-                            )
-                        }
-
-                        if (!showAllReleases && widgetDetail.releases.size > 5) {
-                            Card(modifier = Modifier.fillMaxWidth()) {
-                                Button(
-                                    onClick = onShowAllReleases,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = ButtonDefaults.buttonColorsPrimary(),
-                                ) {
-                                    Text(text = stringResource(R.string.rear_store_show_older_releases))
-                                }
+                    if (!showAllReleases && widgetDetail.releases.size > 5) {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Button(
+                                onClick = onShowAllReleases,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColorsPrimary(),
+                            ) {
+                                Text(text = stringResource(R.string.rear_store_show_older_releases))
                             }
                         }
                     }
                 }
+            }
 
-                RearStoreDetailTab.INFO -> {
-                    RearStoreInstallInfoCard(detail = widgetDetail)
-                    RearStoreRepositoryCard(detail = widgetDetail)
-                    RearStoreAuthorCard(
-                        author = widgetDetail.author,
-                        placeholderAlpha = authorPlaceholderAlpha,
-                    )
-                }
+            RearStoreDetailTab.INFO -> {
+                RearStoreInstallInfoCard(detail = widgetDetail)
+                RearStoreRepositoryCard(detail = widgetDetail)
+                RearStoreAuthorCard(
+                    author = widgetDetail.author,
+                    placeholderAlpha = authorPlaceholderAlpha,
+                )
             }
         }
     }
@@ -1638,6 +1604,11 @@ private fun MarkdownCardBody(
     webViewCache: MutableMap<String, WebView>,
 ) {
     val context = LocalContext.current
+    val prefsManager = remember(context) { context.getPrefsManager() }
+    val webViewHardwareAccelerationEnabled = prefsManager.getBoolean(
+        ConfigKeys.MODULE_STORE_WEBVIEW_HARDWARE_ACCELERATION,
+        true,
+    )
     val colorScheme = MiuixTheme.colorScheme
     val backgroundColor = colorScheme.background
     val onSurfaceColor = colorScheme.onSurface
@@ -1686,7 +1657,10 @@ private fun MarkdownCardBody(
         modifier = Modifier.fillMaxWidth(),
         factory = { viewContext ->
             webViewCache.getOrPut(webViewKey) {
-                createGithubMarkdownWebView(viewContext).apply {
+                createGithubMarkdownWebView(
+                    context = viewContext,
+                    hardwareAccelerationEnabled = webViewHardwareAccelerationEnabled,
+                ).apply {
                     tag = htmlDocument
                     loadDataWithBaseURL(
                         normalizedBaseUrl ?: "about:blank",
@@ -1699,6 +1673,14 @@ private fun MarkdownCardBody(
             }
         },
         update = { webView ->
+            webView.setLayerType(
+                if (webViewHardwareAccelerationEnabled) {
+                    View.LAYER_TYPE_NONE
+                } else {
+                    View.LAYER_TYPE_SOFTWARE
+                },
+                null,
+            )
             if (webView.tag != htmlDocument) {
                 webView.tag = htmlDocument
                 webView.loadDataWithBaseURL(
@@ -1713,14 +1695,24 @@ private fun MarkdownCardBody(
     )
 }
 
-private fun createGithubMarkdownWebView(context: Context): WebView {
+private fun createGithubMarkdownWebView(
+    context: Context,
+    hardwareAccelerationEnabled: Boolean,
+): WebView {
     return WebView(context).apply {
+        setLayerType(
+            if (hardwareAccelerationEnabled) {
+                View.LAYER_TYPE_NONE
+            } else {
+                View.LAYER_TYPE_SOFTWARE
+            },
+            null,
+        )
         setBackgroundColor(android.graphics.Color.TRANSPARENT)
         isVerticalScrollBarEnabled = false
         isHorizontalScrollBarEnabled = false
         overScrollMode = View.OVER_SCROLL_NEVER
         settings.apply {
-            offscreenPreRaster = true
             domStorageEnabled = true
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             allowContentAccess = false

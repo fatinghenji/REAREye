@@ -39,6 +39,8 @@
     <string name="module_navigation_bar_mode_floating_glass">Floating Liquid Glass</string>
     <string name="module_store_api">Store API</string>
     <string name="module_store_api_desc">Choose the widget repository API provider</string>
+    <string name="module_store_webview_hardware_acceleration">WebView Hardware Acceleration</string>
+    <string name="module_store_webview_hardware_acceleration_desc">Enabled by default. Turn this off if markdown previews crash while rendering on your device</string>
     <string name="module_store_api_provider_aliyun">Aliyun</string>
     <string name="module_store_api_provider_custom">Custom</string>
     <string name="module_store_api_custom_domain">Custom API Domain</string>

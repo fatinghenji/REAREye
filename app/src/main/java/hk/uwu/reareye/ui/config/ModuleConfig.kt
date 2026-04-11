@@ -14,6 +14,8 @@ object ConfigKeys {
     const val MODULE_NAVIGATION_BAR_MODE = "module_navigation_bar_mode"
     const val MODULE_STORE_API_PROVIDER = "module_store_api_provider"
     const val MODULE_STORE_API_CUSTOM_DOMAIN = "module_store_api_custom_domain"
+    const val MODULE_STORE_WEBVIEW_HARDWARE_ACCELERATION =
+        "module_store_webview_hardware_acceleration"
 
     const val HOOK_ACTIVITIES_WHITELIST = "enable_activities_whitelist_hook"
     const val ACTIVITIES_WHITELIST_APPS = "activities_whitelist_apps"
@@ -160,6 +162,12 @@ val REAREyeConfig = listOf(
                     defaultProviderValue = StoreApiProvider.default.value,
                     customDomainKey = ConfigKeys.MODULE_STORE_API_CUSTOM_DOMAIN,
                 ),
+            ),
+            ConfigItem(
+                key = ConfigKeys.MODULE_STORE_WEBVIEW_HARDWARE_ACCELERATION,
+                titleRes = R.string.module_store_webview_hardware_acceleration,
+                descriptionRes = R.string.module_store_webview_hardware_acceleration_desc,
+                type = ConfigType.BooleanVal(defaultValue = true)
             ),
             ConfigItem(
                 key = ConfigKeys.MODULE_HIDE_LAUNCHER_ENTRY,
