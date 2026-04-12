@@ -65,7 +65,7 @@ android {
             fun getProp(key: String): String? =
                 localProperties.getProperty(key) ?: (project.findProperty(key) as? String) ?: System.getenv(key)
 
-            storeFile = file("../release-key.jks")
+            storeFile = file(getProp("androidStoreFile"))
             storePassword = getProp("KEYSTORE_PASSWORD")
             keyAlias = getProp("KEY_ALIAS")
             keyPassword = getProp("KEY_PASSWORD")
