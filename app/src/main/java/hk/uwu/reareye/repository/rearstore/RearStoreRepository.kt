@@ -2,6 +2,7 @@ package hk.uwu.reareye.repository.rearstore
 
 import android.content.Context
 import android.net.Uri
+import androidx.annotation.Keep
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import hk.uwu.reareye.BuildConfig
@@ -13,13 +14,13 @@ import hk.uwu.reareye.ui.config.PrefsManager
 import hk.uwu.reareye.ui.config.resolveRearStoreApiBaseUrl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.logging.HttpLoggingInterceptor
 import java.io.ByteArrayOutputStream
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -31,6 +32,52 @@ private fun String?.normalizedOrNull(): String? {
     return this?.trim()?.takeIf { it.isNotEmpty() }
 }
 
+enum class RearStoreWidgetInfoType(val rawValue: String) {
+    WIDGET("widget"),
+    WALLPAPER("wallpaper");
+
+    val supportedInCurrentVersion: Boolean
+        get() = this == WIDGET
+
+    companion object {
+        fun fromRaw(raw: String?): RearStoreWidgetInfoType {
+            return when (raw?.trim()?.lowercase(Locale.ROOT)) {
+                WALLPAPER.rawValue -> WALLPAPER
+                else -> WIDGET
+            }
+        }
+    }
+}
+
+enum class RearStoreWidgetMetadataType(val rawValue: String) {
+    CARD("card"),
+    NOTIFICATION("notification"),
+    ENHANCED("enhanced"),
+    WALLPAPER("wallpaper"),
+    UNKNOWN("unknown");
+
+    companion object {
+        fun fromRaw(raw: String?): RearStoreWidgetMetadataType {
+            return when (raw?.trim()?.lowercase(Locale.ROOT)) {
+                CARD.rawValue -> CARD
+                NOTIFICATION.rawValue -> NOTIFICATION
+                ENHANCED.rawValue -> ENHANCED
+                WALLPAPER.rawValue -> WALLPAPER
+                else -> UNKNOWN
+            }
+        }
+    }
+}
+
+fun RearStoreWidgetInfo?.resolvedType(): RearStoreWidgetInfoType {
+    return RearStoreWidgetInfoType.fromRaw(this?.type)
+}
+
+fun RearStoreWidgetMetadata?.resolvedType(): RearStoreWidgetMetadataType {
+    return RearStoreWidgetMetadataType.fromRaw(this?.type)
+}
+
+@Keep
 data class RearStoreAuthor(
     @SerializedName("login")
     val login: String = "",
@@ -54,6 +101,7 @@ data class RearStoreRepositoryLink(
     val url: String = "",
 )
 
+@Keep
 data class RearStoreRepositoryInfo(
     @SerializedName("widgetName")
     val widgetName: String = "",
@@ -77,7 +125,10 @@ data class RearStoreRepositoryInfo(
     val stargazersCount: Int = 0,
 )
 
+@Keep
 data class RearStoreListItem(
+    @SerializedName("type")
+    val type: String? = null,
     @SerializedName("id")
     val id: String = "",
     @SerializedName("name")
@@ -93,12 +144,15 @@ data class RearStoreListItem(
     val stargazersCount: Int = 0,
     val latestReleaseTag: String? = null,
     val latestReleasePublishedAt: String? = null,
+    val metadata: RearStoreWidgetMetadata? = null,
 ) {
     val displayName: String
         get() = name.normalizedOrNull() ?: id.normalizedOrNull().orEmpty()
 }
 
 private data class RearStoreWidgetCatalogItemResponse(
+    @SerializedName(value = "type", alternate = ["widgetType", "widget_type"])
+    val type: String? = null,
     @SerializedName("id")
     val id: String = "",
     @SerializedName("name")
@@ -115,6 +169,8 @@ private data class RearStoreWidgetCatalogItemResponse(
     val latestReleasePublishedAt: String = "",
     @SerializedName("stars")
     val stars: Int = 0,
+    @SerializedName("metadata")
+    val metadata: RearStoreWidgetMetadata? = null,
 )
 
 private data class RearStoreDescriptionResponse(
@@ -124,6 +180,8 @@ private data class RearStoreDescriptionResponse(
     val name: String = "",
     @SerializedName("repository")
     val repository: RearStoreRepositoryInfo? = null,
+    @SerializedName("metadata")
+    val metadata: RearStoreWidgetMetadata? = null,
 )
 
 private data class RearStoreAuthorResponse(
@@ -134,19 +192,38 @@ private data class RearStoreAuthorResponse(
 private data class RearStoreWidgetInfoResponse(
     @SerializedName("id")
     val id: String = "",
-    @SerializedName("widgetInfo")
+    @SerializedName("type")
+    val type: String? = null,
+    @SerializedName(value = "widgetInfo", alternate = ["widget_info"])
     val widgetInfo: RearStoreWidgetInfo? = null,
 )
 
+private data class RearStoreWidgetMetadataResponse(
+    @SerializedName("id")
+    val id: String = "",
+    @SerializedName("metadata")
+    val metadata: RearStoreWidgetMetadata? = null,
+)
+
+@Keep
 data class RearStoreWidgetInfo(
+    @SerializedName("type")
+    val type: String? = null,
     @SerializedName("name")
     val name: String = "",
-    @SerializedName("business_setup")
+    @SerializedName(value = "business_setup", alternate = ["businessSetup"])
     val businessSetup: RearStoreBusinessSetup? = null,
-    @SerializedName("card_setup")
+    @SerializedName(value = "card_setup", alternate = ["cardSetup"])
     val cardSetup: RearStoreCardSetup? = null,
 )
 
+@Keep
+data class RearStoreWidgetMetadata(
+    @SerializedName("type")
+    val type: String = "",
+)
+
+@Keep
 data class RearStoreBusinessSetup(
     @SerializedName("id")
     val id: String = "",
@@ -154,6 +231,7 @@ data class RearStoreBusinessSetup(
     val renameable: Boolean = true,
 )
 
+@Keep
 data class RearStoreCardSetup(
     @SerializedName("name")
     val name: String = "",
@@ -186,6 +264,7 @@ private data class RearStoreReleasesResponse(
     val releases: List<RearStoreRelease> = emptyList(),
 )
 
+@Keep
 data class RearStoreRelease(
     @SerializedName("tagName")
     val tagName: String = "",
@@ -203,6 +282,7 @@ data class RearStoreRelease(
     val assets: List<RearStoreReleaseAsset> = emptyList(),
 )
 
+@Keep
 data class RearStoreReleaseAsset(
     @SerializedName("name")
     val name: String = "",
@@ -216,17 +296,23 @@ data class RearStoreReleaseAsset(
     val downloadUrl: String = "",
 )
 
+@Keep
 data class RearStoreWidgetDetail(
+    @SerializedName("type")
+    val type: String? = null,
     val widgetId: String,
     val name: String,
     val description: String,
     val author: RearStoreAuthor,
     val repository: RearStoreRepositoryInfo?,
+    @SerializedName(value = "widgetInfo", alternate = ["widget_info"])
     val widgetInfo: RearStoreWidgetInfo?,
+    val metadata: RearStoreWidgetMetadata?,
     val readme: RearStoreReadme?,
     val releases: List<RearStoreRelease>,
 )
 
+@Keep
 data class RearStoreInstalledWidget(
     val widgetId: String,
     val widgetName: String,
@@ -283,6 +369,10 @@ object RearStoreRepository {
     private val authorCache = java.util.concurrent.ConcurrentHashMap<String, RearStoreAuthor>()
     private val widgetInfoCache =
         java.util.concurrent.ConcurrentHashMap<String, RearStoreWidgetInfo>()
+    private val widgetTypeCache =
+        java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val metadataCache =
+        java.util.concurrent.ConcurrentHashMap<String, RearStoreWidgetMetadata>()
     private val releasesCache =
         java.util.concurrent.ConcurrentHashMap<String, List<RearStoreRelease>>()
     private val detailCache =
@@ -298,6 +388,7 @@ object RearStoreRepository {
                     val authorId = item.authorId.normalizedOrNull().orEmpty()
                     val authorName = item.authorName.normalizedOrNull().orEmpty()
                     RearStoreListItem(
+                        type = item.type.normalizedOrNull(),
                         id = item.id,
                         name = item.name,
                         description = item.description,
@@ -309,10 +400,29 @@ object RearStoreRepository {
                         stargazersCount = item.stars,
                         latestReleaseTag = item.latestReleaseTag.normalizedOrNull(),
                         latestReleasePublishedAt = item.latestReleasePublishedAt.normalizedOrNull(),
+                        metadata = item.metadata,
                     )
                 }
-            if (loaded != null) widgetsCache[baseUrl] = loaded
-            loaded ?: widgetsCache[baseUrl].orEmpty()
+            val enriched = loaded?.let { widgets ->
+                coroutineScope {
+                    widgets.map { item ->
+                        async {
+                            val normalizedType = item.type.normalizedOrNull()
+                                ?: item.metadata?.type.normalizedOrNull()
+                                ?: item.id.normalizedOrNull()?.let {
+                                    loadWidgetTypeFromInfoCached(baseUrl, it)
+                                }
+                            if (normalizedType != null && normalizedType != item.type) {
+                                item.copy(type = normalizedType)
+                            } else {
+                                item
+                            }
+                        }
+                    }.awaitAll()
+                }
+            }
+            if (enriched != null) widgetsCache[baseUrl] = enriched
+            enriched ?: widgetsCache[baseUrl].orEmpty()
         }
     }
 
@@ -330,6 +440,7 @@ object RearStoreRepository {
                     async { loadDescriptionCached(baseUrl, normalizedWidgetId) }
                 val authorDeferred = async { loadAuthorCached(baseUrl, normalizedWidgetId) }
                 val infoDeferred = async { loadWidgetInfoCached(baseUrl, normalizedWidgetId) }
+                val metadataDeferred = async { loadMetadataCached(baseUrl, normalizedWidgetId) }
                 val releasesDeferred = async { loadReleasesCached(baseUrl, normalizedWidgetId) }
 
                 val description = descriptionDeferred.await()
@@ -341,8 +452,11 @@ object RearStoreRepository {
                     ?: return@coroutineScope null
                 val repository = description.repository
                 val widgetInfo = infoDeferred.await()
+                val metadata = description.metadata ?: metadataDeferred.await()
+                val widgetType = loadWidgetTypeFromInfoCached(baseUrl, normalizedWidgetId)
                 val resolvedAuthor = resolveAuthor(authorDeferred.await(), repository)
                 val detail = RearStoreWidgetDetail(
+                    type = widgetType ?: metadata?.type.normalizedOrNull(),
                     widgetId = normalizedWidgetId,
                     name = description.name.normalizedOrNull()
                         ?: widgetInfo?.name.normalizedOrNull()
@@ -351,6 +465,7 @@ object RearStoreRepository {
                     author = resolvedAuthor,
                     repository = repository,
                     widgetInfo = widgetInfo,
+                    metadata = metadata,
                     readme = readmeCache[detailCacheKey],
                     releases = releasesDeferred.await().orEmpty(),
                 )
@@ -418,6 +533,10 @@ object RearStoreRepository {
         )
         val detail = loadWidgetDetail(prefsManager, widgetId)
             ?: error("Unable to load widget detail")
+        val widgetInfoType = detail.widgetInfo.resolvedType()
+        if (!widgetInfoType.supportedInCurrentVersion) {
+            error("Install mode '${widgetInfoType.rawValue}' is not supported by current version")
+        }
         val selectedAsset = selectAsset(
             releases = detail.releases,
             preferredReleaseTag = releaseTag,
@@ -437,7 +556,14 @@ object RearStoreRepository {
         )
 
         val businessSetup = detail.widgetInfo?.businessSetup
-        val businessId = businessSetup?.id.normalizedOrNull() ?: detail.widgetId
+        val businessId = when (widgetInfoType) {
+            RearStoreWidgetInfoType.WIDGET -> {
+                businessSetup?.id.normalizedOrNull()
+                    ?: error("Missing required widget_info.business_setup.id for type='widget'")
+            }
+
+            RearStoreWidgetInfoType.WALLPAPER -> error("Not support operation")
+        }
         val businessName = detail.widgetInfo?.name.normalizedOrNull() ?: detail.name
         val targetPath = RearWidgetManagerRepository.saveTemplateBytesToManagedPath(
             context = context,
@@ -499,6 +625,7 @@ object RearStoreRepository {
                             title = cardSetup.name.normalizedOrNull() ?: businessName,
                             packageName = cardPackage,
                             business = businessId,
+                            oneConfigJson = previousCard?.oneConfigJson,
                             enabled = previousCard?.enabled ?: true,
                             sticky = cardSetup.sticky,
                             priority = previousCard?.priority ?: cardSetup.priority,
@@ -527,7 +654,7 @@ object RearStoreRepository {
             widgetName = businessName,
             releaseTag = selectedAsset.release.tagName.normalizedOrNull(),
             cardInstalled = cardInstalled,
-            fallbackUsed = businessSetup == null,
+            fallbackUsed = false,
             updatedExistingInstall = previousBusiness != null,
         )
     }
@@ -648,12 +775,32 @@ object RearStoreRepository {
     private fun loadWidgetInfoCached(baseUrl: String, widgetId: String): RearStoreWidgetInfo? {
         val cacheKey = cacheKey(baseUrl, widgetId)
         widgetInfoCache[cacheKey]?.let { return it }
-        val loaded = fetchJson<RearStoreWidgetInfoResponse>(
+        val loadedResponse = fetchJson<RearStoreWidgetInfoResponse>(
             baseUrl,
             "/widget/${Uri.encode(widgetId)}/widget-info"
-        )?.widgetInfo
-        if (loaded != null) widgetInfoCache[cacheKey] = loaded
-        return loaded ?: widgetInfoCache[cacheKey]
+        )
+        loadedResponse?.type.normalizedOrNull()?.let { widgetTypeCache[cacheKey] = it }
+        val loadedWidgetInfo = loadedResponse?.widgetInfo
+        if (loadedWidgetInfo != null) widgetInfoCache[cacheKey] = loadedWidgetInfo
+        return loadedWidgetInfo ?: widgetInfoCache[cacheKey]
+    }
+
+    private fun loadWidgetTypeFromInfoCached(baseUrl: String, widgetId: String): String? {
+        val cacheKey = cacheKey(baseUrl, widgetId)
+        widgetTypeCache[cacheKey]?.let { return it }
+        loadWidgetInfoCached(baseUrl, widgetId)
+        return widgetTypeCache[cacheKey]
+    }
+
+    private fun loadMetadataCached(baseUrl: String, widgetId: String): RearStoreWidgetMetadata? {
+        val cacheKey = cacheKey(baseUrl, widgetId)
+        metadataCache[cacheKey]?.let { return it }
+        val loaded = fetchJson<RearStoreWidgetMetadataResponse>(
+            baseUrl,
+            "/widget/${Uri.encode(widgetId)}/metadata"
+        )?.metadata
+        if (loaded != null) metadataCache[cacheKey] = loaded
+        return loaded ?: metadataCache[cacheKey]
     }
 
     private fun loadReleasesCached(baseUrl: String, widgetId: String): List<RearStoreRelease>? {
@@ -747,17 +894,6 @@ object RearStoreRepository {
         return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")
         }.format(Date())
-    }
-
-    private fun writeBytesAtomically(target: File, bytes: ByteArray) {
-        target.parentFile?.mkdirs()
-        val tempFile = File(target.parentFile, "${target.name}.tmp")
-        tempFile.outputStream().use { it.write(bytes) }
-        if (target.exists()) target.delete()
-        if (!tempFile.renameTo(target)) {
-            tempFile.copyTo(target, overwrite = true)
-            tempFile.delete()
-        }
     }
 
     private fun RearBusinessConfig.matchesStoreBusiness(

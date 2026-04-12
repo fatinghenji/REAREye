@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.view.View
+import android.view.ViewGroup
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -55,6 +56,7 @@ import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -69,9 +71,12 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -96,9 +101,13 @@ import hk.uwu.reareye.repository.rearstore.RearStoreRelease
 import hk.uwu.reareye.repository.rearstore.RearStoreReleaseAsset
 import hk.uwu.reareye.repository.rearstore.RearStoreRepository
 import hk.uwu.reareye.repository.rearstore.RearStoreWidgetDetail
+import hk.uwu.reareye.repository.rearstore.RearStoreWidgetInfoType
+import hk.uwu.reareye.repository.rearstore.RearStoreWidgetMetadataType
+import hk.uwu.reareye.repository.rearstore.resolvedType
 import hk.uwu.reareye.ui.components.card.SuperCard
 import hk.uwu.reareye.ui.components.motion.ArtRevealItem
 import hk.uwu.reareye.ui.components.motion.ArtStaggeredReveal
+import hk.uwu.reareye.ui.components.webview.ScrollWebView
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
 import hk.uwu.reareye.ui.theme.rearAcrylicEffect
@@ -150,6 +159,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.roundToInt
 
 private val rearStoreAvatarHttpClient = OkHttpClient.Builder()
     .apply {
@@ -162,6 +172,9 @@ private val rearStoreAvatarHttpClient = OkHttpClient.Builder()
         }
     }
     .build()
+
+private val rearStoreReadmeWebViewMaxHeight = 420.dp
+private val rearStoreReleaseWebViewMaxHeight = 260.dp
 
 private enum class RearStoreDetailTab {
     README,
@@ -299,11 +312,140 @@ private fun rememberSkeletonPulseAlpha(label: String): Float {
     return alpha.value
 }
 
-private fun defaultInstallInfo(detail: RearStoreWidgetDetail): Triple<String, Boolean, String?> {
-    val businessId = detail.widgetInfo?.businessSetup?.id.normalizedOrNull() ?: detail.widgetId
-    val hasCard = detail.widgetInfo?.cardSetup != null
+private data class RearStoreInstallInfo(
+    val widgetInfoType: RearStoreWidgetInfoType,
+    val businessId: String,
+    val hasBusinessSetup: Boolean,
+    val hasCard: Boolean,
+    val cardId: String?,
+)
+
+private data class RearStoreBadgePalette(
+    val background: Color,
+    val text: Color,
+)
+
+private fun defaultInstallInfo(detail: RearStoreWidgetDetail): RearStoreInstallInfo {
+    val widgetInfoType = detail.widgetInfo.resolvedType()
+    val businessSetupId = detail.widgetInfo?.businessSetup?.id.normalizedOrNull()
+    val businessId = businessSetupId ?: detail.widgetId
+    val hasCard = widgetInfoType == RearStoreWidgetInfoType.WIDGET &&
+            detail.widgetInfo?.cardSetup != null
     val cardId = if (hasCard) businessId else null
-    return Triple(businessId, hasCard, cardId)
+    return RearStoreInstallInfo(
+        widgetInfoType = widgetInfoType,
+        businessId = businessId,
+        hasBusinessSetup = businessSetupId != null,
+        hasCard = hasCard,
+        cardId = cardId,
+    )
+}
+
+private fun RearStoreWidgetInfoType.labelResId(): Int {
+    return when (this) {
+        RearStoreWidgetInfoType.WIDGET -> R.string.rear_store_widget_info_type_widget
+        RearStoreWidgetInfoType.WALLPAPER -> R.string.rear_store_widget_info_type_wallpaper
+    }
+}
+
+private fun RearStoreWidgetMetadataType.labelResId(): Int? {
+    return when (this) {
+        RearStoreWidgetMetadataType.CARD -> R.string.rear_store_metadata_type_card
+        RearStoreWidgetMetadataType.NOTIFICATION -> R.string.rear_store_metadata_type_notification
+        RearStoreWidgetMetadataType.ENHANCED -> R.string.rear_store_metadata_type_enhanced
+        RearStoreWidgetMetadataType.WALLPAPER -> R.string.rear_store_metadata_type_wallpaper
+        RearStoreWidgetMetadataType.UNKNOWN -> null
+    }
+}
+
+private fun parseMetadataType(rawType: String?): RearStoreWidgetMetadataType {
+    val raw = rawType?.trim().orEmpty()
+    if (raw.contains("壁纸")) return RearStoreWidgetMetadataType.WALLPAPER
+    if (raw.contains("通知")) return RearStoreWidgetMetadataType.NOTIFICATION
+    if (raw.contains("增强")) return RearStoreWidgetMetadataType.ENHANCED
+    if (raw.contains("卡片") || raw.contains("组件")) return RearStoreWidgetMetadataType.CARD
+
+    val normalized = rawType
+        ?.trim()
+        ?.lowercase(Locale.ROOT)
+        ?.replace('-', '_')
+        ?.replace(' ', '_')
+        .orEmpty()
+    if (normalized.isBlank()) return RearStoreWidgetMetadataType.UNKNOWN
+    return when {
+        normalized.contains("wallpaper") -> RearStoreWidgetMetadataType.WALLPAPER
+        normalized.contains("notification") || normalized.contains("notify") -> {
+            RearStoreWidgetMetadataType.NOTIFICATION
+        }
+
+        normalized.contains("enhanced") || normalized.contains("enhance") -> {
+            RearStoreWidgetMetadataType.ENHANCED
+        }
+
+        normalized.contains("card") || normalized.contains("widget") -> {
+            RearStoreWidgetMetadataType.CARD
+        }
+
+        else -> RearStoreWidgetMetadataType.UNKNOWN
+    }
+}
+
+private fun RearStoreListItem.displayMetadataType(): RearStoreWidgetMetadataType {
+    parseMetadataType(type).takeIf {
+        it != RearStoreWidgetMetadataType.UNKNOWN
+    }?.let { return it }
+
+    parseMetadataType(metadata?.type).takeIf {
+        it != RearStoreWidgetMetadataType.UNKNOWN
+    }?.let { return it }
+
+    val metadataType = metadata.resolvedType()
+    if (metadataType != RearStoreWidgetMetadataType.UNKNOWN) return metadataType
+
+    return RearStoreWidgetMetadataType.CARD
+}
+
+private fun RearStoreWidgetDetail.displayMetadataType(): RearStoreWidgetMetadataType {
+    parseMetadataType(type).takeIf {
+        it != RearStoreWidgetMetadataType.UNKNOWN
+    }?.let { return it }
+
+    parseMetadataType(metadata?.type).takeIf {
+        it != RearStoreWidgetMetadataType.UNKNOWN
+    }?.let { return it }
+
+    val metadataType = metadata.resolvedType()
+    if (metadataType != RearStoreWidgetMetadataType.UNKNOWN) {
+        return metadataType
+    }
+
+    parseMetadataType(widgetInfo?.type).takeIf {
+        it != RearStoreWidgetMetadataType.UNKNOWN
+    }?.let { return it }
+
+    return when (widgetInfo.resolvedType()) {
+        RearStoreWidgetInfoType.WALLPAPER -> RearStoreWidgetMetadataType.WALLPAPER
+        RearStoreWidgetInfoType.WIDGET -> RearStoreWidgetMetadataType.CARD
+    }
+}
+
+private fun resolveInstallBlockMessage(
+    context: Context,
+    detail: RearStoreWidgetDetail,
+): String? {
+    val widgetInfoType = detail.widgetInfo.resolvedType()
+    if (!widgetInfoType.supportedInCurrentVersion) {
+        return context.getString(
+            R.string.rear_store_install_type_not_supported,
+            context.getString(widgetInfoType.labelResId()),
+        )
+    }
+    if (widgetInfoType == RearStoreWidgetInfoType.WIDGET &&
+        detail.widgetInfo?.businessSetup?.id.normalizedOrNull() == null
+    ) {
+        return context.getString(R.string.rear_store_install_missing_business_setup)
+    }
+    return null
 }
 
 private fun parseIsoEpochMillis(value: String?): Long {
@@ -920,6 +1062,7 @@ private fun RearStoreDetailContent(
                         installedWidget = installedWidget,
                         latestReleaseTag = latestReleaseTag,
                         updateAvailable = updateAvailable,
+                        metadataType = widgetDetail.displayMetadataType(),
                     )
                 }
             }
@@ -949,6 +1092,11 @@ private fun RearStoreDetailContent(
                     onShowAllReleases = { showAllReleases = true },
                     onInstallAsset = { release, asset ->
                         scope.launch {
+                            val blockedMessage = resolveInstallBlockMessage(context, widgetDetail)
+                            if (blockedMessage != null) {
+                                Toast.makeText(context, blockedMessage, Toast.LENGTH_SHORT).show()
+                                return@launch
+                            }
                             val assetKey =
                                 widgetDetail.widgetId + ":" + release.tagName + ":" + asset.name
                             activeInstall = RearStoreActiveInstall(assetKey = assetKey)
@@ -1103,6 +1251,7 @@ private fun RearStoreListCard(
     onClick: () -> Unit,
 ) {
     val descriptionText = item.description.normalizedOrNull()
+    val metadataType = item.displayMetadataType()
     Card(modifier = Modifier.fillMaxWidth()) {
         SuperCard(
             title = item.displayName,
@@ -1110,16 +1259,22 @@ private fun RearStoreListCard(
                 stringResource(R.string.rear_store_unknown_author)
             },
             endActions = {
-                if (updateAvailable) {
-                    RearStoreStatusPill(
-                        text = stringResource(R.string.rear_store_update_available_badge),
-                        emphasized = true,
-                    )
-                } else if (installedWidget != null && item.latestReleaseTag.normalizedOrNull() != null) {
-                    RearStoreStatusPill(
-                        text = stringResource(R.string.rear_store_up_to_date),
-                        emphasized = false,
-                    )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (updateAvailable) {
+                        RearStoreStatusPill(
+                            text = stringResource(R.string.rear_store_update_available_badge),
+                            emphasized = true,
+                        )
+                    } else if (installedWidget != null && item.latestReleaseTag.normalizedOrNull() != null) {
+                        RearStoreStatusPill(
+                            text = stringResource(R.string.rear_store_up_to_date),
+                            emphasized = false,
+                        )
+                    }
+                    RearStoreMetadataTypePill(metadataType = metadataType)
                 }
             },
             onClick = onClick,
@@ -1189,6 +1344,7 @@ private fun RearStoreDetailHeroCard(
     installedWidget: RearStoreInstalledWidget?,
     latestReleaseTag: String?,
     updateAvailable: Boolean,
+    metadataType: RearStoreWidgetMetadataType,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         SuperCard(
@@ -1200,31 +1356,37 @@ private fun RearStoreDetailHeroCard(
             bottomAction = {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    RearStoreStatusPill(
-                        text = buildString {
-                            append(stringResource(R.string.rear_store_installed_version_label))
-                            append("  ")
-                            append(
-                                installedWidget?.releaseTag?.takeIf { it.isNotBlank() }
-                                    ?: stringResource(R.string.rear_store_status_not_installed)
-                            )
-                        },
-                        emphasized = false,
-                    )
-                    if (updateAvailable) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         RearStoreStatusPill(
-                            text = stringResource(R.string.rear_store_update_available_badge),
-                            emphasized = true,
-                        )
-                    } else if (latestReleaseTag != null && installedWidget != null) {
-                        RearStoreStatusPill(
-                            text = stringResource(R.string.rear_store_up_to_date),
+                            text = buildString {
+                                append(stringResource(R.string.rear_store_installed_version_label))
+                                append("  ")
+                                append(
+                                    installedWidget?.releaseTag?.takeIf { it.isNotBlank() }
+                                        ?: stringResource(R.string.rear_store_status_not_installed)
+                                )
+                            },
                             emphasized = false,
                         )
+                        if (updateAvailable) {
+                            RearStoreStatusPill(
+                                text = stringResource(R.string.rear_store_update_available_badge),
+                                emphasized = true,
+                            )
+                        } else if (latestReleaseTag != null && installedWidget != null) {
+                            RearStoreStatusPill(
+                                text = stringResource(R.string.rear_store_up_to_date),
+                                emphasized = false,
+                            )
+                        }
                     }
+                    RearStoreMetadataTypePill(metadataType = metadataType)
                 }
             },
         )
@@ -1235,30 +1397,67 @@ private fun RearStoreDetailHeroCard(
 private fun RearStoreStatusPill(
     text: String,
     emphasized: Boolean,
+    palette: RearStoreBadgePalette? = null,
 ) {
-    val backgroundColor = if (emphasized) {
-        MiuixTheme.colorScheme.primary.copy(alpha = 0.18f)
-    } else {
-        MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f)
-    }
-    val textColor = if (emphasized) {
-        MiuixTheme.colorScheme.primary
-    } else {
-        MiuixTheme.colorScheme.onSurface.copy(alpha = 0.82f)
-    }
+    val resolvedPalette = palette ?: RearStoreBadgePalette(
+        background = if (emphasized) {
+            MiuixTheme.colorScheme.primary.copy(alpha = 0.18f)
+        } else {
+            MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f)
+        },
+        text = if (emphasized) {
+            MiuixTheme.colorScheme.primary
+        } else {
+            MiuixTheme.colorScheme.onSurface.copy(alpha = 0.82f)
+        },
+    )
 
     Surface(
-        color = backgroundColor,
+        color = resolvedPalette.background,
         shape = RoundedCornerShape(18.dp),
     ) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-            color = textColor,
+            color = resolvedPalette.text,
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
         )
     }
+}
+
+@Composable
+private fun rememberMetadataBadgePalette(metadataType: RearStoreWidgetMetadataType): RearStoreBadgePalette {
+    val colorScheme = MiuixTheme.colorScheme
+    val accent = when (metadataType) {
+        RearStoreWidgetMetadataType.CARD -> Color(0xFF3B82F6)
+        RearStoreWidgetMetadataType.NOTIFICATION -> Color(0xFF34A853)
+        RearStoreWidgetMetadataType.ENHANCED -> Color(0xFFF2B827)
+        RearStoreWidgetMetadataType.WALLPAPER -> Color(0xFFEF4444)
+        RearStoreWidgetMetadataType.UNKNOWN -> colorScheme.outline
+    }
+    val harmonizedAccent = lerp(accent, colorScheme.primary, 0.18f)
+    return remember(
+        metadataType,
+        colorScheme.surface,
+        colorScheme.onSurface,
+        harmonizedAccent,
+    ) {
+        RearStoreBadgePalette(
+            background = lerp(colorScheme.surface, harmonizedAccent, 0.24f),
+            text = lerp(colorScheme.onSurface, harmonizedAccent, 0.72f),
+        )
+    }
+}
+
+@Composable
+private fun RearStoreMetadataTypePill(metadataType: RearStoreWidgetMetadataType) {
+    val labelResId = metadataType.labelResId() ?: return
+    RearStoreStatusPill(
+        text = stringResource(labelResId),
+        emphasized = false,
+        palette = rememberMetadataBadgePalette(metadataType),
+    )
 }
 
 @Composable
@@ -1323,6 +1522,7 @@ private fun RearStoreReleaseCard(
                         },
                         repoBaseUrl = repoBaseUrl,
                         webViewCache = webViewCache,
+                        maxWindowHeight = rearStoreReleaseWebViewMaxHeight,
                     )
                     if (release.assets.isNotEmpty()) {
                         HorizontalDivider(
@@ -1456,30 +1656,43 @@ private fun RearStoreInstallProgressView(installState: RearStoreActiveInstall) {
 
 @Composable
 private fun RearStoreInstallInfoCard(detail: RearStoreWidgetDetail) {
-    val (businessId, hasCard, cardId) = defaultInstallInfo(detail)
-    Card(modifier = Modifier.fillMaxWidth()) {
-        BasicComponent(
-            title = stringResource(R.string.rear_store_install_info_title),
-            summary = buildString {
-                append(stringResource(R.string.rear_store_widget_id_summary, businessId))
-                append('\n')
-                append(
-                    stringResource(
-                        R.string.rear_store_will_install_card_summary,
-                        stringResource(
-                            if (hasCard) R.string.rear_store_yes else R.string.rear_store_no
-                        ),
-                    )
-                )
-                cardId?.let {
-                    append('\n')
-                    append(stringResource(R.string.rear_store_card_id_summary, it))
-                }
-                detail.widgetInfo?.cardSetup?.packageName?.normalizedOrNull()?.let {
+    val installInfo = defaultInstallInfo(detail)
+    val typeLabel = stringResource(installInfo.widgetInfoType.labelResId())
+    val summaryText = buildString {
+        append(stringResource(R.string.rear_store_widget_id_summary, installInfo.businessId))
+        append('\n')
+        append(stringResource(R.string.rear_store_install_mode_summary, typeLabel))
+        if (installInfo.widgetInfoType == RearStoreWidgetInfoType.WIDGET && !installInfo.hasBusinessSetup) {
+            append('\n')
+            append(stringResource(R.string.rear_store_install_missing_business_setup))
+        }
+        append('\n')
+        append(
+            stringResource(
+                R.string.rear_store_will_install_card_summary,
+                stringResource(
+                    if (installInfo.hasCard) R.string.rear_store_yes else R.string.rear_store_no
+                ),
+            )
+        )
+        installInfo.cardId?.let {
+            append('\n')
+            append(stringResource(R.string.rear_store_card_id_summary, it))
+        }
+        if (installInfo.hasCard) {
+            detail.widgetInfo?.cardSetup
+                ?.packageName
+                ?.normalizedOrNull()
+                ?.let {
                     append('\n')
                     append(stringResource(R.string.rear_store_card_package_summary, it))
                 }
-            },
+        }
+    }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        BasicComponent(
+            title = stringResource(R.string.rear_store_install_info_title),
+            summary = summaryText,
             summaryColor = BasicComponentDefaults.summaryColor(),
             onClick = null,
         )
@@ -1591,6 +1804,7 @@ private fun RearStoreReadmeCard(
                     markdown = markdown,
                     repoBaseUrl = repoBaseUrl,
                     webViewCache = webViewCache,
+                    maxWindowHeight = rearStoreReadmeWebViewMaxHeight,
                 )
             },
         )
@@ -1602,8 +1816,10 @@ private fun MarkdownCardBody(
     markdown: String,
     repoBaseUrl: String? = null,
     webViewCache: MutableMap<String, WebView>,
+    maxWindowHeight: Dp,
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current
     val prefsManager = remember(context) { context.getPrefsManager() }
     val webViewHardwareAccelerationEnabled = prefsManager.getBoolean(
         ConfigKeys.MODULE_STORE_WEBVIEW_HARDWARE_ACCELERATION,
@@ -1611,22 +1827,30 @@ private fun MarkdownCardBody(
     )
     val colorScheme = MiuixTheme.colorScheme
     val backgroundColor = colorScheme.background
+    val surfaceColor = colorScheme.surface
     val onSurfaceColor = colorScheme.onSurface
     val onSurfaceVariantColor = colorScheme.onSurfaceVariantSummary
     val primaryColor = colorScheme.primary
     val outlineColor = colorScheme.outline
     val secondaryContainerColor = colorScheme.secondaryContainer
+    val webViewBackgroundColor = if (webViewHardwareAccelerationEnabled) {
+        Color.Transparent
+    } else {
+        surfaceColor
+    }
     val darkMode = backgroundColor.luminance() < 0.5f
     val themeCssVariables = remember(
         backgroundColor,
+        surfaceColor,
         onSurfaceColor,
         onSurfaceVariantColor,
         primaryColor,
         outlineColor,
         secondaryContainerColor,
+        webViewBackgroundColor,
     ) {
         buildString {
-            append("--background: transparent;")
+            append("--background:${webViewBackgroundColor.toCssColor()};")
             append("--textPrimary:${onSurfaceColor.toCssColor()};")
             append("--textSecondary:${onSurfaceVariantColor.toCssColor()};")
             append("--link:${primaryColor.toCssColor()};")
@@ -1648,18 +1872,37 @@ private fun MarkdownCardBody(
             themeCssVariables = themeCssVariables,
         )
     } ?: return
-    val webViewKey = remember(htmlDocument, normalizedBaseUrl) {
-        listOf(normalizedBaseUrl.orEmpty(), htmlDocument.hashCode().toString())
+    val webViewKey = remember(
+        htmlDocument,
+        normalizedBaseUrl,
+        webViewHardwareAccelerationEnabled,
+    ) {
+        listOf(
+            normalizedBaseUrl.orEmpty(),
+            htmlDocument.hashCode().toString(),
+            webViewHardwareAccelerationEnabled.toString(),
+        )
             .joinToString(separator = "\u0000")
     }
+    val maxWindowHeightPx = remember(maxWindowHeight, density) {
+        (maxWindowHeight.value * density.density).roundToInt().coerceAtLeast(1)
+    }
+    var webViewHeightPx by remember(webViewKey) { mutableIntStateOf(1) }
+    val webViewHeightDp = (webViewHeightPx / density.density).dp
 
     AndroidView(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(webViewHeightDp),
         factory = { viewContext ->
             webViewCache.getOrPut(webViewKey) {
                 createGithubMarkdownWebView(
                     context = viewContext,
                     hardwareAccelerationEnabled = webViewHardwareAccelerationEnabled,
+                    onContentHeightChanged = { height ->
+                        webViewHeightPx = height.coerceIn(1, maxWindowHeightPx)
+                    },
+                    backgroundColor = webViewBackgroundColor.toArgb(),
                 ).apply {
                     tag = htmlDocument
                     loadDataWithBaseURL(
@@ -1681,6 +1924,16 @@ private fun MarkdownCardBody(
                 },
                 null,
             )
+            val currentLayoutParams = webView.layoutParams
+            if (currentLayoutParams == null ||
+                currentLayoutParams.width != ViewGroup.LayoutParams.MATCH_PARENT ||
+                currentLayoutParams.height != webViewHeightPx
+            ) {
+                webView.layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    webViewHeightPx,
+                )
+            }
             if (webView.tag != htmlDocument) {
                 webView.tag = htmlDocument
                 webView.loadDataWithBaseURL(
@@ -1690,6 +1943,11 @@ private fun MarkdownCardBody(
                     StandardCharsets.UTF_8.name(),
                     null,
                 )
+            } else {
+                // Re-entering the page reuses cached WebView. Re-publish height to avoid 1dp blank body.
+                webView.publishMarkdownContentHeight { height ->
+                    webViewHeightPx = height.coerceIn(1, maxWindowHeightPx)
+                }
             }
         },
     )
@@ -1698,8 +1956,14 @@ private fun MarkdownCardBody(
 private fun createGithubMarkdownWebView(
     context: Context,
     hardwareAccelerationEnabled: Boolean,
+    onContentHeightChanged: (Int) -> Unit,
+    backgroundColor: Int,
 ): WebView {
-    return WebView(context).apply {
+    return ScrollWebView(context).apply {
+        layoutParams = ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        )
         setLayerType(
             if (hardwareAccelerationEnabled) {
                 View.LAYER_TYPE_NONE
@@ -1708,10 +1972,9 @@ private fun createGithubMarkdownWebView(
             },
             null,
         )
-        setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        setBackgroundColor(backgroundColor)
         isVerticalScrollBarEnabled = false
         isHorizontalScrollBarEnabled = false
-        overScrollMode = View.OVER_SCROLL_NEVER
         settings.apply {
             domStorageEnabled = true
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
@@ -1724,6 +1987,15 @@ private fun createGithubMarkdownWebView(
             textZoom = 80
         }
         webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView, url: String?) {
+                super.onPageFinished(view, url)
+                view.publishMarkdownContentHeight(onContentHeightChanged)
+                view.postDelayed(
+                    { view.publishMarkdownContentHeight(onContentHeightChanged) },
+                    120,
+                )
+            }
+
             override fun shouldOverrideUrlLoading(
                 view: WebView,
                 request: WebResourceRequest
@@ -1775,6 +2047,16 @@ private fun createGithubMarkdownWebView(
                 }
             }
         }
+    }
+}
+
+private fun WebView.publishMarkdownContentHeight(onContentHeightChanged: (Int) -> Unit) {
+    post {
+        val contentHeightPx = (contentHeight * scale).roundToInt()
+        val measuredOrContentHeight = maxOf(measuredHeight, contentHeightPx)
+        val resolvedHeight =
+            (measuredOrContentHeight + paddingTop + paddingBottom).coerceAtLeast(1)
+        onContentHeightChanged(resolvedHeight)
     }
 }
 

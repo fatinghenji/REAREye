@@ -8,7 +8,7 @@ plugins {
     signing
 }
 
-val apiVersion = "1.0.1"
+val apiVersion = "1.0.2"
 
 android {
     namespace = "hk.uwu.reareye.widgetapi"

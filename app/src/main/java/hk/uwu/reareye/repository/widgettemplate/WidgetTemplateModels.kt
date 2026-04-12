@@ -1,0 +1,11 @@
+package hk.uwu.reareye.repository.widgettemplate
+
+import hk.uwu.reareye.repository.rearwidget.RearWidgetCardTemplateField
+import hk.uwu.reareye.repository.rearwidget.RearWidgetCardTemplateFieldJsonAdapter
+import hk.uwu.reareye.repository.rearwidget.RearWidgetCardTemplateSchema
+import hk.uwu.reareye.repository.rearwidget.RearWidgetOneConfig
+
+typealias WidgetTemplateField = RearWidgetCardTemplateField
+typealias WidgetTemplateFieldJsonAdapter = RearWidgetCardTemplateFieldJsonAdapter
+typealias WidgetTemplateSchema = RearWidgetCardTemplateSchema
+typealias WidgetTemplateOneConfig = RearWidgetOneConfig

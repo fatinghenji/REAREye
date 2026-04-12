@@ -8,18 +8,24 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Binder
 import android.os.Bundle
 import android.os.Handler
 import android.os.Process
 import android.util.Base64
+import android.view.View
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.repository.rearwidget.REAR_WIDGET_CARD_ONE_CONFIG_JSON_KEY
 import hk.uwu.reareye.repository.rearwidget.RearBusinessExtraConfigRepository.getShowTimeTipForBusiness
 import hk.uwu.reareye.repository.rearwidget.RearWidgetConfigCodec
+import hk.uwu.reareye.repository.widgettemplate.WidgetTemplateConfigRepository
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
 import hk.uwu.reareye.widgetapi.IRearWidgetApiConnection
@@ -28,10 +34,14 @@ import hk.uwu.reareye.widgetapi.RearWidgetActiveNotice
 import hk.uwu.reareye.widgetapi.RearWidgetApiContract
 import hk.uwu.reareye.widgetapi.RearWidgetNoticeOptions
 import hk.uwu.reareye.widgetapi.RearWidgetNoticeTicket
+import hk.uwu.reareye.widgetapi.RearWidgetTemplateConfigState
+import hk.uwu.reareye.widgetapi.RearWidgetTemplateImagePreview
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.zip.ZipFile
 
 class RearWidgetHook : YukiBaseHooker() {
 
@@ -45,6 +55,22 @@ class RearWidgetHook : YukiBaseHooker() {
         private const val TAG = "REAREye-RearWidget"
         private const val TEMPLATE_BASE =
             "/data/system/theme_magic/users/%s/subscreencenter/smart_assistant"
+        private const val CARD_CONFIG_BASE =
+            "/data/system/theme_magic/users/%s/subscreencenter/reareye_card_config"
+        private const val CARD_ASSET_BASE =
+            "/data/system/theme_magic/users/%s/subscreencenter/reareye_card_assets"
+        private val BUILTIN_TEMPLATE_RELATIVE_PATHS = mapOf(
+            "incall" to "phone",
+            "alarm" to "alarm",
+            "countdown" to "timer",
+            "carHailing" to "car_hailing",
+            "foodDelivery" to "food_delivery",
+            "music" to "music",
+            "xiaomiev" to "ev",
+            "privacy" to "privacy",
+            "stock" to "stock",
+            "mihomeCamera" to "miHomeCamera",
+        )
         private val INTERNAL_BUSINESSES = listOf(
             "incall",
             "carHailing",
@@ -64,6 +90,7 @@ class RearWidgetHook : YukiBaseHooker() {
     private val startupBootstrapped = AtomicBoolean(false)
     private val bootstrapReceiverRegistered = AtomicBoolean(false)
     private val deployedBlobMetaCache = ConcurrentHashMap<String, String>()
+    private val deployedCardConfigMetaCache = ConcurrentHashMap<String, String>()
     private val injectedCardSignatureCache = ConcurrentHashMap<String, String>()
     private val injectedCompositeAt = ConcurrentHashMap<String, Long>()
     private val bootstrapRetryCount = AtomicInteger(0)
@@ -84,6 +111,7 @@ class RearWidgetHook : YukiBaseHooker() {
             val persistenceRef = "H.d".toClass().resolve()
             val p2cRef = "p2.c".toClass().resolve()
             val z1mRef = "Z1.m".toClass().resolve()
+            val t2jRef = "t2.j".toClass().resolve()
 
             appRef.firstMethod {
                 name = "attachBaseContext"
@@ -180,6 +208,13 @@ class RearWidgetHook : YukiBaseHooker() {
                 parameterCount = 0
             }.hook().before {
                 allowSelfDescribedNotificationPackage(instance)
+            }
+
+            t2jRef.firstMethod {
+                name = "J"
+                parameterCount = 1
+            }.hook().after {
+                applyCardOneConfig(instance, args.getOrNull(0), "t2.j.J")
             }
 
             p2cRef.firstMethod {
@@ -375,6 +410,49 @@ class RearWidgetHook : YukiBaseHooker() {
             patchManagerAppGates(manager)
             scheduleInjectAllActiveNotices()
         }
+
+        override fun resolveTemplateImagePreview(
+            business: String?,
+            sourceFilePath: String?,
+            imageValue: String?,
+        ): Bundle {
+            enforceCallerPermission()
+            val preview = resolveTemplateImagePreviewModel(
+                business = business?.trim().orEmpty(),
+                sourcePath = sourceFilePath?.trim().orEmpty(),
+                imageValue = imageValue?.trim().orEmpty(),
+            )
+            return preview?.toBundle() ?: Bundle()
+        }
+
+        override fun resolveTemplateConfigState(
+            business: String?,
+            sourceFilePath: String?,
+            currentOneConfigJson: String?,
+        ): Bundle {
+            enforceCallerPermission()
+            val state = resolveTemplateConfigStateModel(
+                business = business?.trim().orEmpty(),
+                sourcePath = sourceFilePath?.trim().orEmpty(),
+                currentOneConfigJson = currentOneConfigJson?.trim(),
+            )
+            return state?.toBundle() ?: Bundle()
+        }
+
+        override fun importCardCustomImage(
+            cardKey: String?,
+            fieldName: String?,
+            sourceUri: String?,
+            displayNameHint: String?,
+        ): String {
+            enforceCallerPermission()
+            return importCardCustomImageInternal(
+                cardKey = cardKey?.trim().orEmpty(),
+                fieldName = fieldName?.trim().orEmpty(),
+                sourceUri = sourceUri?.trim().orEmpty(),
+                displayNameHint = displayNameHint?.trim().orEmpty(),
+            ).orEmpty()
+        }
     }
 
     private val hookBootstrapReceiver = object : BroadcastReceiver() {
@@ -522,6 +600,9 @@ class RearWidgetHook : YukiBaseHooker() {
                 putString("title", card.title.ifBlank { card.business })
                 putString("business", card.business)
                 putString("__rear_card_id__", card.id)
+                card.oneConfigJson?.takeIf { it.isNotBlank() }?.let {
+                    putString(REAR_WIDGET_CARD_ONE_CONFIG_JSON_KEY, it)
+                }
             }
             val options = RearWidgetNoticeOptions(
                 sticky = card.sticky,
@@ -719,7 +800,6 @@ class RearWidgetHook : YukiBaseHooker() {
         }
 
         RearWidgetRuntimeStore.mapsDirty.set(false)
-        dumpRuntimeMaps(bizPath)
     }
 
     private fun patchManagerAppGates(target: Any?) {
@@ -906,40 +986,6 @@ class RearWidgetHook : YukiBaseHooker() {
         }
     }
 
-    private fun dumpRuntimeMaps(
-        bizPath: Map<String, String>,
-    ) {
-        runCatching {
-            val aMap = readStaticMap("p2.a", "a")
-            val cMap = readStaticMap("p2.a", "c")
-            val dMap = readStaticMap("p2.a", "d")
-            val cPersistMap = readStaticMap("p2.c", "d")
-            val cWhitelist = readStaticList("p2.c", "b").toSet()
-
-            val missingInWhitelist = bizPath.keys.sorted().filter { it !in cWhitelist }
-            debugLog(
-                "dump p2.a.a=$aMap, p2.a.c=$cMap, p2.a.d=$dMap, " +
-                        "p2.c.d=$cPersistMap, p2.c.b.missing=$missingInWhitelist"
-            )
-        }.onFailure {
-            debugLog("dump failed: ${it.message}")
-        }
-    }
-
-    private fun readStaticMap(className: String, fieldName: String): Map<String, Any?> {
-        val raw = className.toClass().resolve().firstField { name = fieldName }.get<Any>()
-            ?: return emptyMap()
-        val map = unwrapMutableMap(raw)
-        return map.entries.associate { (k, v) -> k.toString() to v }
-    }
-
-    @Suppress("SameParameterValue")
-    private fun readStaticList(className: String, fieldName: String): List<String> {
-        val raw = className.toClass().resolve().firstField { name = fieldName }.get<Any>()
-            ?: return emptyList()
-        return unwrapMutableList(raw).map { it.toString() }
-    }
-
     private fun deployBusinessTemplate(business: String, sourcePath: String): String? {
         val source = sourcePath.trim()
         val target = resolveTemplatePath(business)
@@ -1009,6 +1055,37 @@ class RearWidgetHook : YukiBaseHooker() {
         return "$base/re_$safeBiz"
     }
 
+    private fun resolveCardConfigPath(cardKey: String): String {
+        val userId = Process.myUid() / 100000
+        val base = CARD_CONFIG_BASE.format(userId.toString())
+        val safeKey = cardKey.trim().replace(Regex("[^a-zA-Z0-9._-]"), "_")
+        return "$base/$safeKey.json"
+    }
+
+    private fun resolveCardAssetDir(cardKey: String): File {
+        val userId = Process.myUid() / 100000
+        val base = CARD_ASSET_BASE.format(userId.toString())
+        val safeKey = cardKey.trim().replace(Regex("[^a-zA-Z0-9._-]"), "_")
+        return File(base, safeKey)
+    }
+
+    private fun resolveBuiltinTemplatePath(business: String): String? {
+        val userId = Process.myUid() / 100000
+        val normalizedBusiness = normalizeBusinessName(business)
+        val relative = BUILTIN_TEMPLATE_RELATIVE_PATHS[normalizedBusiness] ?: return null
+        return "/data/system/theme_magic/users/$userId/subscreencenter/smart_assistant/$relative"
+    }
+
+    private fun normalizeBusinessName(raw: String): String {
+        return when (raw.trim()) {
+            "taxi", "car_hailing", "carHailing" -> "carHailing"
+            "food_Delivery", "food_delivery", "foodDelivery" -> "foodDelivery"
+            "miHomeCamera", "mihomeCamera" -> "mihomeCamera"
+            "xiaomi_ev", "xiaomiev" -> "xiaomiev"
+            else -> raw.trim()
+        }
+    }
+
     private fun removeDeployedBusinessTemplate(business: String) {
         runCatching {
             deployedBlobMetaCache.remove(business)
@@ -1020,6 +1097,590 @@ class RearWidgetHook : YukiBaseHooker() {
         }.onFailure {
             debugLog("remove stale deployed template failed business=$business err=${it.message}")
         }
+    }
+
+    private fun deployCardOneConfig(cardKey: String, json: String): String? {
+        val normalizedJson = json.trim()
+        if (normalizedJson.isBlank()) return null
+
+        val target = resolveCardConfigPath(cardKey)
+        val targetFile = File(target)
+        val meta = "${normalizedJson.length}:${normalizedJson.hashCode()}"
+        if (deployedCardConfigMetaCache[cardKey] == meta && targetFile.exists()) {
+            return target
+        }
+
+        val ok = runCatching {
+            targetFile.parentFile?.mkdirs()
+            val tmp = File(targetFile.parentFile, "${targetFile.name}.tmp.${Process.myPid()}")
+            tmp.writeText(normalizedJson)
+            if (targetFile.exists()) targetFile.delete()
+            val moved = tmp.renameTo(targetFile)
+            if (!moved) {
+                tmp.copyTo(targetFile, overwrite = true)
+                tmp.delete()
+            }
+            ensureReadable(targetFile)
+            true
+        }.getOrDefault(false)
+
+        if (!ok) {
+            debugLog("deploy card one config failed cardKey=$cardKey")
+            return null
+        }
+
+        deployedCardConfigMetaCache[cardKey] = meta
+        debugLog("deployed card one config cardKey=$cardKey -> $target")
+        return target
+    }
+
+    private fun removeCardOneConfig(cardKey: String) {
+        runCatching {
+            deployedCardConfigMetaCache.remove(cardKey)
+            val file = File(resolveCardConfigPath(cardKey))
+            if (file.exists()) file.delete()
+        }.onFailure {
+            debugLog("remove card one config failed cardKey=$cardKey err=${it.message}")
+        }
+    }
+
+    private fun applyCardOneConfig(owner: Any?, mamlView: Any?, hookPoint: String) {
+        if (owner == null || mamlView == null) {
+            debugLog("applyCardOneConfig skip hook=$hookPoint owner=${owner != null} view=${mamlView != null}")
+            return
+        }
+        val extras = extractCardExtras(owner)
+        if (extras == null) {
+            debugLog("applyCardOneConfig missing extras hook=$hookPoint owner=${owner.javaClass.name}")
+            return
+        }
+
+        val json = extras.getString(REAR_WIDGET_CARD_ONE_CONFIG_JSON_KEY)?.trim().orEmpty()
+        val cardId = extras.getString("__rear_card_id__")?.trim().orEmpty()
+        val packageName = extras.getString("package_name")?.trim().orEmpty()
+        val business = extras.getString("business")?.trim().orEmpty()
+        val cardKey = listOf(packageName, business, cardId)
+            .filter { it.isNotBlank() }
+            .joinToString("_")
+            .ifBlank { "${packageName}_${business}".trim('_') }
+            .ifBlank {
+                debugLog("applyCardOneConfig missing key hook=$hookPoint pkg=$packageName biz=$business cardId=$cardId")
+                return
+            }
+
+        debugLog(
+            "applyCardOneConfig hook=$hookPoint cardKey=$cardKey hasJson=${json.isNotBlank()} jsonLength=${json.length} owner=${owner.javaClass.name} view=${mamlView.javaClass.name}"
+        )
+        val templatePath = extractFieldFromHierarchy(owner, "A") as? String
+
+        if (json.isBlank()) {
+            removeCardOneConfig(cardKey)
+            return
+        }
+
+        val configPath = deployCardOneConfig(cardKey, json) ?: return
+        applyCardOneConfigOnce(
+            mamlView,
+            json,
+            configPath,
+            cardKey,
+            "$hookPoint/immediate",
+            templatePath
+        )
+        (mamlView as? View)?.postDelayed({
+            applyCardOneConfigOnce(
+                mamlView,
+                json,
+                configPath,
+                cardKey,
+                "$hookPoint/post120",
+                templatePath
+            )
+        }, 120L)
+    }
+
+    private fun applyCardOneConfigOnce(
+        mamlView: Any,
+        json: String,
+        configPath: String,
+        cardKey: String,
+        stage: String,
+        templatePath: String?,
+    ) {
+        runCatching {
+            "com.miui.maml.widget.edit.WidgetEditSave".toClass().resolve().firstMethod {
+                name = "restoreFromConfigPath"
+                parameterCount = 2
+            }.invoke(mamlView, configPath)
+            applyHostOneConfig(mamlView, json)
+            applyCompatOneConfig(mamlView, json)
+            applyManifestDerivedVars(mamlView, templatePath)
+            requestMamlRefresh(mamlView)
+            debugLog("applied card one config cardKey=$cardKey stage=$stage path=$configPath jsonLength=${json.length}")
+        }.onFailure {
+            debugLog("apply card one config failed cardKey=$cardKey stage=$stage err=${it.message}")
+        }
+    }
+
+    private fun extractCardExtras(owner: Any): Bundle? {
+        extractFieldFromHierarchy(owner, "i")?.let { value ->
+            val bundle = value as? Bundle
+            if (bundle != null && bundle.hasCardConfigMarkers()) return bundle
+        }
+
+        var current: Class<*>? = owner.javaClass
+        while (current != null && current != Any::class.java) {
+            current.declaredFields.forEach { field ->
+                runCatching {
+                    field.isAccessible = true
+                    val value = field.get(owner) as? Bundle ?: return@runCatching
+                    if (value.hasCardConfigMarkers()) {
+                        return value
+                    }
+                }
+            }
+            current = current.superclass
+        }
+        return null
+    }
+
+    private fun extractFieldFromHierarchy(owner: Any, fieldName: String): Any? {
+        var current: Class<*>? = owner.javaClass
+        while (current != null && current != Any::class.java) {
+            current.declaredFields.firstOrNull { it.name == fieldName }?.let { field ->
+                return runCatching {
+                    field.isAccessible = true
+                    field.get(owner)
+                }.getOrNull()
+            }
+            current = current.superclass
+        }
+        return null
+    }
+
+    private fun Bundle.hasCardConfigMarkers(): Boolean {
+        return containsKey(REAR_WIDGET_CARD_ONE_CONFIG_JSON_KEY) || containsKey("__rear_card_id__")
+    }
+
+    private fun applyHostOneConfig(mamlView: Any, json: String) {
+        runCatching {
+            val classLoader = mamlView.javaClass.classLoader
+            val oneConfigClass = Class.forName(
+                "com.miui.maml.widget.edit.OneConfig",
+                false,
+                classLoader,
+            )
+            val widgetEditSaveClass = Class.forName(
+                "com.miui.maml.widget.edit.WidgetEditSave",
+                false,
+                classLoader,
+            )
+
+            val hostOneConfig = com.google.gson.Gson().fromJson(json, oneConfigClass) ?: return
+
+            mamlView.javaClass.methods.firstOrNull {
+                it.name == "setConfig" && it.parameterTypes.size == 1
+            }?.invoke(mamlView, hostOneConfig)
+
+            widgetEditSaveClass.methods.firstOrNull {
+                it.name == "restoreMamlView" && it.parameterTypes.size == 2
+            }?.invoke(null, hostOneConfig, mamlView)
+
+            debugLog("apply host one config success jsonLength=${json.length} oneConfigClass=${oneConfigClass.name}")
+        }.onFailure {
+            debugLog("apply host one config failed err=${it.message}")
+        }
+    }
+
+    private fun applyCompatOneConfig(mamlView: Any, json: String) {
+        val oneConfig = WidgetTemplateConfigRepository.decodeOneConfig(json) ?: return
+        val dropDownValues = oneConfig.dropDownSaveConfig.orEmpty()
+        if (dropDownValues.isEmpty()) return
+
+        runCatching {
+            val putVariableString = mamlView.javaClass.methods.firstOrNull {
+                it.name == "putVariableString" && it.parameterTypes.size == 3
+            } ?: return
+            val requestUpdate = mamlView.javaClass.methods.firstOrNull {
+                it.name == "requestUpdate" && it.parameterTypes.isEmpty()
+            }
+            val sendCommand = mamlView.javaClass.methods.firstOrNull {
+                it.name == "sendCommand" && it.parameterTypes.size == 1
+            }
+
+            dropDownValues.forEach { (key, value) ->
+                putVariableString.invoke(mamlView, key, value, 1)
+            }
+            requestUpdate?.invoke(mamlView)
+            sendCommand?.invoke(mamlView, "resume")
+            sendCommand?.invoke(mamlView, "refresh_after_edit")
+        }.onFailure {
+            debugLog("apply compat one config failed err=${it.message}")
+        }
+    }
+
+    private fun requestMamlRefresh(mamlView: Any) {
+        runCatching {
+            mamlView.javaClass.methods.firstOrNull {
+                it.name == "requestUpdate" && it.parameterTypes.isEmpty()
+            }?.invoke(mamlView)
+            mamlView.javaClass.methods.firstOrNull {
+                it.name == "sendCommand" && it.parameterTypes.size == 1
+            }?.let { sendCommand ->
+                sendCommand.invoke(mamlView, "resume")
+                sendCommand.invoke(mamlView, "refresh_after_edit")
+            }
+        }.onFailure {
+            debugLog("request maml refresh failed err=${it.message}")
+        }
+    }
+
+    private data class ManifestVarDef(
+        val name: String,
+        val type: String,
+        val expression: String,
+    )
+
+    private fun applyManifestDerivedVars(mamlView: Any, templatePath: String?) {
+        val manifest = templatePath?.let(::readManifestText) ?: return
+        val vars = parseManifestVarDefs(manifest)
+        if (vars.isEmpty()) return
+
+        val putString = mamlView.javaClass.methods.firstOrNull {
+            it.name == "putVariableString" && it.parameterTypes.size == 3
+        }
+        val putNumber = mamlView.javaClass.methods.firstOrNull {
+            it.name == "putVariableNumber" && it.parameterTypes.size == 3
+        }
+        val getString = mamlView.javaClass.methods.firstOrNull {
+            it.name == "getVariableString" && it.parameterTypes.size == 1
+        }
+        val getNumber = mamlView.javaClass.methods.firstOrNull {
+            it.name == "getVariableNumber" && it.parameterTypes.size == 1
+        }
+        val getObject = mamlView.javaClass.methods.firstOrNull {
+            it.name == "getVariableObject" && it.parameterTypes.size == 1
+        }
+        if (putString == null || putNumber == null || getString == null || getNumber == null) return
+
+        fun putDerivedString(key: String, value: String?) {
+            if (value == null) return
+            putString.invoke(mamlView, key, value, 1)
+        }
+
+        fun putDerivedNumber(key: String, value: Double?) {
+            if (value == null) return
+            putNumber.invoke(mamlView, key, value, 1)
+        }
+
+        val directStringAlias = Regex("^@([A-Za-z0-9_]+)$")
+        val directNumberAlias = Regex("^#([A-Za-z0-9_]+)$")
+        val alignExpr = Regex(
+            """^ifelse\(\(#([A-Za-z0-9_]+)\s*==\s*0\),'left',ifelse\(\(#\1\s*==\s*1\),'center','right'\)\)$"""
+        )
+        val multiplyExpr = Regex(
+            """^\(#([A-Za-z0-9_]+)\s*\*\s*#([A-Za-z0-9_]+)\)$"""
+        )
+
+        vars.forEach { varDef ->
+            val expr = varDef.expression.trim()
+            directStringAlias.matchEntire(expr)?.groupValues?.getOrNull(1)?.let { source ->
+                putDerivedString(varDef.name, getString.invoke(mamlView, source) as? String)
+            }
+            directNumberAlias.matchEntire(expr)?.groupValues?.getOrNull(1)?.let { source ->
+                val value = (getNumber.invoke(mamlView, source) as? Number)?.toDouble()
+                putDerivedNumber(varDef.name, value)
+            }
+        }
+
+        vars.forEach { varDef ->
+            val expr = varDef.expression.trim()
+            alignExpr.matchEntire(expr)?.groupValues?.getOrNull(1)?.let { source ->
+                val alignValue = ((getNumber.invoke(mamlView, source) as? Number)?.toInt()) ?: 0
+                val textAlign = when (alignValue) {
+                    0 -> "left"
+                    1 -> "center"
+                    else -> "right"
+                }
+                putDerivedString(varDef.name, textAlign)
+            }
+            multiplyExpr.matchEntire(expr)?.let { match ->
+                val left = (getNumber.invoke(mamlView, match.groupValues[1]) as? Number)?.toDouble()
+                val right =
+                    (getNumber.invoke(mamlView, match.groupValues[2]) as? Number)?.toDouble()
+                if (left != null && right != null) {
+                    putDerivedNumber(varDef.name, left * right)
+                }
+            }
+            if (expr.contains("#bgUrl[0]") && expr.contains("@bgPath1")) {
+                val selected =
+                    (getObject?.invoke(mamlView, "bgUrl") as? DoubleArray) ?: doubleArrayOf()
+                val bg1 = getString.invoke(mamlView, "bgPath1") as? String
+                val bg2 = getString.invoke(mamlView, "bgPath2") as? String
+                val bg3 = getString.invoke(mamlView, "bgPath3") as? String
+                val resolved = when {
+                    selected.getOrNull(0) == 1.0 -> bg1
+                    selected.getOrNull(1) == 1.0 -> bg2
+                    selected.getOrNull(2) == 1.0 -> bg3
+                    else -> bg1
+                }
+                putDerivedString(varDef.name, resolved)
+            }
+        }
+    }
+
+    private fun parseManifestVarDefs(text: String): List<ManifestVarDef> {
+        val regex =
+            Regex("<Var\\s+[^>]*name=\"([^\"]+)\"[^>]*type=\"([^\"]+)\"[^>]*expression=\"([^\"]*)\"[^>]*/?>")
+        return regex.findAll(text).map {
+            ManifestVarDef(
+                name = it.groupValues[1],
+                type = it.groupValues[2],
+                expression = it.groupValues[3],
+            )
+        }.toList()
+    }
+
+    private fun readManifestText(templatePath: String): String? {
+        return runCatching {
+            val file = File(templatePath)
+            if (!file.exists()) return null
+            if (file.isDirectory) {
+                val manifest = File(file, "manifest.xml")
+                if (!manifest.exists()) return null
+                return manifest.readText()
+            }
+            ZipFile(file).use { zip ->
+                val entry = zip.getEntry("manifest.xml") ?: return@use null
+                zip.getInputStream(entry).bufferedReader().use { it.readText() }
+            }
+        }.getOrNull()
+    }
+
+    private fun resolveTemplateImagePreviewModel(
+        business: String,
+        sourcePath: String,
+        imageValue: String,
+    ): RearWidgetTemplateImagePreview? {
+        if (imageValue.isBlank()) return null
+        val templatePath = resolveTemplatePreviewPath(business, sourcePath) ?: return null
+        debugLog(
+            "resolveTemplateImagePreview business=$business normalized=${
+                normalizeBusinessName(
+                    business
+                )
+            } source=${sourcePath.ifBlank { "<builtin>" }} template=$templatePath value=$imageValue"
+        )
+        val imageBytes = loadTemplateImageBytes(templatePath, imageValue) ?: return null
+        val previewBytes = compressPreviewBytes(imageBytes) ?: return null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(previewBytes, 0, previewBytes.size, bounds)
+        return RearWidgetTemplateImagePreview(
+            imageValue = imageValue,
+            templateSourcePath = sourcePath,
+            previewBase64 = Base64.encodeToString(previewBytes, Base64.NO_WRAP),
+            mimeType = "image/png",
+            width = bounds.outWidth.coerceAtLeast(0),
+            height = bounds.outHeight.coerceAtLeast(0),
+        )
+    }
+
+    private fun resolveTemplateConfigStateModel(
+        business: String,
+        sourcePath: String,
+        currentOneConfigJson: String?,
+    ): RearWidgetTemplateConfigState? {
+        val templatePath = resolveTemplatePreviewPath(business, sourcePath)
+        if (templatePath == null) {
+            debugLog(
+                "resolveTemplateConfigState miss-path business=$business normalized=${
+                    normalizeBusinessName(
+                        business
+                    )
+                } source=${sourcePath.ifBlank { "<builtin>" }}"
+            )
+            return null
+        }
+        val schema = WidgetTemplateConfigRepository.loadSchema(templatePath)
+        if (schema == null) {
+            debugLog(
+                "resolveTemplateConfigState miss-schema business=$business normalized=${
+                    normalizeBusinessName(
+                        business
+                    )
+                } template=$templatePath"
+            )
+            return null
+        }
+        debugLog(
+            "resolveTemplateConfigState business=$business normalized=${
+                normalizeBusinessName(
+                    business
+                )
+            } source=${sourcePath.ifBlank { "<builtin>" }} template=$templatePath editable=${schema.editableItemCount}"
+        )
+        val oneConfig = WidgetTemplateConfigRepository.buildInitialOneConfig(
+            schema = schema,
+            existingJson = currentOneConfigJson,
+        )
+        return RearWidgetTemplateConfigState(
+            templateSchemaJson = WidgetTemplateConfigRepository.encodeSchema(schema),
+            oneConfigJson = WidgetTemplateConfigRepository.encodeOneConfig(oneConfig),
+        )
+    }
+
+    private fun resolveTemplatePreviewPath(
+        business: String,
+        sourcePath: String,
+    ): String? {
+        val normalizedBusiness = normalizeBusinessName(business)
+        val deployed = normalizedBusiness.takeIf { it.isNotBlank() }
+            ?.let {
+                RearWidgetRuntimeStore.getBusinessFile(it)
+                    ?: RearWidgetRuntimeStore.getBusinessFile(business)
+            }
+            ?.takeIf { File(it).exists() }
+        if (deployed != null) {
+            debugLog("resolveTemplatePreviewPath deployed business=$business normalized=$normalizedBusiness path=$deployed")
+            return deployed
+        }
+
+        val builtin = normalizedBusiness.takeIf { it.isNotBlank() }
+            ?.let(::resolveBuiltinTemplatePath)
+            ?.takeIf { File(it).exists() }
+        if (builtin != null) {
+            debugLog("resolveTemplatePreviewPath builtin business=$business normalized=$normalizedBusiness path=$builtin")
+            return builtin
+        }
+
+        if (normalizedBusiness.isNotBlank() && sourcePath.isNotBlank()) {
+            deployBusinessTemplate(normalizedBusiness, sourcePath)?.takeIf { File(it).exists() }
+                ?.let {
+                    debugLog("resolveTemplatePreviewPath deployed-from-source business=$business normalized=$normalizedBusiness source=$sourcePath path=$it")
+                    return it
+                }
+        }
+
+        sourcePath.takeIf { it.isNotBlank() && File(it).exists() }?.let {
+            debugLog("resolveTemplatePreviewPath source business=$business normalized=$normalizedBusiness path=$it")
+            return it
+        }
+        debugLog("resolveTemplatePreviewPath miss business=$business normalized=$normalizedBusiness source=${sourcePath.ifBlank { "<builtin>" }}")
+        return null
+    }
+
+    private fun loadTemplateImageBytes(
+        templatePath: String,
+        imageValue: String,
+    ): ByteArray? {
+        val normalized = imageValue.trim().removePrefix("file://")
+        if (normalized.isBlank()) return null
+
+        val directFile = when {
+            imageValue.startsWith("file://", ignoreCase = true) -> imageValue.toUri().path
+            normalized.startsWith("/") -> normalized
+            else -> null
+        }?.let(::File)
+        if (directFile != null && directFile.isFile) {
+            return runCatching { directFile.readBytes() }.getOrNull()
+        }
+
+        val templateFile = File(templatePath)
+        if (!templateFile.exists()) return null
+        val relativeCandidates = linkedSetOf(
+            normalized.removePrefix("/"),
+            imageValue.trim().removePrefix("/"),
+        ).filter { it.isNotBlank() }
+
+        if (templateFile.isDirectory) {
+            relativeCandidates.forEach { candidate ->
+                val child = File(templateFile, candidate)
+                if (child.isFile) {
+                    return runCatching { child.readBytes() }.getOrNull()
+                }
+            }
+            return null
+        }
+
+        return runCatching {
+            ZipFile(templateFile).use { zip ->
+                val entry = relativeCandidates.firstNotNullOfOrNull { candidate ->
+                    zip.getEntry(candidate)
+                        ?: zip.entries().asSequence().firstOrNull {
+                            it.name.equals(candidate, ignoreCase = true)
+                        }
+                } ?: return@use null
+                zip.getInputStream(entry).use { it.readBytes() }
+            }
+        }.getOrNull()
+    }
+
+    private fun compressPreviewBytes(bytes: ByteArray): ByteArray? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        val maxDimension = maxOf(bounds.outWidth, bounds.outHeight)
+        val sampleSize = when {
+            maxDimension <= 0 -> 1
+            maxDimension <= 320 -> 1
+            else -> {
+                var sample = 1
+                while (maxDimension / sample > 320) sample *= 2
+                sample
+            }
+        }
+        val bitmap = BitmapFactory.decodeByteArray(
+            bytes,
+            0,
+            bytes.size,
+            BitmapFactory.Options().apply {
+                inSampleSize = sampleSize
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            },
+        ) ?: return null
+
+        return ByteArrayOutputStream().use { output ->
+            val ok = bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+            bitmap.recycle()
+            if (!ok) return null
+            output.toByteArray()
+        }
+    }
+
+    private fun importCardCustomImageInternal(
+        cardKey: String,
+        fieldName: String,
+        sourceUri: String,
+        displayNameHint: String,
+    ): String? {
+        if (cardKey.isBlank() || fieldName.isBlank() || sourceUri.isBlank()) return null
+        val context = hostContext ?: return null
+        val uri = runCatching { sourceUri.toUri() }.getOrNull() ?: return null
+        val bytes = runCatching {
+            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        }.getOrNull() ?: return null
+        val extension = displayNameHint
+            .substringAfterLast('.', "")
+            .takeIf { it.isNotBlank() }
+            ?: "png"
+
+        val assetDir = resolveCardAssetDir(cardKey)
+        val safeField = fieldName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+        runCatching {
+            if (!assetDir.exists()) assetDir.mkdirs()
+            assetDir.listFiles()?.forEach { child ->
+                if (child.isFile && child.name.startsWith("${safeField}_")) {
+                    child.delete()
+                }
+            }
+        }
+
+        val target = File(assetDir, "${safeField}_${System.currentTimeMillis()}.$extension")
+        return runCatching {
+            target.parentFile?.mkdirs()
+            target.writeBytes(bytes)
+            ensureReadable(target)
+            target.absolutePath
+        }.getOrNull()
     }
 
     @SuppressLint("SetWorldReadable")
@@ -1052,6 +1713,9 @@ class RearWidgetHook : YukiBaseHooker() {
             append(notice.ticket.compositeKey)
             append('|').append(payload.getString("title").orEmpty())
             append('|').append(payload.getString("business").orEmpty())
+            append('|').append(
+                payload.getString(REAR_WIDGET_CARD_ONE_CONFIG_JSON_KEY).orEmpty().hashCode()
+            )
             append('|').append(notice.options.index ?: -1)
             append('|').append(notice.options.priority ?: -1)
             append('|').append(notice.options.sticky)

@@ -27,7 +27,8 @@ val gitBranch: String by lazy {
     val url = runGitCommand("remote", "get-url", "origin")
         ?: "https://github.com/killerprojecte/REAREye.git"
     val branch = runGitCommand("branch", "--show-current") ?: "master"
-    """github\.com[:/](.+?)(\.git)?$""".toRegex().find(url)?.groupValues?.get(1).orEmpty() + "/" + branch
+    """github\.com[:/](.+?)(\.git)?$""".toRegex().find(url)?.groupValues?.get(1)
+        .orEmpty() + "/" + branch
 }
 val gitCommitCount: Int by lazy { runGitCommand("rev-list", "--count", "HEAD")?.toIntOrNull() ?: 0 }
 val gitVersionCode: Int by lazy { 5 + gitCommitCount }

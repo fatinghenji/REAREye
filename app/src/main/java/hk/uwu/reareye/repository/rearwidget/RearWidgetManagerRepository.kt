@@ -1,22 +1,28 @@
 package hk.uwu.reareye.repository.rearwidget
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.util.Base64
+import android.util.Log
 import hk.uwu.reareye.repository.rearwidget.RearBusinessExtraConfigRepository.getShowTimeTipForBusiness
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.PrefsManager
 import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
 import hk.uwu.reareye.widgetapi.RearWidgetApiClient
+import hk.uwu.reareye.widgetapi.RearWidgetApiContract
 import hk.uwu.reareye.widgetapi.RearWidgetNoticeOptions
+import hk.uwu.reareye.widgetapi.RearWidgetTemplateConfigState
+import hk.uwu.reareye.widgetapi.RearWidgetTemplateImagePreview
 import java.io.File
 import java.security.MessageDigest
 
 object RearWidgetManagerRepository {
 
     private const val BUSINESS_TEMPLATE_DIR = "rear_widget_business"
+    private const val TAG = "RearWidgetDebug"
 
     @Volatile
     private var remoteClient: RearWidgetApiClient? = null
@@ -112,8 +118,120 @@ object RearWidgetManagerRepository {
             )
         }
         val cards = loadCards(prefsManager)
-        applyBusinessFilesViaApi(context, emptyList(), preparedBusinesses)
-        applyCardsViaApi(context, emptyList(), cards, preparedBusinesses)
+        debugLog(
+            context,
+            "refreshRuntimeFromPrefs businesses=${preparedBusinesses.size} cards=${cards.size}",
+        )
+        applyBusinessFilesViaApi(context, businesses, preparedBusinesses)
+        applyCardsViaApi(
+            context = context,
+            oldCards = cards,
+            newCards = cards,
+            businesses = preparedBusinesses,
+            preserveExistingDisplay = true,
+            repostStickyCards = false,
+        )
+    }
+
+    fun resolveTemplateImagePreview(
+        context: Context,
+        business: String,
+        sourceFilePath: String,
+        imageValue: String,
+    ): RearWidgetTemplateImagePreview? {
+        val normalizedBusiness = business.trim()
+        val normalizedSource = sourceFilePath.trim()
+        val normalizedValue = imageValue.trim()
+        if (normalizedBusiness.isBlank() || normalizedValue.isBlank()) {
+            return null
+        }
+        debugLog(
+            context,
+            "resolveTemplateImagePreview business=$normalizedBusiness source=${normalizedSource.ifBlank { "<builtin>" }} value=$normalizedValue",
+        )
+        return runCatching {
+            withApiClient(context) { client ->
+                client.resolveTemplateImagePreview(
+                    business = normalizedBusiness,
+                    sourceFilePath = normalizedSource,
+                    imageValue = normalizedValue,
+                )
+            }
+        }.getOrNull()
+    }
+
+    fun resolveTemplateConfigState(
+        context: Context,
+        business: String,
+        sourceFilePath: String,
+        currentOneConfigJson: String?,
+    ): RearWidgetTemplateConfigState? {
+        val normalizedBusiness = business.trim()
+        val normalizedSource = sourceFilePath.trim()
+        if (normalizedBusiness.isBlank()) return null
+        debugLog(
+            context,
+            "resolveTemplateConfigState business=$normalizedBusiness source=${normalizedSource.ifBlank { "<builtin>" }} hasConfig=${
+                currentOneConfigJson.isNullOrBlank().not()
+            }",
+        )
+        return runCatching {
+            withApiClient(context) { client ->
+                client.resolveTemplateConfigState(
+                    business = normalizedBusiness,
+                    sourceFilePath = normalizedSource,
+                    currentOneConfigJson = currentOneConfigJson,
+                )
+            }
+        }.getOrNull()
+    }
+
+    fun importCardCustomImage(
+        context: Context,
+        cardKey: String,
+        fieldName: String,
+        uri: Uri,
+    ): String? {
+        val normalizedCardKey = cardKey.trim()
+        val normalizedFieldName = fieldName.trim()
+        if (normalizedCardKey.isBlank() || normalizedFieldName.isBlank()) return null
+
+        return runCatching {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+            context.grantUriPermission(
+                RearWidgetApiContract.HOOK_HOST_PACKAGE,
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+
+            val displayNameHint = queryDisplayName(context, uri)
+                ?.trim()
+                ?.ifBlank { null }
+                ?: "$normalizedFieldName.png"
+
+            withApiClient(context) { client ->
+                client.importCardCustomImage(
+                    cardKey = normalizedCardKey,
+                    fieldName = normalizedFieldName,
+                    sourceUri = uri.toString(),
+                    displayNameHint = displayNameHint,
+                )
+            }
+        }.getOrNull()
+    }
+
+    fun forceSyncRuntime(context: Context) {
+        debugLog(context, "forceSyncRuntime")
+        runCatching {
+            withApiClient(context) { client ->
+                client.syncState()
+            }
+        }
     }
 
     fun copyTemplateToManagedPath(
@@ -188,6 +306,8 @@ object RearWidgetManagerRepository {
         oldCards: List<RearCardConfig>,
         newCards: List<RearCardConfig>,
         businesses: List<RearBusinessConfig>,
+        preserveExistingDisplay: Boolean = false,
+        repostStickyCards: Boolean = true,
     ) {
         val prefsManager = context.getPrefsManager()
         val businessPathByName = businesses.associate { it.business to it.filePath }
@@ -199,13 +319,21 @@ object RearWidgetManagerRepository {
             addAll(newPairs)
         }
 
-        // 先清空受影响业务显示，避免残留旧卡片。
-        allPairs.forEach { (pkg, biz) ->
-            disableBusinessDisplay(context, pkg, biz)
-        }
-
         val enabledCards = newCards.filter { it.enabled }
         val enabledPairs = enabledCards.mapTo(LinkedHashSet()) { it.packageName to it.business }
+        val pairsToDisable = if (preserveExistingDisplay) {
+            oldPairs - enabledPairs
+        } else {
+            allPairs
+        }
+        debugLog(
+            context,
+            "applyCardsViaApi old=${oldCards.size} new=${newCards.size} enabled=${enabledCards.size} disable=${pairsToDisable.size} preserve=$preserveExistingDisplay",
+        )
+
+        pairsToDisable.forEach { (pkg, biz) ->
+            disableBusinessDisplay(context, pkg, biz)
+        }
 
         enabledPairs.forEach { (pkg, biz) ->
             val filePath = businessPathByName[biz]
@@ -230,16 +358,18 @@ object RearWidgetManagerRepository {
             unregisterBusiness(context, pkg, biz)
         }
 
-        enabledCards
-            .filter { it.sticky }
-            .forEachIndexed { index, card ->
-                postCard(
-                    context = context,
-                    prefsManager = prefsManager,
-                    card = card,
-                    index = index,
-                )
-            }
+        if (repostStickyCards) {
+            enabledCards
+                .filter { it.sticky }
+                .forEachIndexed { index, card ->
+                    postCard(
+                        context = context,
+                        prefsManager = prefsManager,
+                        card = card,
+                        index = index,
+                    )
+                }
+        }
     }
 
     private fun registerBusiness(
@@ -306,6 +436,9 @@ object RearWidgetManagerRepository {
             putString("title", card.title.ifBlank { card.business })
             putString("business", card.business)
             putString("__rear_card_id__", card.id)
+            card.oneConfigJson?.takeIf { it.isNotBlank() }?.let {
+                putString(REAR_WIDGET_CARD_ONE_CONFIG_JSON_KEY, it)
+            }
         }
         val options = RearWidgetNoticeOptions(
             sticky = card.sticky,
@@ -350,6 +483,13 @@ object RearWidgetManagerRepository {
             withApiClient(context) { client ->
                 client.postNotice(packageName, business, payload, options)
             }
+        }
+    }
+
+    private fun debugLog(context: Context, message: String) {
+        val prefs = context.getPrefsManager()
+        if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+            Log.d(TAG, message)
         }
     }
 

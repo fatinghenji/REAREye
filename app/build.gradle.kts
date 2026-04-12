@@ -63,9 +63,10 @@ android {
             }
 
             fun getProp(key: String): String? =
-                localProperties.getProperty(key) ?: (project.findProperty(key) as? String) ?: System.getenv(key)
+                localProperties.getProperty(key) ?: (project.findProperty(key) as? String)
+                ?: System.getenv(key)
 
-            storeFile = file(getProp("androidStoreFile")?:"../release-key.jks")
+            storeFile = file(getProp("androidStoreFile") ?: "../release-key.jks")
             storePassword = getProp("KEYSTORE_PASSWORD")
             keyAlias = getProp("KEY_ALIAS")
             keyPassword = getProp("KEY_PASSWORD")
@@ -82,7 +83,10 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             signingConfig = signingConfigs.getByName("release")
             versionNameSuffix = gradle.extra["versionSuffix"].toString()
         }

@@ -51,6 +51,7 @@ import hk.uwu.reareye.ui.components.card.ModuleStyleManagerCard
 import hk.uwu.reareye.ui.components.card.SuperCard
 import hk.uwu.reareye.ui.components.motion.ArtRevealItem
 import hk.uwu.reareye.ui.components.motion.ArtStaggeredReveal
+import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.PrefsManager
 import hk.uwu.reareye.ui.theme.rearAcrylicEffect
 import hk.uwu.reareye.ui.theme.rearAcrylicSource
@@ -100,6 +101,12 @@ fun BusinessManagerScreen(
     var draftWidget by remember { mutableStateOf("") }
     var draftFilePath by remember { mutableStateOf("") }
 
+    fun debugLog(message: String) {
+        if (prefsManager.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+            Log.d(REAR_WIDGET_DEBUG_TAG, message)
+        }
+    }
+
     LaunchedEffect(Unit) {
         delay(220)
         val loadedWidgets = withContext(Dispatchers.IO) {
@@ -128,8 +135,7 @@ fun BusinessManagerScreen(
 
     fun openEditDialog(item: RearBusinessConfig) {
         if (item.downloadedFromStore) {
-            Log.d(
-                REAR_WIDGET_DEBUG_TAG,
+            debugLog(
                 "open business editor: business=${item.business}, renameable=${item.renameable}, storeWidgetId=${item.storeWidgetId}"
             )
         }
@@ -431,8 +437,7 @@ fun BusinessManagerScreen(
     LaunchedEffect(showDialog.value, lockedDialogBusiness?.id) {
         if (showDialog.value && lockedDialogBusiness != null) {
             if (lockedDialogBusiness.downloadedFromStore) {
-                Log.d(
-                    REAR_WIDGET_DEBUG_TAG,
+                debugLog(
                     "blocked business dialog: business=${lockedDialogBusiness.business}, renameable=${lockedDialogBusiness.renameable}, storeWidgetId=${lockedDialogBusiness.storeWidgetId}"
                 )
             }

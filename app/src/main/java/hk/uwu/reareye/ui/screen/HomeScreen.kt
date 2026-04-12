@@ -816,9 +816,11 @@ private fun ModuleInfoCard(
                 easterEggType == EasterEggType.APRIL_FOOLS -> androidx.compose.ui.res.stringResource(
                     R.string.home_easter_egg_april_fools_activated
                 )
+
                 easterEggType == EasterEggType.EASTER -> androidx.compose.ui.res.stringResource(
                     R.string.home_easter_egg_easter_activated
                 )
+
                 easterEggType == EasterEggType.MI_FANS -> androidx.compose.ui.res.stringResource(
                     R.string.home_easter_egg_mifans_activated
                 )

@@ -19,12 +19,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -43,15 +45,19 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import hk.uwu.reareye.R
+import hk.uwu.reareye.repository.rearwidget.RearBusinessConfig
 import hk.uwu.reareye.repository.rearwidget.RearCardConfig
 import hk.uwu.reareye.repository.rearwidget.RearWidgetConfigCodec
 import hk.uwu.reareye.repository.rearwidget.RearWidgetManagerRepository
+import hk.uwu.reareye.repository.widgettemplate.WidgetTemplateConfigRepository
 import hk.uwu.reareye.ui.components.card.ModuleStyleDeleteAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleIconAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleManagerCard
 import hk.uwu.reareye.ui.components.card.SuperCard
+import hk.uwu.reareye.ui.components.config.template.WidgetTemplateConfigScreen
 import hk.uwu.reareye.ui.components.motion.ArtRevealItem
 import hk.uwu.reareye.ui.components.motion.ArtStaggeredReveal
+import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.PrefsManager
 import hk.uwu.reareye.ui.theme.rearAcrylicEffect
 import hk.uwu.reareye.ui.theme.rearAcrylicSource
@@ -83,6 +89,16 @@ import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
 private const val REAR_WIDGET_DEBUG_TAG = "RearWidgetDebug"
 
+private fun normalizeTemplateBusinessName(raw: String): String {
+    return when (raw.trim()) {
+        "taxi", "car_hailing", "carHailing" -> "carHailing"
+        "food_Delivery", "food_delivery", "foodDelivery" -> "foodDelivery"
+        "miHomeCamera", "mihomeCamera" -> "mihomeCamera"
+        "xiaomi_ev", "xiaomiev" -> "xiaomiev"
+        else -> raw.trim()
+    }
+}
+
 @Composable
 fun CardManagerScreen(
     prefsManager: PrefsManager,
@@ -95,31 +111,48 @@ fun CardManagerScreen(
     val hazeState = rememberAcrylicHazeState()
     val hazeStyle = rememberAcrylicHazeStyle()
     val cards = remember { mutableStateListOf<RearCardConfig>() }
+    val businesses = remember { mutableStateListOf<RearBusinessConfig>() }
+    val templateAvailability = remember { mutableStateMapOf<String, Boolean>() }
     var cardsLoaded by remember { mutableStateOf(false) }
     var dataCardsVisible by remember { mutableStateOf(false) }
+    var runtimeRefreshTick by remember { mutableStateOf(0) }
 
     LaunchedEffect(Unit) {
         delay(220)
-        val loadedCards = withContext(Dispatchers.IO) {
-            RearWidgetManagerRepository.loadCards(prefsManager)
+        val loadedCards =
+            withContext(Dispatchers.IO) { RearWidgetManagerRepository.loadCards(prefsManager) }
+        val loadedBusinesses = withContext(Dispatchers.IO) {
+            RearWidgetManagerRepository.loadBusinesses(prefsManager)
         }
         cards.clear()
         cards.addAll(loadedCards)
+        businesses.clear()
+        businesses.addAll(loadedBusinesses)
         cardsLoaded = true
         delay(90)
         dataCardsVisible = true
         withContext(Dispatchers.IO) {
             RearWidgetManagerRepository.refreshRuntimeFromPrefs(context, prefsManager)
         }
+        runtimeRefreshTick++
     }
 
     val showDialog = remember { mutableStateOf(false) }
     var editingCardId by remember { mutableStateOf<String?>(null) }
+    var draftCardId by remember { mutableStateOf(RearWidgetConfigCodec.newCardId()) }
+    var activeTemplateCardId by remember { mutableStateOf<String?>(null) }
     var draftTitle by remember { mutableStateOf("") }
     var draftPackageName by remember { mutableStateOf("hk.uwu.reareye") }
     var draftBusiness by remember { mutableStateOf("") }
     var draftPriorityText by remember { mutableStateOf("500") }
     var draftSticky by remember { mutableStateOf(true) }
+    var draftOneConfigJson by remember { mutableStateOf<String?>(null) }
+
+    fun debugLog(message: String) {
+        if (prefsManager.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+            Log.d(REAR_WIDGET_DEBUG_TAG, message)
+        }
+    }
 
     fun persist() {
         RearWidgetManagerRepository.saveCards(context, prefsManager, cards.toList())
@@ -127,28 +160,108 @@ fun CardManagerScreen(
 
     fun openCreateDialog() {
         editingCardId = null
+        draftCardId = RearWidgetConfigCodec.newCardId()
         draftTitle = ""
         draftPackageName = "hk.uwu.reareye"
         draftBusiness = ""
         draftPriorityText = "500"
         draftSticky = true
+        draftOneConfigJson = null
         showDialog.value = true
     }
 
     fun openEditDialog(item: RearCardConfig) {
         if (item.downloadedFromStore) {
-            Log.d(
-                REAR_WIDGET_DEBUG_TAG,
+            debugLog(
                 "open card editor: title=${item.title}, renameable=${item.renameable}, storeWidgetId=${item.storeWidgetId}, priority=${item.priority}"
             )
         }
         editingCardId = item.id
+        draftCardId = item.id
         draftTitle = item.title
         draftPackageName = item.packageName
         draftBusiness = item.business
         draftPriorityText = item.priority.toString()
         draftSticky = item.sticky
+        draftOneConfigJson = item.oneConfigJson
         showDialog.value = true
+    }
+
+    fun openTemplateConfig(item: RearCardConfig) {
+        activeTemplateCardId = item.id
+    }
+
+    val activeTemplateCard = activeTemplateCardId?.let { id -> cards.firstOrNull { it.id == id } }
+    if (activeTemplateCard != null) {
+        val normalizedBusiness = normalizeTemplateBusinessName(activeTemplateCard.business)
+        val sourceFilePath = businesses.firstOrNull {
+            it.business == activeTemplateCard.business || normalizeTemplateBusinessName(it.business) == normalizedBusiness
+        }?.filePath.orEmpty()
+        WidgetTemplateConfigScreen(
+            business = activeTemplateCard.business,
+            sourceFilePath = sourceFilePath,
+            cardStorageKey = activeTemplateCard.id,
+            currentConfigJson = activeTemplateCard.oneConfigJson,
+            onBack = { activeTemplateCardId = null },
+            onSave = { normalizedJson ->
+                val index = cards.indexOfFirst { it.id == activeTemplateCard.id }
+                if (index >= 0) {
+                    cards[index] =
+                        cards[index].copy(oneConfigJson = normalizedJson?.takeIf { it.isNotBlank() })
+                    persist()
+                    activeTemplateCardId = null
+                } else {
+                    activeTemplateCardId = null
+                }
+            },
+        )
+        return
+    }
+
+    LaunchedEffect(cardsLoaded, cards.toList(), businesses.toList(), runtimeRefreshTick) {
+        if (!cardsLoaded) return@LaunchedEffect
+        val businessSourceByName = businesses.associate { it.business to it.filePath }
+        val uniqueBusinesses = cards.map { it.business.trim() }
+            .filter { it.isNotBlank() }
+            .map(::normalizeTemplateBusinessName)
+            .distinct()
+        val availability = linkedMapOf<String, Boolean>()
+        uniqueBusinesses.forEach { business ->
+            val sourcePath = businessSourceByName.entries.firstOrNull {
+                it.key == business || normalizeTemplateBusinessName(it.key) == business
+            }?.value.orEmpty()
+
+            var editableCount: Int
+            var available = false
+            repeat(2) { attempt ->
+                val state = withContext(Dispatchers.IO) {
+                    RearWidgetManagerRepository.resolveTemplateConfigState(
+                        context = context,
+                        business = business,
+                        sourceFilePath = sourcePath,
+                        currentOneConfigJson = null,
+                    )
+                }
+                val schema = state?.templateSchemaJson
+                    ?.let(WidgetTemplateConfigRepository::decodeSchema)
+                if (state?.templateSchemaJson?.isNotBlank() == true && schema == null) {
+                    debugLog(
+                        "schema decode failed business=$business source=${sourcePath.ifBlank { "<builtin>" }} schemaLength=${state.templateSchemaJson.length}"
+                    )
+                }
+                editableCount = schema?.editableItemCount ?: -1
+                available = editableCount > 0
+                debugLog(
+                    "availability probe business=$business source=${sourcePath.ifBlank { "<builtin>" }} attempt=${attempt + 1} editable=$editableCount available=$available"
+                )
+                if (available || attempt == 1) return@repeat
+                delay(300)
+            }
+            availability[business] = available
+        }
+        templateAvailability.clear()
+        templateAvailability.putAll(availability)
+        debugLog("template availability: ${availability.entries.joinToString { "${it.key}=${it.value}" }}")
     }
 
     @SuppressLint("LocalContextGetResourceValueCall")
@@ -158,8 +271,7 @@ fun CardManagerScreen(
         val editingCard = editingCardId?.let { id -> cards.firstOrNull { it.id == id } }
         val lockedCard = editingCard?.takeIf { !it.renameable }
         if (lockedCard != null && lockedCard.downloadedFromStore) {
-            Log.d(
-                REAR_WIDGET_DEBUG_TAG,
+            debugLog(
                 "submit locked card editor: title=${lockedCard.title}, storeWidgetId=${lockedCard.storeWidgetId}, oldPriority=${lockedCard.priority}, newPriority=${draftPriorityText}"
             )
         }
@@ -174,11 +286,13 @@ fun CardManagerScreen(
 
         val card = lockedCard?.copy(
             priority = draftPriorityText.toIntOrNull() ?: lockedCard.priority,
+            oneConfigJson = draftOneConfigJson?.takeIf { it.isNotBlank() },
         ) ?: RearCardConfig(
-            id = editingCardId ?: RearWidgetConfigCodec.newCardId(),
+            id = draftCardId,
             title = draftTitle.trim().ifBlank { widget },
             packageName = pkg,
             business = widget,
+            oneConfigJson = draftOneConfigJson?.takeIf { it.isNotBlank() },
             enabled = editingCard?.enabled ?: true,
             sticky = draftSticky,
             priority = draftPriorityText.toIntOrNull() ?: 500,
@@ -321,6 +435,18 @@ fun CardManagerScreen(
                         revealKey = item.id,
                         delayMillis = (36 + index * 18).coerceAtMost(150),
                     ) {
+                        val normalizedBusiness = normalizeTemplateBusinessName(item.business)
+                        val hasTemplateConfig =
+                            templateAvailability[item.business] == true ||
+                                    templateAvailability[normalizedBusiness] == true ||
+                                    item.oneConfigJson.isNullOrBlank().not()
+                        if (prefsManager.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+                            debugLog(
+                                "card template action id=${item.id} business=${item.business} normalized=$normalizedBusiness available=$hasTemplateConfig rawAvailable=${templateAvailability[item.business]} normalizedAvailable=${templateAvailability[normalizedBusiness]} hasConfig=${
+                                    item.oneConfigJson.isNullOrBlank().not()
+                                }"
+                            )
+                        }
                         ModuleStyleManagerCard(
                             title = item.title,
                             summaryLines = buildList {
@@ -355,6 +481,15 @@ fun CardManagerScreen(
                                 if (!item.renameable) {
                                     add(stringResource(R.string.rear_widget_card_locked_summary))
                                 }
+                                add(
+                                    stringResource(
+                                        if (item.oneConfigJson.isNullOrBlank()) {
+                                            R.string.rear_widget_card_template_status_default
+                                        } else {
+                                            R.string.rear_widget_card_template_status_custom
+                                        }
+                                    )
+                                )
                             },
                             trailing = {
                                 if (item.renameable) {
@@ -394,10 +529,22 @@ fun CardManagerScreen(
                             },
                             onCardClick = { openEditDialog(item) },
                             leftAction = {
-                                ModuleStyleIconAction(
-                                    icon = Icons.Rounded.EditNote,
-                                    onClick = { openEditDialog(item) },
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    ModuleStyleIconAction(
+                                        icon = Icons.Rounded.EditNote,
+                                        onClick = { openEditDialog(item) },
+                                    )
+                                    if (hasTemplateConfig) {
+                                        ModuleStyleDeleteAction(
+                                            icon = Icons.Filled.Tune,
+                                            text = stringResource(R.string.rear_widget_action_config),
+                                            onClick = { openTemplateConfig(item) },
+                                        )
+                                    }
+                                }
                             },
                             rightAction = {
                                 if (item.renameable) {
@@ -534,4 +681,5 @@ fun CardManagerScreen(
             }
         }
     }
+
 }

@@ -26,6 +26,7 @@ data class RearCardConfig(
     val title: String,
     val packageName: String,
     val business: String,
+    val oneConfigJson: String? = null,
     val enabled: Boolean = true,
     val sticky: Boolean = true,
     val priority: Int = 500,
@@ -110,6 +111,7 @@ object RearWidgetConfigCodec {
                 title = title,
                 packageName = packageName,
                 business = business,
+                oneConfigJson = obj.optString("oneConfigJson").trim().ifBlank { null },
                 enabled = obj.optBoolean("enabled", true),
                 sticky = obj.optBoolean("sticky", true),
                 priority = obj.optInt("priority", 500),
@@ -159,6 +161,7 @@ object RearWidgetConfigCodec {
                         .put("title", item.title)
                         .put("packageName", item.packageName)
                         .put("business", item.business)
+                        .put("oneConfigJson", item.oneConfigJson)
                         .put("enabled", item.enabled)
                         .put("sticky", item.sticky)
                         .put("priority", item.priority)
