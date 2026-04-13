@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -517,11 +518,7 @@ private fun ConfigNodeList(
                         .padding(top = 12.dp)
                         .fillMaxWidth()
                 ) {
-                    val favoriteIconTint = lerp(
-                        start = MiuixTheme.colorScheme.error,
-                        stop = MiuixTheme.colorScheme.errorContainer,
-                        fraction = 0.32f,
-                    )
+                    val favoriteIconTint = rememberFavoriteIconTint()
                     val summary = if (favoriteNodeCount <= 0) {
                         stringResource(R.string.config_favorites_empty)
                     } else {
@@ -627,6 +624,7 @@ private fun ConfigNodeRowWithFavoriteMenu(
     val favoriteNodeId = resolveFavoriteNodeId(node)
     val canFavorite = favoriteNodeId != null
     val isFavorite = favoriteNodeId != null && favoriteNodeIds.contains(favoriteNodeId)
+    val favoriteIconTint = rememberFavoriteIconTint()
     var showFavoritePopup by remember(favoriteNodeId) { mutableStateOf(false) }
 
     Box(
@@ -659,6 +657,13 @@ private fun ConfigNodeRowWithFavoriteMenu(
                 ListPopupColumn {
                     SpinnerItemImpl(
                         entry = SpinnerEntry(
+                            icon = { iconModifier ->
+                                FavoritePopupIcon(
+                                    isFavorite = isFavorite,
+                                    tint = favoriteIconTint,
+                                    modifier = iconModifier,
+                                )
+                            },
                             title = stringResource(
                                 if (isFavorite) {
                                     R.string.config_favorite_remove
@@ -672,12 +677,48 @@ private fun ConfigNodeRowWithFavoriteMenu(
                         index = 0,
                         spinnerColors = SpinnerDefaults.spinnerColors(),
                         onSelectedIndexChange = {
-                            showFavoritePopup = false
                             onToggleFavorite(node)
                         },
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun rememberFavoriteIconTint(): Color {
+    return lerp(
+        start = MiuixTheme.colorScheme.error,
+        stop = MiuixTheme.colorScheme.errorContainer,
+        fraction = 0.32f,
+    )
+}
+
+@Composable
+private fun FavoritePopupIcon(
+    isFavorite: Boolean,
+    tint: Color,
+    modifier: Modifier = Modifier,
+) {
+    if (isFavorite) {
+        Icon(
+            imageVector = Icons.Rounded.FavoriteBorder,
+            contentDescription = null,
+            tint = tint,
+            modifier = modifier.size(20.dp),
+        )
+    } else {
+        Box(
+            modifier = modifier.size(22.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Favorite,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(20.dp),
+            )
         }
     }
 }

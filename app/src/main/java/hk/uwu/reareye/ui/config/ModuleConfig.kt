@@ -66,6 +66,8 @@ object ConfigKeys {
     val SUPER_LYRIC_DISPLAY_MODE_DEFAULT = LyricParser.DisplayMode.ORIGINAL.mask
     const val HOOK_REMOVE_NATIVE_LYRIC_SUPPORT = "enable_remove_native_lyric_support"
     const val HOOK_SKIP_UNCHANGED_MEDIA_TITLE_UPDATE = "enable_skip_unchanged_media_title_update"
+    const val HOOK_TAKE_OVER_BUILTIN_LYRIC_HANDLING =
+        "enable_take_over_builtin_lyric_handling"
 
     const val HOOK_DISABLE_REAR_SCREEN_COVER = "enable_hook_rear_screen_cover"
 
@@ -425,6 +427,12 @@ val REAREyeConfig = listOf(
                         titleRes = R.string.lyric_skip_unchanged_title_update,
                         descriptionRes = R.string.lyric_skip_unchanged_title_update_desc,
                         type = ConfigType.BooleanVal(defaultValue = false)
+                    ),
+                    ConfigItem(
+                        key = ConfigKeys.HOOK_TAKE_OVER_BUILTIN_LYRIC_HANDLING,
+                        titleRes = R.string.lyric_take_over_builtin_handling,
+                        descriptionRes = R.string.lyric_take_over_builtin_handling_desc,
+                        type = ConfigType.BooleanVal(defaultValue = true)
                     )
                 )
             ),

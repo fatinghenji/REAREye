@@ -589,16 +589,17 @@ class LyriconHook : YukiBaseHooker() {
             metadata?.also {
                 stateOf(element).oldMediaId = it.description.mediaId
             }
-            stateOf(element).apply {
-                tempLrc = vLrc
-                managedFullLyric = true
-            }
-            ensurePreTickerRegistered(element)
-            if (queueCurrentLyricSnapshot(element)) {
-                element.asResolver().firstMethod {
-                    name = "requestUpdate"
-                    superclass()
-                }.invoke()
+            val state = stateOf(element)
+            state.tempLrc = vLrc
+            if (isTakeOverBuiltinLyricHandlingEnabled()) {
+                state.managedFullLyric = true
+                ensurePreTickerRegistered(element)
+                if (queueCurrentLyricSnapshot(element)) {
+                    element.asResolver().firstMethod {
+                        name = "requestUpdate"
+                        superclass()
+                    }.invoke()
+                }
             }
         } else {
             clearManagedLyricState(element)
@@ -606,6 +607,10 @@ class LyriconHook : YukiBaseHooker() {
     }
 
     private fun runManagedProgressTick(element: Any) {
+        if (!isTakeOverBuiltinLyricHandlingEnabled()) {
+            clearManagedLyricState(element)
+            return
+        }
         val isPlaying = element.readField<Boolean>("mPlaying") == true
         if (!isPlaying) return
         val metadata = element.readField<MediaMetadata>("mMetadata")
@@ -737,7 +742,18 @@ class LyriconHook : YukiBaseHooker() {
     }
 
     private fun isManagedFullLyric(element: Any): Boolean {
-        return stateOf(element).managedFullLyric
+        val state = stateOf(element)
+        if (!isTakeOverBuiltinLyricHandlingEnabled()) {
+            if (state.managedFullLyric) {
+                clearManagedLyricState(element)
+            }
+            return false
+        }
+        return state.managedFullLyric
+    }
+
+    private fun isTakeOverBuiltinLyricHandlingEnabled(): Boolean {
+        return prefs.getBoolean(ConfigKeys.HOOK_TAKE_OVER_BUILTIN_LYRIC_HANDLING, true)
     }
 
     private fun clearManagedLyricState(element: Any) {

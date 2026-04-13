@@ -37,14 +37,14 @@
     <string name="category_module_settings">模块设置</string>
     <string name="category_module_settings_desc">REAREye 模块自身设置</string>
     <string name="module_theme_mode">主题样式</string>
-    <string name="module_theme_mode_desc">在 Miuix 与 Monet 的跟随系统、浅色、深色主题之间切换</string>
+    <string name="module_theme_mode_desc">在不同主题样式之间切换</string>
     <string name="module_navigation_bar_mode">导航栏样式</string>
-    <string name="module_navigation_bar_mode_desc">在普通、悬浮、悬浮液态玻璃三种导航栏模式之间切换</string>
+    <string name="module_navigation_bar_mode_desc">选择不同的导航栏样式</string>
     <string name="module_navigation_bar_mode_normal">普通</string>
     <string name="module_navigation_bar_mode_floating">悬浮</string>
     <string name="module_navigation_bar_mode_floating_glass">悬浮液态玻璃</string>
     <string name="module_search_bar_style">搜索栏样式</string>
-    <string name="module_search_bar_style_desc">在当前亚克力搜索栏和 MIUIX SearchBar 风格之间切换</string>
+    <string name="module_search_bar_style_desc">选择不同的搜索栏风格</string>
     <string name="module_search_bar_style_default">默认</string>
     <string name="module_search_bar_style_miuix">Miuix</string>
     <string name="module_store_api">仓库 API</string>
@@ -373,6 +373,8 @@
     <string name="lyric_remove_native_lyrics_desc">将会移除掉通过小米歌词元数据提供的歌词信息</string>
     <string name="lyric_skip_unchanged_title_update">跳过仅曲名变化的元数据更新</string>
     <string name="lyric_skip_unchanged_title_update_desc">当 媒体ID 未变化且仅曲名发生变化时，忽略此次更新，避免蓝牙歌词干扰歌词模块</string>
+    <string name="lyric_take_over_builtin_handling">接管内置歌词处理逻辑</string>
+    <string name="lyric_take_over_builtin_handling_desc">启用后由 REAREye 接管系统歌词的进度与换行处理；关闭后回退到系统内置逻辑</string>
     <string name="rear_store_detail_header">组件信息</string>
     <string name="module_store_api_provider_cf">Cloudflare</string>
 </resources>

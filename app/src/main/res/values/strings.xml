@@ -36,14 +36,14 @@
     <string name="category_module_settings">Module Settings</string>
     <string name="category_module_settings_desc">Settings for REAREye itself</string>
     <string name="module_theme_mode">Theme Style</string>
-    <string name="module_theme_mode_desc">Switch between Miuix and Monet theme variants, including follow-system, light, and dark modes</string>
+    <string name="module_theme_mode_desc">Switch between theme variants</string>
     <string name="module_navigation_bar_mode">Navigation Bar Style</string>
-    <string name="module_navigation_bar_mode_desc">Choose between the standard layout, floating layout, and floating liquid-glass layout</string>
+    <string name="module_navigation_bar_mode_desc">Choose different navigation bar layout</string>
     <string name="module_navigation_bar_mode_normal">Standard</string>
     <string name="module_navigation_bar_mode_floating">Floating</string>
     <string name="module_navigation_bar_mode_floating_glass">Floating Liquid Glass</string>
     <string name="module_search_bar_style">Search Bar Style</string>
-    <string name="module_search_bar_style_desc">Choose between the current acrylic search bar and the MIUIX SearchBar style</string>
+    <string name="module_search_bar_style_desc">Choose different search bar style</string>
     <string name="module_search_bar_style_default">Default</string>
     <string name="module_search_bar_style_miuix">Miuix</string>
     <string name="module_store_api">Store API</string>
@@ -374,6 +374,8 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="lyric_remove_native_lyrics_desc">Lyrics information provided through Xiaomi lyrics metadata will be removed</string>
     <string name="lyric_skip_unchanged_title_update">Skip title-only metadata updates</string>
     <string name="lyric_skip_unchanged_title_update_desc">When media id is unchanged and only the track title differs, ignore this metadata update to avoid Bluetooth lyric title churn</string>
+    <string name="lyric_take_over_builtin_handling">Take over built-in lyric handling logic</string>
+    <string name="lyric_take_over_builtin_handling_desc">When enabled, REAREye overrides the system lyric timing and line switching logic for full LRC lyrics</string>
     <string name="rear_store_detail_header">Widget Detail</string>
     <string name="module_store_api_provider_cf">Cloudflare</string>
 </resources>

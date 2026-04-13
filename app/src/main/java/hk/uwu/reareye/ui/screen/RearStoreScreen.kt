@@ -67,6 +67,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -274,42 +275,6 @@ private fun String?.normalizedOrNull(): String? {
     return this?.trim()?.takeIf { it.isNotEmpty() }
 }
 
-private fun String.asBadgeFriendlyTitle(
-    fontScale: Float,
-    badgeCount: Int,
-): String {
-    if (length <= 1) return this
-
-    val safeFontScale = fontScale.coerceIn(1f, 2.4f)
-    val safeBadgeCount = badgeCount.coerceAtLeast(1)
-    val scalePenalty = ((safeFontScale - 1f) * 8f).roundToInt()
-    val badgePenalty = (safeBadgeCount - 1) * 3
-    val maxCharsPerLine = (18 - scalePenalty - badgePenalty).coerceIn(8, 18)
-
-    val wrapped = StringBuilder(length * 2)
-    var currentLineChars = 0
-    forEachIndexed { index, current ->
-        wrapped.append(current)
-        if (current == '\n') {
-            currentLineChars = 0
-            return@forEachIndexed
-        }
-
-        currentLineChars += 1
-        if (index >= lastIndex) return@forEachIndexed
-
-        val next = this[index + 1]
-        if (current.isLetterOrDigit() && next.isLetterOrDigit()) {
-            wrapped.append('\u200B')
-        }
-        if (currentLineChars >= maxCharsPerLine && next != '\n') {
-            wrapped.append('\n')
-            currentLineChars = 0
-        }
-    }
-    return wrapped.toString()
-}
-
 private fun isoDateLabel(value: String?): String {
     return value?.substringBefore('T')?.trim().takeUnless { it.isNullOrEmpty() } ?: "-"
 }
@@ -350,6 +315,12 @@ private data class RearStoreInstallInfo(
 private data class RearStoreBadgePalette(
     val background: Color,
     val text: Color,
+)
+
+private data class RearStoreBadgeItem(
+    val text: String,
+    val emphasized: Boolean,
+    val palette: RearStoreBadgePalette? = null,
 )
 
 private fun defaultInstallInfo(detail: RearStoreWidgetDetail): RearStoreInstallInfo {
@@ -1281,39 +1252,44 @@ private fun RearStoreListCard(
 ) {
     val descriptionText = item.description.normalizedOrNull()
     val metadataType = item.displayMetadataType()
-    val titleFontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
-    val showStatusBadge = updateAvailable ||
-            (installedWidget != null && item.latestReleaseTag.normalizedOrNull() != null)
-    val titleText = remember(item.displayName, titleFontScale, showStatusBadge) {
-        item.displayName.asBadgeFriendlyTitle(
-            fontScale = titleFontScale,
-            badgeCount = if (showStatusBadge) 2 else 1,
-        )
+    val metadataLabelRes = metadataType.labelResId()
+    val metadataPalette = rememberMetadataBadgePalette(metadataType)
+    val statusBadgeText = when {
+        updateAvailable -> stringResource(R.string.rear_store_update_available_badge)
+        installedWidget != null && item.latestReleaseTag.normalizedOrNull() != null -> {
+            stringResource(R.string.rear_store_up_to_date)
+        }
+
+        else -> null
     }
+    val badges = buildList {
+        statusBadgeText?.let {
+            add(
+                RearStoreBadgeItem(
+                    text = it,
+                    emphasized = updateAvailable,
+                )
+            )
+        }
+        metadataLabelRes?.let {
+            add(
+                RearStoreBadgeItem(
+                    text = stringResource(it),
+                    emphasized = false,
+                    palette = metadataPalette,
+                )
+            )
+        }
+    }
+
     Card(modifier = Modifier.fillMaxWidth()) {
         SuperCard(
-            title = titleText,
+            title = item.displayName,
             summary = item.author.displayName.ifBlank {
                 stringResource(R.string.rear_store_unknown_author)
             },
             endActions = {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (updateAvailable) {
-                        RearStoreStatusPill(
-                            text = stringResource(R.string.rear_store_update_available_badge),
-                            emphasized = true,
-                        )
-                    } else if (installedWidget != null && item.latestReleaseTag.normalizedOrNull() != null) {
-                        RearStoreStatusPill(
-                            text = stringResource(R.string.rear_store_up_to_date),
-                            emphasized = false,
-                        )
-                    }
-                    RearStoreMetadataTypePill(metadataType = metadataType)
-                }
+                RearStoreAdaptiveBadgeGroup(badges = badges)
             },
             onClick = onClick,
             bottomAction = {
@@ -1384,13 +1360,50 @@ private fun RearStoreDetailHeroCard(
     updateAvailable: Boolean,
     metadataType: RearStoreWidgetMetadataType,
 ) {
-    val titleFontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+    val metadataLabelRes = metadataType.labelResId()
+    val metadataPalette = rememberMetadataBadgePalette(metadataType)
+    val installedVersionBadgeText = buildString {
+        append(stringResource(R.string.rear_store_installed_version_label))
+        append("  ")
+        append(
+            installedWidget?.releaseTag?.takeIf { it.isNotBlank() }
+                ?: stringResource(R.string.rear_store_status_not_installed)
+        )
+    }
+    val updateStateBadgeText = when {
+        updateAvailable -> stringResource(R.string.rear_store_update_available_badge)
+        latestReleaseTag != null && installedWidget != null -> stringResource(R.string.rear_store_up_to_date)
+        else -> null
+    }
+    val heroBadges = buildList {
+        add(
+            RearStoreBadgeItem(
+                text = installedVersionBadgeText,
+                emphasized = false,
+            )
+        )
+        updateStateBadgeText?.let {
+            add(
+                RearStoreBadgeItem(
+                    text = it,
+                    emphasized = updateAvailable,
+                )
+            )
+        }
+        metadataLabelRes?.let {
+            add(
+                RearStoreBadgeItem(
+                    text = stringResource(it),
+                    emphasized = false,
+                    palette = metadataPalette,
+                )
+            )
+        }
+    }
+
     Card(modifier = Modifier.fillMaxWidth()) {
         SuperCard(
-            title = detail.name.asBadgeFriendlyTitle(
-                fontScale = titleFontScale,
-                badgeCount = 1,
-            ),
+            title = detail.name,
             summary = detail.author.displayName.ifBlank {
                 stringResource(R.string.rear_store_unknown_author)
             },
@@ -1398,37 +1411,9 @@ private fun RearStoreDetailHeroCard(
             bottomAction = {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.End,
                 ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RearStoreStatusPill(
-                            text = buildString {
-                                append(stringResource(R.string.rear_store_installed_version_label))
-                                append("  ")
-                                append(
-                                    installedWidget?.releaseTag?.takeIf { it.isNotBlank() }
-                                        ?: stringResource(R.string.rear_store_status_not_installed)
-                                )
-                            },
-                            emphasized = false,
-                        )
-                        if (updateAvailable) {
-                            RearStoreStatusPill(
-                                text = stringResource(R.string.rear_store_update_available_badge),
-                                emphasized = true,
-                            )
-                        } else if (latestReleaseTag != null && installedWidget != null) {
-                            RearStoreStatusPill(
-                                text = stringResource(R.string.rear_store_up_to_date),
-                                emphasized = false,
-                            )
-                        }
-                    }
-                    RearStoreMetadataTypePill(metadataType = metadataType)
+                    RearStoreAdaptiveBadgeGroup(badges = heroBadges)
                 }
             },
         )
@@ -1440,6 +1425,7 @@ private fun RearStoreStatusPill(
     text: String,
     emphasized: Boolean,
     palette: RearStoreBadgePalette? = null,
+    singleLine: Boolean = true,
 ) {
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     val pillFontSize = (13f / fontScale).sp
@@ -1468,10 +1454,80 @@ private fun RearStoreStatusPill(
             color = resolvedPalette.text,
             fontSize = pillFontSize,
             fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            softWrap = false,
+            maxLines = if (singleLine) 1 else 2,
+            softWrap = !singleLine,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+@Composable
+private fun RearStoreAdaptiveBadgeGroup(
+    badges: List<RearStoreBadgeItem>,
+    modifier: Modifier = Modifier,
+) {
+    if (badges.isEmpty()) return
+
+    val spacing = 6.dp
+    Layout(
+        modifier = modifier,
+        content = {
+            badges.forEach { badge ->
+                RearStoreStatusPill(
+                    text = badge.text,
+                    emphasized = badge.emphasized,
+                    palette = badge.palette,
+                    singleLine = true,
+                )
+            }
+        },
+    ) { measurables, constraints ->
+        val spacingPx = spacing.roundToPx()
+        val looseConstraints = constraints.copy(minWidth = 0, minHeight = 0)
+        val placeables = measurables.map { it.measure(looseConstraints) }
+
+        val horizontalWidth = if (placeables.isEmpty()) {
+            0
+        } else {
+            placeables.sumOf { it.width } + spacingPx * (placeables.size - 1)
+        }
+        val horizontalHeight = placeables.maxOfOrNull { it.height } ?: 0
+        val useVertical = placeables.size > 1 && horizontalWidth > constraints.maxWidth
+
+        if (!useVertical) {
+            val layoutWidth = horizontalWidth.coerceIn(constraints.minWidth, constraints.maxWidth)
+            val layoutHeight =
+                horizontalHeight.coerceIn(constraints.minHeight, constraints.maxHeight)
+            layout(layoutWidth, layoutHeight) {
+                var currentX = 0
+                placeables.forEachIndexed { index, placeable ->
+                    placeable.placeRelative(currentX, (layoutHeight - placeable.height) / 2)
+                    currentX += placeable.width
+                    if (index != placeables.lastIndex) {
+                        currentX += spacingPx
+                    }
+                }
+            }
+        } else {
+            val verticalWidth = placeables.maxOfOrNull { it.width } ?: 0
+            val verticalHeight = if (placeables.isEmpty()) {
+                0
+            } else {
+                placeables.sumOf { it.height } + spacingPx * (placeables.size - 1)
+            }
+            val layoutWidth = verticalWidth.coerceIn(constraints.minWidth, constraints.maxWidth)
+            val layoutHeight = verticalHeight.coerceIn(constraints.minHeight, constraints.maxHeight)
+            layout(layoutWidth, layoutHeight) {
+                var currentY = 0
+                placeables.forEachIndexed { index, placeable ->
+                    placeable.placeRelative(layoutWidth - placeable.width, currentY)
+                    currentY += placeable.height
+                    if (index != placeables.lastIndex) {
+                        currentY += spacingPx
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1497,16 +1553,6 @@ private fun rememberMetadataBadgePalette(metadataType: RearStoreWidgetMetadataTy
             text = lerp(colorScheme.onSurface, harmonizedAccent, 0.72f),
         )
     }
-}
-
-@Composable
-private fun RearStoreMetadataTypePill(metadataType: RearStoreWidgetMetadataType) {
-    val labelResId = metadataType.labelResId() ?: return
-    RearStoreStatusPill(
-        text = stringResource(labelResId),
-        emphasized = false,
-        palette = rememberMetadataBadgePalette(metadataType),
-    )
 }
 
 @Composable
