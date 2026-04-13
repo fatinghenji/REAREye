@@ -8,11 +8,16 @@ plugins {
     signing
 }
 
-val apiVersion = "1.0.1"
+val apiVersion = "1.0.2"
 
 android {
     namespace = "hk.uwu.reareye.widgetapi"
-    compileSdk = gropify.project.android.compileSdk
+    compileSdk {
+        version =
+            release(gropify.project.android.compileSdk) {
+                minorApiLevel = gropify.project.android.compileSdkMinor
+            }
+    }
 
     defaultConfig {
         minSdk = gropify.project.android.minSdk

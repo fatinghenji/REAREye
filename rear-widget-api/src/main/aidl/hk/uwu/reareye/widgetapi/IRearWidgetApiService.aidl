@@ -39,4 +39,10 @@ interface IRearWidgetApiService {
     void removeNotice(in Bundle ticket);
 
     void syncState();
+
+    Bundle resolveTemplateImagePreview(String business, String sourceFilePath, String imageValue);
+
+    Bundle resolveTemplateConfigState(String business, String sourceFilePath, String currentOneConfigJson);
+
+    String importCardCustomImage(String cardKey, String fieldName, String sourceUri, String displayNameHint);
 }

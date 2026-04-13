@@ -63,12 +63,16 @@ android {
             }
 
             fun getProp(key: String): String? =
-                localProperties.getProperty(key) ?: (project.findProperty(key) as? String) ?: System.getenv(key)
+                localProperties.getProperty(key) ?: (project.findProperty(key) as? String)
+                ?: System.getenv(key)
 
-            storeFile = file("../release-key.jks")
+            storeFile = file(getProp("androidStoreFile") ?: "../release-key.jks")
             storePassword = getProp("KEYSTORE_PASSWORD")
             keyAlias = getProp("KEY_ALIAS")
             keyPassword = getProp("KEY_PASSWORD")
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
         }
     }
 
@@ -79,7 +83,10 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             signingConfig = signingConfigs.getByName("release")
             versionNameSuffix = gradle.extra["versionSuffix"].toString()
         }
@@ -118,12 +125,15 @@ dependencies {
     implementation(libs.kavaref.core)
     implementation(libs.kavaref.extension)
 
+    implementation(libs.dexkit)
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.espresso.core)
 
     implementation(platform(libs.compose.bom))
     implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
@@ -137,8 +147,10 @@ dependencies {
     implementation(libs.backdrop)
     implementation(libs.capsule)
     implementation(libs.okhttp)
+    implementation(libs.okhttp.logging)
     implementation(libs.gson)
     implementation(libs.lyricon.provider)
     implementation(libs.lyricon.central)
+    implementation(libs.lyricon.subscriber)
     implementation(libs.superlyric)
 }

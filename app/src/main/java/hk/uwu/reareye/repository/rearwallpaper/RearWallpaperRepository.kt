@@ -80,12 +80,13 @@ object RearWallpaperRepository {
         schedule: List<RearWallpaperScheduleEntry>,
     ) {
         val encoded = encodeSchedule(schedule)
-        prefsManager.prefs.edit()
-            .putString(
-                ConfigKeys.REAR_WALLPAPER_SCHEDULE_DATA,
-                encoded,
-            )
-            .commit()
+        prefsManager.prefs
+            .edit {
+                putString(
+                    ConfigKeys.REAR_WALLPAPER_SCHEDULE_DATA,
+                    encoded
+                )
+            }
     }
 
     fun isScheduleEnabled(prefsManager: PrefsManager): Boolean {
@@ -93,9 +94,7 @@ object RearWallpaperRepository {
     }
 
     fun setScheduleEnabled(prefsManager: PrefsManager, enabled: Boolean) {
-        prefsManager.prefs.edit()
-            .putBoolean(ConfigKeys.REAR_WALLPAPER_SCHEDULE_ENABLED, enabled)
-            .commit()
+        prefsManager.prefs.edit { putBoolean(ConfigKeys.REAR_WALLPAPER_SCHEDULE_ENABLED, enabled) }
     }
 
     private suspend fun <T> withRemote(

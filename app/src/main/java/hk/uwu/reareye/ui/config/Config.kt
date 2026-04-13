@@ -10,6 +10,7 @@ import hk.uwu.reareye.ui.components.config.EnumSingleSelectConfigInput
 import hk.uwu.reareye.ui.components.config.FloatSliderConfigInput
 import hk.uwu.reareye.ui.components.config.ManagerConfigInput
 import hk.uwu.reareye.ui.components.config.MaskMultiSelectConfigInput
+import hk.uwu.reareye.ui.components.config.RearStoreApiConfigInput
 import java.util.Locale
 import kotlin.math.pow
 import kotlin.math.roundToInt
@@ -113,6 +114,27 @@ sealed class ConfigType {
                 item = item,
                 defaultValue = defaultValue,
                 options = options,
+                prefsManager = prefsManager,
+                onPreferenceChanged = onPreferenceChanged,
+            )
+        }
+    }
+
+    data class RearStoreApi(
+        val defaultProviderValue: Int,
+        val customDomainKey: String,
+    ) : ConfigType() {
+        @Composable
+        override fun RenderInput(
+            item: ConfigItem,
+            prefsManager: PrefsManager,
+            onOpenAppList: (ConfigItem) -> Unit,
+            onOpenManager: (ConfigItem) -> Unit,
+            onPreferenceChanged: (ConfigItem) -> Unit,
+        ) {
+            RearStoreApiConfigInput(
+                item = item,
+                apiConfig = this,
                 prefsManager = prefsManager,
                 onPreferenceChanged = onPreferenceChanged,
             )

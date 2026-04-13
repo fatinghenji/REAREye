@@ -1,7 +1,5 @@
 package hk.uwu.reareye.ui.components.card
 
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -34,56 +32,99 @@ fun ModuleStyleManagerCard(
     leftAction: @Composable () -> Unit,
     rightAction: @Composable () -> Unit,
 ) {
-    Card(
-        modifier = Modifier
-            .animateContentSize(
-                animationSpec = spring(
-                    dampingRatio = 0.9f,
-                    stiffness = 620f,
-                )
-            )
-            .padding(bottom = 12.dp),
-        insideMargin = PaddingValues(16.dp),
-        onClick = onCardClick ?: {},
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+    val cardModifier = Modifier
+        .padding(bottom = 12.dp)
+
+    if (onCardClick != null) {
+        Card(
+            modifier = cardModifier,
+            insideMargin = PaddingValues(16.dp),
+            onClick = onCardClick,
         ) {
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(end = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = title,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight(550),
-                )
-                summaryLines.forEach { line ->
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
                     Text(
-                        text = line,
-                        fontSize = 12.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
+                        text = title,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight(550),
                     )
+                    summaryLines.forEach { line ->
+                        Text(
+                            text = line,
+                            fontSize = 12.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
+                trailing?.invoke()
             }
-            trailing?.invoke()
+
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 8.dp),
+                thickness = 0.5.dp,
+                color = MiuixTheme.colorScheme.outline.copy(alpha = 0.5f),
+            )
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                leftAction()
+                Spacer(Modifier.weight(1f))
+                rightAction()
+            }
         }
+    } else {
+        Card(
+            modifier = cardModifier,
+            insideMargin = PaddingValues(16.dp),
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = title,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight(550),
+                    )
+                    summaryLines.forEach { line ->
+                        Text(
+                            text = line,
+                            fontSize = 12.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                trailing?.invoke()
+            }
 
-        HorizontalDivider(
-            modifier = Modifier.padding(vertical = 8.dp),
-            thickness = 0.5.dp,
-            color = MiuixTheme.colorScheme.outline.copy(alpha = 0.5f),
-        )
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 8.dp),
+                thickness = 0.5.dp,
+                color = MiuixTheme.colorScheme.outline.copy(alpha = 0.5f),
+            )
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            leftAction()
-            Spacer(Modifier.weight(1f))
-            rightAction()
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                leftAction()
+                Spacer(Modifier.weight(1f))
+                rightAction()
+            }
         }
     }
 }

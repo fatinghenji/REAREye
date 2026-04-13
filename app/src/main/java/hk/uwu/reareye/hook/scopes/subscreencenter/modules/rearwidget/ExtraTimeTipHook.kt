@@ -44,12 +44,12 @@ class ExtraTimeTipHook : YukiBaseHooker() {
                     if (moreDebug) {
                         YLog.debug(
                             "business is null ${
-                            bundle.keySet()
-                                ?.joinToString(separator = "\n") { key ->
-                                    @Suppress("DEPRECATION")
-                                    "$key=${bundle.get(key)}"
-                                }
-                        }"
+                                bundle.keySet()
+                                    ?.joinToString(separator = "\n") { key ->
+                                        @Suppress("DEPRECATION")
+                                        "$key=${bundle.get(key)}"
+                                    }
+                            }"
                         )
                     }
                 }

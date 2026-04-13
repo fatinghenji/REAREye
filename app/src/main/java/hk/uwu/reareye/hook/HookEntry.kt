@@ -12,7 +12,6 @@ import hk.uwu.reareye.hook.scopes.thememanager.ThemeManagerScope
 
 @InjectYukiHookWithXposed(entryClassName = "HookEntrance")
 class HookEntry : IYukiHookXposedInit {
-
     private val scopes = listOf(
         SystemScope(),
         SubscreenCenterScope(),
@@ -33,5 +32,11 @@ class HookEntry : IYukiHookXposedInit {
 
     override fun onHook() {
         encase(*scopes.toHooks())
+    }
+
+    companion object {
+        init {
+            System.loadLibrary("dexkit")
+        }
     }
 }

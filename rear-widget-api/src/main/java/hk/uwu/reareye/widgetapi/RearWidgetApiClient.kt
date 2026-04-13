@@ -130,6 +130,42 @@ class RearWidgetApiClient(
         requireRemote().syncState()
     }
 
+    fun resolveTemplateImagePreview(
+        business: String,
+        sourceFilePath: String,
+        imageValue: String,
+    ): RearWidgetTemplateImagePreview? {
+        return RearWidgetTemplateImagePreview.fromBundle(
+            requireRemote().resolveTemplateImagePreview(business, sourceFilePath, imageValue)
+        )
+    }
+
+    fun resolveTemplateConfigState(
+        business: String,
+        sourceFilePath: String,
+        currentOneConfigJson: String?,
+    ): RearWidgetTemplateConfigState? {
+        return RearWidgetTemplateConfigState.fromBundle(
+            requireRemote().resolveTemplateConfigState(
+                business,
+                sourceFilePath,
+                currentOneConfigJson.orEmpty(),
+            )
+        )
+    }
+
+    fun importCardCustomImage(
+        cardKey: String,
+        fieldName: String,
+        sourceUri: String,
+        displayNameHint: String,
+    ): String? {
+        return requireRemote()
+            .importCardCustomImage(cardKey, fieldName, sourceUri, displayNameHint)
+            ?.trim()
+            ?.ifBlank { null }
+    }
+
     private fun requireRemote(): IRearWidgetApiService {
         return remote ?: error("RearWidget API service is not connected")
     }

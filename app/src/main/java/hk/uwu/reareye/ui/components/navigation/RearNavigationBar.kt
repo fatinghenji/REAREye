@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Cottage
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Settings
@@ -39,6 +40,7 @@ private data class NavigationDestination(
 )
 
 private const val HOME_ROUTE = "home"
+private const val STORE_ROUTE = "store"
 private const val CONFIG_ROUTE = "config"
 private const val ABOUT_ROUTE = "about"
 
@@ -52,14 +54,20 @@ fun RearNavigationBar(
     onScreenSelected: (String) -> Unit,
 ) {
     val homeLabel = stringResource(R.string.home_navigation)
+    val storeLabel = stringResource(R.string.store_navigation)
     val configLabel = stringResource(R.string.configuration_navigation)
     val aboutLabel = stringResource(R.string.about_navigation)
-    val items = remember(homeLabel, configLabel, aboutLabel) {
+    val items = remember(homeLabel, storeLabel, configLabel, aboutLabel) {
         listOf(
             NavigationDestination(
                 route = HOME_ROUTE,
                 label = homeLabel,
                 icon = Icons.Rounded.Cottage,
+            ),
+            NavigationDestination(
+                route = STORE_ROUTE,
+                label = storeLabel,
+                icon = Icons.Rounded.CloudDownload,
             ),
             NavigationDestination(
                 route = CONFIG_ROUTE,

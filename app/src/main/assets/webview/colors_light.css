@@ -1,0 +1,9 @@
+:root {
+    --background: #ffffff;
+    --textPrimary: #15171a;
+    --textSecondary: #646b78;
+    --link: #0b6bcb;
+    --border: rgba(21, 23, 26, 0.12);
+    --surface: #f7f8fb;
+    --quote: #8c93a1;
+}

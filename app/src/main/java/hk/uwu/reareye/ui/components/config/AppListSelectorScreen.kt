@@ -3,12 +3,9 @@ package hk.uwu.reareye.ui.components.config
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,9 +24,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.style.ExperimentalFoundationStyleApi
+import androidx.compose.foundation.style.MutableStyleState
+import androidx.compose.foundation.style.Style
+import androidx.compose.foundation.style.selected
+import androidx.compose.foundation.style.styleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Apps
@@ -49,10 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
@@ -61,13 +57,11 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import hk.uwu.reareye.R
+import hk.uwu.reareye.ui.components.RearSearchBar
 import hk.uwu.reareye.ui.components.rememberApplicationIconBitmap
 import hk.uwu.reareye.ui.config.ConfigItem
 import hk.uwu.reareye.ui.config.PrefsManager
@@ -80,7 +74,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.FabPosition
 import top.yukonga.miuix.kmp.basic.FloatingActionButton
@@ -267,6 +260,7 @@ private fun EmptyAppsCard() {
     }
 }
 
+@OptIn(ExperimentalFoundationStyleApi::class)
 @Composable
 private fun AppSelectorRow(
     appItem: AppItem,
@@ -277,63 +271,87 @@ private fun AppSelectorRow(
     onToggle: () -> Unit,
 ) {
     val density = LocalDensity.current
+    val primaryColor = MiuixTheme.colorScheme.primary
     var previousIndex by remember(appItem.packageName) { mutableStateOf(currentIndex) }
-    var placementOffset by remember(appItem.packageName) { mutableFloatStateOf(0f) }
+    val placementOffset = remember(appItem.packageName) { mutableFloatStateOf(0f) }
     val animatedPlacementOffset by animateFloatAsState(
-        targetValue = placementOffset,
+        targetValue = placementOffset.floatValue,
         animationSpec = appRowPlacementSpec,
         label = "AppRowPlacementOffset",
     )
-    val selectionOverlayAlpha by animateFloatAsState(
-        targetValue = if (selected) 0.08f else 0f,
-        animationSpec = spring(
-            dampingRatio = 0.9f,
-            stiffness = 520f,
-        ),
-        label = "AppRowSelectionOverlayAlpha",
-    )
-    val selectionOverlayScale by animateFloatAsState(
-        targetValue = if (selected) 1f else 0.965f,
-        animationSpec = spring(
-            dampingRatio = 0.92f,
-            stiffness = 540f,
-        ),
-        label = "AppRowSelectionOverlayScale",
-    )
-    val contentOffsetPx by animateFloatAsState(
-        targetValue = with(density) { if (selected) 1.5.dp.toPx() else 0.dp.toPx() },
-        animationSpec = spring(
-            dampingRatio = 0.92f,
-            stiffness = 560f,
-        ),
-        label = "AppRowContentOffset",
-    )
-    val contentScale by animateFloatAsState(
-        targetValue = if (selected) 0.998f else 1f,
-        animationSpec = spring(
-            dampingRatio = 0.95f,
-            stiffness = 600f,
-        ),
-        label = "AppRowContentScale",
-    )
+    val selectionStyleState = remember(appItem.packageName) { MutableStyleState(null) }
+    selectionStyleState.isSelected = selected
+    val placementStyle = Style { translationY(animatedPlacementOffset) }
+    val overlayShape = remember { RoundedCornerShape(20.dp) }
+    val selectionOverlayStyle = remember(primaryColor, overlayShape) {
+        Style {
+            alpha(0f)
+            scale(0.965f)
+            background(primaryColor)
+            shape(overlayShape)
+
+            selected {
+                animate(
+                    spring(
+                        dampingRatio = 0.9f,
+                        stiffness = 520f,
+                    )
+                ) {
+                    alpha(0.08f)
+                }
+                animate(
+                    spring(
+                        dampingRatio = 0.92f,
+                        stiffness = 540f,
+                    )
+                ) {
+                    scale(1f)
+                }
+            }
+        }
+    }
+    val rowContentOffsetPx = remember(density) { with(density) { 1.5.dp.toPx() } }
+    val rowContentStyle = remember(rowContentOffsetPx) {
+        Style {
+            translationX(0f)
+            scale(1f)
+
+            selected {
+                animate(
+                    spring(
+                        dampingRatio = 0.92f,
+                        stiffness = 560f,
+                    )
+                ) {
+                    translationX(rowContentOffsetPx)
+                }
+                animate(
+                    spring(
+                        dampingRatio = 0.95f,
+                        stiffness = 600f,
+                    )
+                ) {
+                    scale(0.998f)
+                }
+            }
+        }
+    }
 
     LaunchedEffect(currentIndex, averageItemHeightPx) {
         if (previousIndex == currentIndex) {
             return@LaunchedEffect
         }
 
-        placementOffset = (previousIndex - currentIndex) * averageItemHeightPx
+        placementOffset.floatValue = (previousIndex - currentIndex) * averageItemHeightPx
         previousIndex = currentIndex
         withFrameNanos { }
-        placementOffset = 0f
+        placementOffset.floatValue = 0f
     }
 
     Card(
         modifier = Modifier
             .padding(top = 10.dp)
-            .graphicsLayer {
-                translationY = animatedPlacementOffset
-            }
+            .styleable(selectionStyleState, placementStyle)
             .fillMaxWidth(),
         insideMargin = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
         onClick = onToggle,
@@ -343,25 +361,13 @@ private fun AppSelectorRow(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer {
-                        alpha = selectionOverlayAlpha
-                        scaleX = selectionOverlayScale
-                        scaleY = selectionOverlayScale
-                    }
-                    .background(
-                        color = MiuixTheme.colorScheme.primary,
-                        shape = RoundedCornerShape(20.dp),
-                    )
+                    .styleable(selectionStyleState, selectionOverlayStyle)
             )
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .graphicsLayer {
-                        translationX = contentOffsetPx
-                        scaleX = contentScale
-                        scaleY = contentScale
-                    },
+                    .styleable(selectionStyleState, rowContentStyle),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 AppIcon(
@@ -390,61 +396,114 @@ private fun AppSelectorRow(
     }
 }
 
+@OptIn(ExperimentalFoundationStyleApi::class)
 @Composable
 private fun SelectionIndicator(selected: Boolean) {
-    val haloAlpha by animateFloatAsState(
-        targetValue = if (selected) 0.18f else 0f,
-        animationSpec = spring(
-            dampingRatio = 0.88f,
-            stiffness = 460f,
-        ),
-        label = "SelectionHaloAlpha",
-    )
-    val haloScale by animateFloatAsState(
-        targetValue = if (selected) 1.7f else 0.7f,
-        animationSpec = spring(
-            dampingRatio = 0.82f,
-            stiffness = 420f,
-        ),
-        label = "SelectionHaloScale",
-    )
-    val ringColor by animateColorAsState(
-        targetValue = if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.outline,
-        animationSpec = spring(stiffness = 500f),
-        label = "SelectionRingColor",
-    )
-    val ringScale by animateFloatAsState(
-        targetValue = if (selected) 1f else 0.94f,
-        animationSpec = spring(
-            dampingRatio = 0.88f,
-            stiffness = 520f,
-        ),
-        label = "SelectionRingScale",
-    )
-    val fillScale by animateFloatAsState(
-        targetValue = if (selected) 1f else 0f,
-        animationSpec = spring(
-            dampingRatio = 0.78f,
-            stiffness = 680f,
-        ),
-        label = "SelectionFillScale",
-    )
-    val iconAlpha by animateFloatAsState(
-        targetValue = if (selected) 1f else 0f,
-        animationSpec = spring(
-            dampingRatio = 0.9f,
-            stiffness = 750f,
-        ),
-        label = "SelectionIconAlpha",
-    )
-    val iconRotation by animateFloatAsState(
-        targetValue = if (selected) 0f else -16f,
-        animationSpec = spring(
-            dampingRatio = 0.84f,
-            stiffness = 560f,
-        ),
-        label = "SelectionIconRotation",
-    )
+    val primaryColor = MiuixTheme.colorScheme.primary
+    val outlineColor = MiuixTheme.colorScheme.outline
+    val onPrimaryColor = MiuixTheme.colorScheme.onPrimary
+    val selectionStyleState = remember { MutableStyleState(null) }
+    selectionStyleState.isSelected = selected
+    val haloStyle = remember(primaryColor) {
+        Style {
+            alpha(0f)
+            scale(0.7f)
+            background(primaryColor)
+            shape(CircleShape)
+
+            selected {
+                animate(
+                    spring(
+                        dampingRatio = 0.88f,
+                        stiffness = 460f,
+                    )
+                ) {
+                    alpha(0.18f)
+                }
+                animate(
+                    spring(
+                        dampingRatio = 0.82f,
+                        stiffness = 420f,
+                    )
+                ) {
+                    scale(1.7f)
+                }
+            }
+        }
+    }
+    val ringStyle = remember(primaryColor, outlineColor) {
+        Style {
+            scale(0.94f)
+            border(2.dp, outlineColor)
+            shape(CircleShape)
+
+            selected {
+                animate(spring(stiffness = 500f)) {
+                    borderColor(primaryColor)
+                }
+                animate(
+                    spring(
+                        dampingRatio = 0.88f,
+                        stiffness = 520f,
+                    )
+                ) {
+                    scale(1f)
+                }
+            }
+        }
+    }
+    val fillStyle = remember(primaryColor) {
+        Style {
+            scale(0f)
+            background(primaryColor)
+            shape(CircleShape)
+
+            selected {
+                animate(
+                    spring(
+                        dampingRatio = 0.78f,
+                        stiffness = 680f,
+                    )
+                ) {
+                    scale(1f)
+                }
+            }
+        }
+    }
+    val iconStyle = remember {
+        Style {
+            alpha(0f)
+            rotationZ(-16f)
+            scale(0.9f)
+
+            selected {
+                animate(
+                    spring(
+                        dampingRatio = 0.9f,
+                        stiffness = 750f,
+                    )
+                ) {
+                    alpha(1f)
+                }
+                animate(
+                    spring(
+                        dampingRatio = 0.84f,
+                        stiffness = 560f,
+                    )
+                ) {
+                    rotationZ(0f)
+                }
+                animate(
+                    spring(
+                        dampingRatio = 0.78f,
+                        stiffness = 680f,
+                    )
+                ) {
+                    scale(1f)
+                }
+            }
+        }
+    }
 
     Box(
         modifier = Modifier.size(30.dp),
@@ -453,46 +512,28 @@ private fun SelectionIndicator(selected: Boolean) {
         Box(
             modifier = Modifier
                 .size(18.dp)
-                .graphicsLayer {
-                    alpha = haloAlpha
-                    scaleX = haloScale
-                    scaleY = haloScale
-                }
-                .background(MiuixTheme.colorScheme.primary, CircleShape)
+                .styleable(selectionStyleState, haloStyle)
         )
 
         Box(
             modifier = Modifier
                 .size(24.dp)
-                .graphicsLayer {
-                    scaleX = ringScale
-                    scaleY = ringScale
-                }
-                .border(width = 2.dp, color = ringColor, shape = CircleShape),
+                .styleable(selectionStyleState, ringStyle),
             contentAlignment = Alignment.Center,
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer {
-                        scaleX = fillScale
-                        scaleY = fillScale
-                    }
-                    .background(MiuixTheme.colorScheme.primary, CircleShape)
+                    .styleable(selectionStyleState, fillStyle)
             )
 
             Icon(
                 imageVector = MiuixIcons.Basic.Check,
                 contentDescription = null,
-                tint = MiuixTheme.colorScheme.onPrimary,
+                tint = onPrimaryColor,
                 modifier = Modifier
                     .size(16.dp)
-                    .graphicsLayer {
-                        alpha = iconAlpha
-                        rotationZ = iconRotation
-                        scaleX = 0.9f + (0.1f * fillScale)
-                        scaleY = 0.9f + (0.1f * fillScale)
-                    }
+                    .styleable(selectionStyleState, iconStyle)
             )
         }
     }
@@ -500,93 +541,20 @@ private fun SelectionIndicator(selected: Boolean) {
 
 @Composable
 private fun AppSelectorHeader(
+    prefsManager: PrefsManager,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     onSearchFocusChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val focusManager = LocalFocusManager.current
-    val keyboardController = LocalSoftwareKeyboardController.current
-    val searchAcrylicShape = RoundedCornerShape(14.dp)
-    val searchAcrylicBase = Color(0xFF9EA6B2).copy(alpha = 0.34f)
-    val searchAcrylicStroke = Color.White.copy(alpha = 0.34f)
-    val searchAcrylicOverlay = Brush.verticalGradient(
-        colors = listOf(
-            Color.White.copy(alpha = 0.18f),
-            Color.White.copy(alpha = 0.04f),
-        )
+    RearSearchBar(
+        query = searchQuery,
+        hint = stringResource(R.string.search_apps),
+        prefsManager = prefsManager,
+        modifier = modifier,
+        onQueryChange = onSearchQueryChange,
+        onSearchFocusChange = onSearchFocusChange,
     )
-    val searchHint = stringResource(R.string.search_apps)
-    val searchTextStyle = TextStyle(
-        color = MiuixTheme.colorScheme.onBackground,
-        fontSize = 14.sp,
-    )
-
-    Column(
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Card(
-            modifier = Modifier
-                .border(1.dp, searchAcrylicStroke, searchAcrylicShape)
-                .fillMaxWidth(),
-            cornerRadius = 14.dp,
-            colors = CardDefaults.defaultColors(
-                color = searchAcrylicBase,
-                contentColor = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            )
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(44.dp)
-                    .background(searchAcrylicOverlay)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Search,
-                    contentDescription = null,
-                    tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    modifier = Modifier
-                        .size(18.dp)
-                        .padding(end = 6.dp),
-                )
-
-                BasicTextField(
-                    value = searchQuery,
-                    onValueChange = onSearchQueryChange,
-                    modifier = Modifier
-                        .weight(1f)
-                        .onFocusChanged { onSearchFocusChange(it.isFocused) },
-                    singleLine = true,
-                    textStyle = searchTextStyle,
-                    cursorBrush = SolidColor(MiuixTheme.colorScheme.primary),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(
-                        onSearch = {
-                            focusManager.clearFocus(force = true)
-                            keyboardController?.hide()
-                        }
-                    ),
-                    decorationBox = { innerTextField ->
-                        Box(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentAlignment = Alignment.CenterStart,
-                        ) {
-                            if (searchQuery.isEmpty()) {
-                                Text(
-                                    text = searchHint,
-                                    style = MiuixTheme.textStyles.body2,
-                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                )
-                            }
-                            innerTextField()
-                        }
-                    },
-                )
-            }
-        }
-    }
 }
 
 @Composable
@@ -615,7 +583,7 @@ fun AppListSelectorScreen(
     var showSystemApps by remember(configItem.key) { mutableStateOf(false) }
     var searchInput by remember(configItem.key) { mutableStateOf("") }
     var searchQuery by remember(configItem.key) { mutableStateOf("") }
-    var searchFocused by remember(configItem.key) { mutableStateOf(false) }
+    val searchFocused = remember(configItem.key) { mutableStateOf(false) }
     val listState = rememberLazyListState()
     var sortMode by remember(configItem.key) { mutableStateOf(AppSortMode.LABEL) }
     var reverseOrder by remember(configItem.key) { mutableStateOf(false) }
@@ -627,7 +595,7 @@ fun AppListSelectorScreen(
     val hazeState = rememberAcrylicHazeState()
     val hazeStyle = rememberAcrylicHazeStyle()
 
-    BackHandler(enabled = searchFocused) {
+    BackHandler(enabled = searchFocused.value) {
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
     }
@@ -722,177 +690,183 @@ fun AppListSelectorScreen(
                         }
                     },
                     actions = {
-                        IconButton(
-                            onClick = { showSortMenu.value = true },
-                            holdDownState = showSortMenu.value
-                        ) {
-                            Icon(
-                                imageVector = MiuixIcons.Regular.Sort,
-                                contentDescription = stringResource(R.string.app_list_sort),
-                                tint = MiuixTheme.colorScheme.onBackground,
-                            )
-                        }
-                        OverlayListPopup(
-                            show = showSortMenu.value,
-                            popupModifier = Modifier,
-                            popupPositionProvider = ListPopupDefaults.ContextMenuPositionProvider,
-                            alignment = PopupPositionProvider.Align.TopEnd,
-                            enableWindowDim = true,
-                            onDismissRequest = { showSortMenu.value = false },
-                            maxHeight = null,
-                            minWidth = 200.dp,
-                            renderInRootScaffold = true,
-                            content = {
-                                ListPopupColumn {
-                                    SpinnerItemImpl(
-                                        entry = SpinnerEntry(title = stringResource(R.string.app_list_sort_by_name)),
-                                        entryCount = 3,
-                                        isSelected = sortMode == AppSortMode.LABEL,
-                                        index = 0,
-                                        spinnerColors = SpinnerDefaults.spinnerColors(),
-                                        onSelectedIndexChange = {
-                                            dismissThenApply(
-                                                { showSortMenu.value = false },
-                                                { sortMode = AppSortMode.LABEL },
-                                            )
-                                        },
-                                    )
-                                    SpinnerItemImpl(
-                                        entry = SpinnerEntry(title = stringResource(R.string.app_list_sort_by_package)),
-                                        entryCount = 3,
-                                        isSelected = sortMode == AppSortMode.PACKAGE,
-                                        index = 1,
-                                        spinnerColors = SpinnerDefaults.spinnerColors(),
-                                        onSelectedIndexChange = {
-                                            dismissThenApply(
-                                                { showSortMenu.value = false },
-                                                { sortMode = AppSortMode.PACKAGE },
-                                            )
-                                        },
-                                    )
-                                    SpinnerItemImpl(
-                                        entry = SpinnerEntry(title = stringResource(R.string.app_list_sort_reverse)),
-                                        entryCount = 3,
-                                        isSelected = reverseOrder,
-                                        index = 2,
-                                        spinnerColors = SpinnerDefaults.spinnerColors(),
-                                        onSelectedIndexChange = {
-                                            dismissThenApply(
-                                                { showSortMenu.value = false },
-                                                { reverseOrder = !reverseOrder },
-                                            )
-                                        },
-                                    )
-                                }
-                            })
-
-                        IconButton(
-                            onClick = { showFilterMenu.value = true },
-                            holdDownState = showFilterMenu.value
-                        ) {
-                            Icon(
-                                imageVector = MiuixIcons.Regular.Tune,
-                                contentDescription = stringResource(R.string.app_list_filter),
-                                tint = MiuixTheme.colorScheme.onBackground,
-                            )
-                        }
-                        OverlayListPopup(
-                            show = showFilterMenu.value,
-                            popupModifier = Modifier,
-                            popupPositionProvider = ListPopupDefaults.ContextMenuPositionProvider,
-                            alignment = PopupPositionProvider.Align.TopEnd,
-                            enableWindowDim = true,
-                            onDismissRequest = { showFilterMenu.value = false },
-                            maxHeight = null,
-                            minWidth = 200.dp,
-                            renderInRootScaffold = true,
-                            content = {
-                                ListPopupColumn {
-                                    SpinnerItemImpl(
-                                        entry = SpinnerEntry(
-                                            icon = { modifier ->
-                                                Icon(
-                                                    imageVector = Icons.Filled.Apps,
-                                                    contentDescription = null,
-                                                    modifier = modifier,
-                                                    tint = MiuixTheme.colorScheme.onBackground,
+                        Box {
+                            IconButton(
+                                onClick = { showSortMenu.value = true },
+                                holdDownState = showSortMenu.value
+                            ) {
+                                Icon(
+                                    imageVector = MiuixIcons.Regular.Sort,
+                                    contentDescription = stringResource(R.string.app_list_sort),
+                                    tint = MiuixTheme.colorScheme.onBackground,
+                                )
+                            }
+                            OverlayListPopup(
+                                show = showSortMenu.value,
+                                popupModifier = Modifier,
+                                popupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
+                                alignment = PopupPositionProvider.Align.End,
+                                enableWindowDim = true,
+                                onDismissRequest = { showSortMenu.value = false },
+                                maxHeight = null,
+                                minWidth = 200.dp,
+                                renderInRootScaffold = true,
+                                content = {
+                                    ListPopupColumn {
+                                        SpinnerItemImpl(
+                                            entry = SpinnerEntry(title = stringResource(R.string.app_list_sort_by_name)),
+                                            entryCount = 3,
+                                            isSelected = sortMode == AppSortMode.LABEL,
+                                            index = 0,
+                                            spinnerColors = SpinnerDefaults.spinnerColors(),
+                                            onSelectedIndexChange = {
+                                                dismissThenApply(
+                                                    { showSortMenu.value = false },
+                                                    { sortMode = AppSortMode.LABEL },
                                                 )
                                             },
-                                            title = stringResource(R.string.show_system_apps),
-                                        ),
-                                        entryCount = 1,
-                                        isSelected = showSystemApps,
-                                        index = 0,
-                                        spinnerColors = SpinnerDefaults.spinnerColors(),
-                                        onSelectedIndexChange = {
-                                            dismissThenApply(
-                                                { showFilterMenu.value = false },
-                                                { showSystemApps = !showSystemApps },
-                                            )
-                                        },
-                                    )
-                                }
-                            })
-
-                        IconButton(
-                            modifier = Modifier.padding(end = 16.dp),
-                            onClick = { showMoreMenu.value = true },
-                            holdDownState = showMoreMenu.value,
-                        ) {
-                            Icon(
-                                imageVector = MiuixIcons.MoreCircle,
-                                contentDescription = stringResource(R.string.app_list_more_actions),
-                                tint = MiuixTheme.colorScheme.onBackground,
-                            )
-                        }
-                        OverlayListPopup(
-                            show = showMoreMenu.value,
-                            popupModifier = Modifier,
-                            popupPositionProvider = ListPopupDefaults.ContextMenuPositionProvider,
-                            alignment = PopupPositionProvider.Align.TopEnd,
-                            enableWindowDim = true,
-                            onDismissRequest = { showMoreMenu.value = false },
-                            maxHeight = null,
-                            minWidth = 200.dp,
-                            renderInRootScaffold = true,
-                            content = {
-                                ListPopupColumn {
-                                    SpinnerItemImpl(
-                                        entry = SpinnerEntry(
-                                            icon = { modifier ->
-                                                Icon(
-                                                    imageVector = Icons.Filled.Delete,
-                                                    contentDescription = null,
-                                                    modifier = modifier,
-                                                    tint = MiuixTheme.colorScheme.onBackground,
+                                        )
+                                        SpinnerItemImpl(
+                                            entry = SpinnerEntry(title = stringResource(R.string.app_list_sort_by_package)),
+                                            entryCount = 3,
+                                            isSelected = sortMode == AppSortMode.PACKAGE,
+                                            index = 1,
+                                            spinnerColors = SpinnerDefaults.spinnerColors(),
+                                            onSelectedIndexChange = {
+                                                dismissThenApply(
+                                                    { showSortMenu.value = false },
+                                                    { sortMode = AppSortMode.PACKAGE },
                                                 )
                                             },
-                                            title = stringResource(R.string.selection_clear),
-                                        ),
-                                        entryCount = 1,
-                                        isSelected = false,
-                                        index = 0,
-                                        spinnerColors = SpinnerDefaults.spinnerColors(),
-                                        onSelectedIndexChange = {
-                                            dismissThenApply(
-                                                { showMoreMenu.value = false },
-                                                { selectedOrder.clear() },
-                                            )
-                                        },
-                                    )
-                                }
-                            })
+                                        )
+                                        SpinnerItemImpl(
+                                            entry = SpinnerEntry(title = stringResource(R.string.app_list_sort_reverse)),
+                                            entryCount = 3,
+                                            isSelected = reverseOrder,
+                                            index = 2,
+                                            spinnerColors = SpinnerDefaults.spinnerColors(),
+                                            onSelectedIndexChange = {
+                                                dismissThenApply(
+                                                    { showSortMenu.value = false },
+                                                    { reverseOrder = !reverseOrder },
+                                                )
+                                            },
+                                        )
+                                    }
+                                })
+                        }
+
+                        Box {
+                            IconButton(
+                                onClick = { showFilterMenu.value = true },
+                                holdDownState = showFilterMenu.value
+                            ) {
+                                Icon(
+                                    imageVector = MiuixIcons.Regular.Tune,
+                                    contentDescription = stringResource(R.string.app_list_filter),
+                                    tint = MiuixTheme.colorScheme.onBackground,
+                                )
+                            }
+                            OverlayListPopup(
+                                show = showFilterMenu.value,
+                                popupModifier = Modifier,
+                                popupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
+                                alignment = PopupPositionProvider.Align.End,
+                                enableWindowDim = true,
+                                onDismissRequest = { showFilterMenu.value = false },
+                                maxHeight = null,
+                                minWidth = 200.dp,
+                                renderInRootScaffold = true,
+                                content = {
+                                    ListPopupColumn {
+                                        SpinnerItemImpl(
+                                            entry = SpinnerEntry(
+                                                icon = { modifier ->
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Apps,
+                                                        contentDescription = null,
+                                                        modifier = modifier,
+                                                        tint = MiuixTheme.colorScheme.onBackground,
+                                                    )
+                                                },
+                                                title = stringResource(R.string.show_system_apps),
+                                            ),
+                                            entryCount = 1,
+                                            isSelected = showSystemApps,
+                                            index = 0,
+                                            spinnerColors = SpinnerDefaults.spinnerColors(),
+                                            onSelectedIndexChange = {
+                                                dismissThenApply(
+                                                    { showFilterMenu.value = false },
+                                                    { showSystemApps = !showSystemApps },
+                                                )
+                                            },
+                                        )
+                                    }
+                                })
+                        }
+
+                        Box {
+                            IconButton(
+                                onClick = { showMoreMenu.value = true },
+                                holdDownState = showMoreMenu.value,
+                            ) {
+                                Icon(
+                                    imageVector = MiuixIcons.MoreCircle,
+                                    contentDescription = stringResource(R.string.app_list_more_actions),
+                                    tint = MiuixTheme.colorScheme.onBackground,
+                                )
+                            }
+                            OverlayListPopup(
+                                show = showMoreMenu.value,
+                                popupModifier = Modifier,
+                                popupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
+                                alignment = PopupPositionProvider.Align.End,
+                                enableWindowDim = true,
+                                onDismissRequest = { showMoreMenu.value = false },
+                                maxHeight = null,
+                                minWidth = 200.dp,
+                                renderInRootScaffold = true,
+                                content = {
+                                    ListPopupColumn {
+                                        SpinnerItemImpl(
+                                            entry = SpinnerEntry(
+                                                icon = { modifier ->
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Delete,
+                                                        contentDescription = null,
+                                                        modifier = modifier,
+                                                        tint = MiuixTheme.colorScheme.onBackground,
+                                                    )
+                                                },
+                                                title = stringResource(R.string.selection_clear),
+                                            ),
+                                            entryCount = 1,
+                                            isSelected = false,
+                                            index = 0,
+                                            spinnerColors = SpinnerDefaults.spinnerColors(),
+                                            onSelectedIndexChange = {
+                                                dismissThenApply(
+                                                    { showMoreMenu.value = false },
+                                                    { selectedOrder.clear() },
+                                                )
+                                            },
+                                        )
+                                    }
+                                })
+                        }
                     },
                     scrollBehavior = scrollBehavior,
                 )
 
                 AppSelectorHeader(
+                    prefsManager = prefsManager,
                     modifier = Modifier
                         .padding(horizontal = 12.dp)
                         .padding(bottom = 12.dp),
                     searchQuery = searchInput,
                     onSearchQueryChange = { searchInput = it },
-                    onSearchFocusChange = { searchFocused = it },
+                    onSearchFocusChange = { searchFocused.value = it },
                 )
             }
         },

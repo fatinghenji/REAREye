@@ -14,7 +14,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Process
 import androidx.core.content.ContextCompat
-import androidx.core.content.edit
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
@@ -33,7 +32,6 @@ class RearWallpaperHook : YukiBaseHooker() {
     companion object {
         private const val TAG = "REAREye-RearWallpaper"
         private const val RETRY_SWITCH_DELAY_MS = 350L
-        private const val RUNTIME_PREFS_NAME = "reareye_hook_runtime"
 
         @Volatile
         private var cachedNextSwitchAtMillis: Long = Long.MIN_VALUE
@@ -91,16 +89,24 @@ class RearWallpaperHook : YukiBaseHooker() {
                 name = "onCreate"
                 parameterCount = 1
             }.hook().after {
-                capturePanels(instance)
-                refreshSchedule(forceApply = true)
+                runCatching {
+                    capturePanels(instance)
+                    refreshSchedule(forceApply = true)
+                }.onFailure {
+                    YLog.warn(it)
+                }
             }
 
             launcherRef.firstMethod {
                 name = "onResume"
                 parameterCount = 0
             }.hook().after {
-                capturePanels(instance)
-                refreshSchedule(forceApply = true)
+                runCatching {
+                    capturePanels(instance)
+                    refreshSchedule(forceApply = true)
+                }.onFailure {
+                    YLog.warn(it)
+                }
             }
 
             launcherRef.firstMethod {
@@ -393,7 +399,7 @@ class RearWallpaperHook : YukiBaseHooker() {
         val widgets = entries.map { it.widget }
         var applied = false
         mainPanel?.let { panel ->
-            applied = dispatchSelection(panel, widgets, targetIndex) || applied
+            applied = dispatchSelection(panel, widgets, targetIndex) || false
         }
         smartPanel?.let { panel ->
             applied = dispatchSelection(panel, widgets, targetIndex) || applied
@@ -530,16 +536,14 @@ class RearWallpaperHook : YukiBaseHooker() {
     private fun readNextSwitchAt(): Long {
         val cached = cachedNextSwitchAtMillis
         if (cached != Long.MIN_VALUE) return cached
-        val persisted = runtimePrefs()
-            ?.getLong(ConfigKeys.REAR_WALLPAPER_SCHEDULE_NEXT_AT, 0L)
-            ?: 0L
+        val persisted = prefs.native().getLong(ConfigKeys.REAR_WALLPAPER_SCHEDULE_NEXT_AT, 0L)
         cachedNextSwitchAtMillis = persisted
         return persisted
     }
 
     private fun persistNextSwitchAt(timestamp: Long) {
         cachedNextSwitchAtMillis = timestamp
-        runtimePrefs()?.edit {
+        prefs.native().edit {
             putLong(ConfigKeys.REAR_WALLPAPER_SCHEDULE_NEXT_AT, timestamp)
             apply()
         }
@@ -566,9 +570,6 @@ class RearWallpaperHook : YukiBaseHooker() {
                 ?: RearWallpaperScheduleCodec.EMPTY_ARRAY,
         )
     }
-
-    private fun runtimePrefs() =
-        hostContext?.getSharedPreferences(RUNTIME_PREFS_NAME, Context.MODE_PRIVATE)
 
     private fun debugLog(message: String) {
         if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {

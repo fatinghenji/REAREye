@@ -25,6 +25,13 @@ jobs:
       #    distribution: "temurin"
       #    cache: gradle
 
+      - name: Write key File
+        run: |
+          if [ ! -z "${{ secrets.SIGNING_KEY }}" ]; then
+            echo androidStoreFile=`pwd`/release-key.jks >> local.properties
+            echo ${{ secrets.SIGNING_KEY }} | base64 --decode > release-key.jks
+          fi
+
       - name: Setup Android SDK
         uses: amyu/setup-android@v5
         with:
@@ -54,3 +61,9 @@ jobs:
         with:
           name: app-release
           path: app/build/outputs/apk/release/*.apk
+
+      - name: Upload Release Mapping
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-mapping
+          path: app/build/outputs/mapping/release/*

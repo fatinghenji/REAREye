@@ -132,7 +132,6 @@ fun FloatingBottomBar(
             }
         }
     }
-
     var currentIndex by remember { mutableIntStateOf(selectedIndex) }
 
     class DampedDragAnimationHolder {
@@ -215,7 +214,6 @@ fun FloatingBottomBar(
     } else {
         null
     }
-
     Box(
         modifier = modifier.width(IntrinsicSize.Min),
         contentAlignment = Alignment.CenterStart,

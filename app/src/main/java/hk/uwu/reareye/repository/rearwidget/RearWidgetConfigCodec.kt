@@ -11,6 +11,14 @@ data class RearBusinessConfig(
     val filePath: String,
     val defaultIndex: Int = 0,
     val defaultPriority: Int = 500,
+    val renameable: Boolean = true,
+    val downloadedFromStore: Boolean = false,
+    val storeWidgetId: String? = null,
+    val storeWidgetName: String? = null,
+    val storeReleaseTag: String? = null,
+    val storeReleaseAssetName: String? = null,
+    val storeReleasePublishedAt: String? = null,
+    val storeInstalledAt: String? = null,
 )
 
 data class RearCardConfig(
@@ -18,9 +26,17 @@ data class RearCardConfig(
     val title: String,
     val packageName: String,
     val business: String,
+    val oneConfigJson: String? = null,
     val enabled: Boolean = true,
     val sticky: Boolean = true,
     val priority: Int = 500,
+    val renameable: Boolean = true,
+    val downloadedFromStore: Boolean = false,
+    val storeWidgetId: String? = null,
+    val storeWidgetName: String? = null,
+    val storeReleaseTag: String? = null,
+    val storeReleaseAssetName: String? = null,
+    val storeReleasePublishedAt: String? = null,
 )
 
 object RearWidgetConfigCodec {
@@ -64,6 +80,16 @@ object RearWidgetConfigCodec {
                 filePath = filePath,
                 defaultIndex = obj.optInt("defaultIndex", 0),
                 defaultPriority = obj.optInt("defaultPriority", 500),
+                renameable = obj.optBoolean("renameable", true),
+                downloadedFromStore = obj.optBoolean("downloadedFromStore", false),
+                storeWidgetId = obj.optString("storeWidgetId").trim().ifBlank { null },
+                storeWidgetName = obj.optString("storeWidgetName").trim().ifBlank { null },
+                storeReleaseTag = obj.optString("storeReleaseTag").trim().ifBlank { null },
+                storeReleaseAssetName = obj.optString("storeReleaseAssetName").trim()
+                    .ifBlank { null },
+                storeReleasePublishedAt = obj.optString("storeReleasePublishedAt").trim()
+                    .ifBlank { null },
+                storeInstalledAt = obj.optString("storeInstalledAt").trim().ifBlank { null },
             )
         }
         return out
@@ -85,9 +111,19 @@ object RearWidgetConfigCodec {
                 title = title,
                 packageName = packageName,
                 business = business,
+                oneConfigJson = obj.optString("oneConfigJson").trim().ifBlank { null },
                 enabled = obj.optBoolean("enabled", true),
                 sticky = obj.optBoolean("sticky", true),
                 priority = obj.optInt("priority", 500),
+                renameable = obj.optBoolean("renameable", true),
+                downloadedFromStore = obj.optBoolean("downloadedFromStore", false),
+                storeWidgetId = obj.optString("storeWidgetId").trim().ifBlank { null },
+                storeWidgetName = obj.optString("storeWidgetName").trim().ifBlank { null },
+                storeReleaseTag = obj.optString("storeReleaseTag").trim().ifBlank { null },
+                storeReleaseAssetName = obj.optString("storeReleaseAssetName").trim()
+                    .ifBlank { null },
+                storeReleasePublishedAt = obj.optString("storeReleasePublishedAt").trim()
+                    .ifBlank { null },
             )
         }
         return out
@@ -104,6 +140,14 @@ object RearWidgetConfigCodec {
                         .put("filePath", item.filePath)
                         .put("defaultIndex", item.defaultIndex)
                         .put("defaultPriority", item.defaultPriority)
+                        .put("renameable", item.renameable)
+                        .put("downloadedFromStore", item.downloadedFromStore)
+                        .put("storeWidgetId", item.storeWidgetId)
+                        .put("storeWidgetName", item.storeWidgetName)
+                        .put("storeReleaseTag", item.storeReleaseTag)
+                        .put("storeReleaseAssetName", item.storeReleaseAssetName)
+                        .put("storeReleasePublishedAt", item.storeReleasePublishedAt)
+                        .put("storeInstalledAt", item.storeInstalledAt)
                 )
             }
         }.toString()
@@ -117,9 +161,17 @@ object RearWidgetConfigCodec {
                         .put("title", item.title)
                         .put("packageName", item.packageName)
                         .put("business", item.business)
+                        .put("oneConfigJson", item.oneConfigJson)
                         .put("enabled", item.enabled)
                         .put("sticky", item.sticky)
                         .put("priority", item.priority)
+                        .put("renameable", item.renameable)
+                        .put("downloadedFromStore", item.downloadedFromStore)
+                        .put("storeWidgetId", item.storeWidgetId)
+                        .put("storeWidgetName", item.storeWidgetName)
+                        .put("storeReleaseTag", item.storeReleaseTag)
+                        .put("storeReleaseAssetName", item.storeReleaseAssetName)
+                        .put("storeReleasePublishedAt", item.storeReleasePublishedAt)
                 )
             }
         }.toString()

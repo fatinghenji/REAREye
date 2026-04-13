@@ -22,3 +22,5 @@ rear-widget-api/build
 .settings
 **/.settings
 **/.classpath
+release-key.jks
+.env

@@ -4,14 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutLinearInEasing
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,6 +27,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,7 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -55,8 +48,12 @@ import androidx.core.net.toUri
 import com.highcapable.yukihookapi.YukiHookAPI
 import hk.uwu.reareye.R
 import hk.uwu.reareye.generated.AppProperties
+import hk.uwu.reareye.ui.components.motion.ArtVisibilityMotion
+import hk.uwu.reareye.ui.config.ConfigKeys
+import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
 import hk.uwu.reareye.ui.easteregg.EasterEggManager
 import hk.uwu.reareye.ui.easteregg.EasterEggType
+import hk.uwu.reareye.ui.theme.AppThemeMode
 import hk.uwu.reareye.ui.theme.rearAcrylicEffect
 import hk.uwu.reareye.ui.theme.rearAcrylicSource
 import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
@@ -103,6 +100,57 @@ private class ToastHolder {
     var toast: Toast? = null
 }
 
+@Immutable
+private data class StatusCardPalette(
+    val container: Color,
+    val icon: Color,
+    val title: Color,
+    val summary: Color,
+)
+
+private fun customStatusCardPalette(
+    container: Color,
+    icon: Color,
+    title: Color,
+    summary: Color,
+): StatusCardPalette {
+    return StatusCardPalette(
+        container = container,
+        icon = icon,
+        title = title,
+        summary = summary,
+    )
+}
+
+@Composable
+private fun rememberStatusCardPalette(
+    accent: Color,
+    containerStrength: Float = 0.22f,
+    iconStrength: Float = 0.86f,
+    titleStrength: Float = 0.46f,
+    summaryStrength: Float = 0.28f,
+): StatusCardPalette {
+    val colorScheme = MiuixTheme.colorScheme
+
+    return remember(
+        accent,
+        colorScheme.surface,
+        colorScheme.onSurface,
+        colorScheme.onSurfaceVariantSummary,
+        containerStrength,
+        iconStrength,
+        titleStrength,
+        summaryStrength,
+    ) {
+        StatusCardPalette(
+            container = lerp(colorScheme.surface, accent, containerStrength),
+            icon = lerp(colorScheme.onSurfaceVariantSummary, accent, iconStrength),
+            title = lerp(colorScheme.onSurface, accent, titleStrength),
+            summary = lerp(colorScheme.onSurfaceVariantSummary, accent, summaryStrength),
+        )
+    }
+}
+
 private fun showSingleToast(context: Context, holder: ToastHolder, message: String) {
     holder.toast?.cancel()
     holder.toast = Toast.makeText(context.applicationContext, message, Toast.LENGTH_SHORT)
@@ -137,6 +185,7 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
     val showTopMenu = remember { mutableStateOf(false) }
     val scrollBehavior = MiuixScrollBehavior()
     val context = LocalContext.current
+    val prefsManager = remember { context.getPrefsManager() }
     val hazeState = rememberAcrylicHazeState()
     val hazeStyle = rememberAcrylicHazeStyle()
     val coroutineScope = rememberCoroutineScope()
@@ -148,11 +197,23 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
     var easterEggType by remember {
         mutableStateOf(EasterEggManager.getCurrentEasterEggType(context))
     }
+    val themeMode = remember(prefsManager) {
+        AppThemeMode.fromValue(
+            prefsManager.getInt(
+                ConfigKeys.MODULE_THEME_MODE,
+                AppThemeMode.default.value,
+            )
+        )
+    }
+    val useMonetStatusColors = remember(themeMode) {
+        themeMode == AppThemeMode.MONET_SYSTEM ||
+                themeMode == AppThemeMode.MONET_LIGHT ||
+                themeMode == AppThemeMode.MONET_DARK
+    }
 
     LaunchedEffect(Unit) {
         if (!UpdateInfoCache.latestCommitHash.isNullOrBlank()) {
             latestCommitHash = UpdateInfoCache.latestCommitHash
-            isCheckingUpdate = false
             return@LaunchedEffect
         }
 
@@ -220,7 +281,6 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
                 actions = {
                     Box {
                         IconButton(
-                            modifier = Modifier.padding(end = 16.dp),
                             onClick = { showTopMenu.value = true },
                             holdDownState = showTopMenu.value,
                         ) {
@@ -346,6 +406,7 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
                                 statusVersion = AppProperties.BUILD_NUMBER.toString(),
                                 activated = isActivated,
                                 easterEggType = easterEggType,
+                                useMonetColors = useMonetStatusColors,
                                 onLongPress = {
                                     val result =
                                         EasterEggManager.toggleTodayEasterEggEnabled(context)
@@ -375,7 +436,7 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
 
                             if (showRootWarning) {
                                 RevealItem(visible = visible, delayMillis = 100) {
-                                    RootWarningCard()
+                                    RootWarningCard(useMonetColors = useMonetStatusColors)
                                 }
                             }
 
@@ -383,6 +444,7 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
                                 UpdateWarningCard(
                                     currentHash = AppProperties.GIT_HASH.take(7),
                                     latestHash = latestCommitHash?.take(7).orEmpty(),
+                                    useMonetColors = useMonetStatusColors,
                                 )
                             }
                         }
@@ -475,27 +537,16 @@ private fun RevealItem(
     delayMillis: Int,
     content: @Composable () -> Unit,
 ) {
-    AnimatedVisibility(
+    ArtVisibilityMotion(
         visible = visible,
-        enter = fadeIn(
-            animationSpec = tween(
-                durationMillis = 320,
-                delayMillis = delayMillis,
-                easing = LinearOutSlowInEasing,
-            )
-        ) + slideInVertically(
-            animationSpec = tween(
-                durationMillis = 420,
-                delayMillis = delayMillis,
-                easing = FastOutSlowInEasing,
-            )
-        ) { it / 8 },
-        exit = fadeOut(
-            animationSpec = tween(
-                durationMillis = 120,
-                easing = FastOutLinearInEasing,
-            )
-        ),
+        delayMillis = delayMillis,
+        enterAlphaDurationMillis = 320,
+        enterTransformDurationMillis = 420,
+        exitAlphaDurationMillis = 120,
+        exitTransformDurationMillis = 120,
+        hiddenEnterScale = 1f,
+        hiddenExitScale = 1f,
+        slideDivisor = 8,
     ) {
         content()
     }
@@ -507,49 +558,60 @@ private fun WorkingStatusCard(
     statusVersion: String,
     activated: Boolean,
     easterEggType: EasterEggType,
+    useMonetColors: Boolean,
     onLongPress: () -> Unit,
 ) {
-    val (cardColor, iconColor, titleColor, summaryColor) = when {
-        !activated -> listOf(
-            Color(0xFFF8E2E2),
-            Color(0xFFE06767),
-            Color(0xFF7A2A2A),
-            Color(0xFF9A4D4D),
+    val palette = when {
+        useMonetColors && !activated -> rememberStatusCardPalette(
+            accent = MiuixTheme.colorScheme.error,
+            containerStrength = 0.24f,
         )
 
-        easterEggType == EasterEggType.NEW_YEAR -> listOf(
-            Color(0xFFFFECEC),
-            Color(0xFFE64B4B),
-            Color(0xFF7F1E1E),
-            Color(0xFF9A3939),
+        !activated -> customStatusCardPalette(
+            container = Color(0xFFF8E2E2),
+            icon = Color(0xFFE06767),
+            title = Color(0xFF7A2A2A),
+            summary = Color(0xFF9A4D4D),
         )
 
-        easterEggType == EasterEggType.APRIL_FOOLS -> listOf(
-            Color(0xFFFFF6D8),
-            Color(0xFFEBB027),
-            Color(0xFF7A5100),
-            Color(0xFF8E6900),
+        easterEggType == EasterEggType.NEW_YEAR -> customStatusCardPalette(
+            container = Color(0xFFFFECEC),
+            icon = Color(0xFFE64B4B),
+            title = Color(0xFF7F1E1E),
+            summary = Color(0xFF9A3939),
         )
 
-        easterEggType == EasterEggType.EASTER -> listOf(
-            Color(0xFFFFF4E6),
-            Color(0xFFED9A9A),
-            Color(0xFF6A4C93),
-            Color(0xFF4CA66B),
+        easterEggType == EasterEggType.APRIL_FOOLS -> customStatusCardPalette(
+            container = Color(0xFFFFF6D8),
+            icon = Color(0xFFEBB027),
+            title = Color(0xFF7A5100),
+            summary = Color(0xFF8E6900),
         )
 
-        easterEggType == EasterEggType.MI_FANS -> listOf(
-            Color(0xFFFFF2E0),
-            Color(0xFFFF6900),
-            Color(0xFFB34700),
-            Color(0xFF8C6239),
+        easterEggType == EasterEggType.EASTER -> customStatusCardPalette(
+            container = Color(0xFFFFF4E6),
+            icon = Color(0xFFED9A9A),
+            title = Color(0xFF6A4C93),
+            summary = Color(0xFF4CA66B),
         )
 
-        else -> listOf(
-            Color(0xFFDFFAE4),
-            Color(0xFF36D167),
-            Color(0xFF1E5A31),
-            Color(0xFF2C7D45),
+        easterEggType == EasterEggType.MI_FANS -> customStatusCardPalette(
+            container = Color(0xFFFFF2E0),
+            icon = Color(0xFFFF6900),
+            title = Color(0xFFB34700),
+            summary = Color(0xFF8C6239),
+        )
+
+        useMonetColors -> rememberStatusCardPalette(
+            accent = MiuixTheme.colorScheme.primary,
+            containerStrength = 0.22f,
+        )
+
+        else -> customStatusCardPalette(
+            container = Color(0xFFDFFAE4),
+            icon = Color(0xFF36D167),
+            title = Color(0xFF1E5A31),
+            summary = Color(0xFF2C7D45),
         )
     }
 
@@ -567,7 +629,7 @@ private fun WorkingStatusCard(
         modifier = Modifier
             .fillMaxWidth()
             .height(190.dp),
-        colors = CardDefaults.defaultColors(color = cardColor),
+        colors = CardDefaults.defaultColors(color = palette.container),
         insideMargin = PaddingValues(14.dp),
         pressFeedbackType = PressFeedbackType.Tilt,
         showIndication = false,
@@ -579,7 +641,7 @@ private fun WorkingStatusCard(
             Icon(
                 imageVector = statusIcon,
                 contentDescription = null,
-                tint = iconColor,
+                tint = palette.icon,
                 modifier = Modifier
                     .size(198.dp)
                     .align(Alignment.BottomEnd)
@@ -590,7 +652,7 @@ private fun WorkingStatusCard(
                     text = statusTitle,
                     fontSize = 21.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = titleColor,
+                    color = palette.title,
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
@@ -599,7 +661,7 @@ private fun WorkingStatusCard(
                         statusVersion
                     ),
                     style = MiuixTheme.textStyles.body2,
-                    color = summaryColor,
+                    color = palette.summary,
                 )
             }
         }
@@ -617,18 +679,25 @@ private fun EasterEggType.toTitleRes(): Int {
 }
 
 @Composable
-private fun RootWarningCard() {
-    val darkMode = MiuixTheme.colorScheme.background.luminance() < 0.5f
-    val cardColor = if (darkMode) Color(0xFF4E2528) else Color(0xFFFDE9E9)
-    val iconColor = if (darkMode) Color(0xFFFF8A80) else Color(0xFFD94B4B)
-    val titleColor = if (darkMode) Color(0xFFFFD2CC) else Color(0xFF8C1F1F)
-    val summaryColor = if (darkMode) Color(0xFFFFB4AB) else Color(0xFFA63737)
+private fun RootWarningCard(useMonetColors: Boolean) {
+    val palette = if (useMonetColors) rememberStatusCardPalette(
+        accent = MiuixTheme.colorScheme.error,
+        containerStrength = 0.2f,
+        iconStrength = 0.82f,
+        titleStrength = 0.42f,
+        summaryStrength = 0.26f,
+    ) else customStatusCardPalette(
+        container = Color(0xFFFDE9E9),
+        icon = Color(0xFFD94B4B),
+        title = Color(0xFF8C1F1F),
+        summary = Color(0xFFA63737),
+    )
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .height(108.dp),
-        colors = CardDefaults.defaultColors(color = cardColor),
+        colors = CardDefaults.defaultColors(color = palette.container),
         insideMargin = PaddingValues(14.dp),
         pressFeedbackType = PressFeedbackType.Tilt,
         showIndication = false
@@ -637,7 +706,7 @@ private fun RootWarningCard() {
             Icon(
                 imageVector = Icons.Outlined.DoNotDisturb,
                 contentDescription = null,
-                tint = iconColor,
+                tint = palette.icon,
                 modifier = Modifier
                     .size(108.dp)
                     .align(Alignment.BottomEnd)
@@ -649,13 +718,13 @@ private fun RootWarningCard() {
                     text = androidx.compose.ui.res.stringResource(R.string.home_root_warning_title),
                     fontSize = 18.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = titleColor,
+                    color = palette.title,
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = androidx.compose.ui.res.stringResource(R.string.home_root_warning_desc),
                     style = MiuixTheme.textStyles.body2,
-                    color = summaryColor,
+                    color = palette.summary,
                 )
             }
         }
@@ -663,16 +732,27 @@ private fun RootWarningCard() {
 }
 
 @Composable
-private fun UpdateWarningCard(currentHash: String, latestHash: String) {
+private fun UpdateWarningCard(currentHash: String, latestHash: String, useMonetColors: Boolean) {
     val context = LocalContext.current
-    val cardColor = Color(0xFFFFF3CD)
-    val iconColor = Color(0xFFE0A100)
+    val colorScheme = MiuixTheme.colorScheme
+    val palette = if (useMonetColors) rememberStatusCardPalette(
+        accent = lerp(colorScheme.primary, colorScheme.secondary, 0.35f),
+        containerStrength = 0.2f,
+        iconStrength = 0.8f,
+        titleStrength = 0.4f,
+        summaryStrength = 0.24f,
+    ) else customStatusCardPalette(
+        container = Color(0xFFFFF3CD),
+        icon = Color(0xFFE0A100),
+        title = Color(0xFF7A5A00),
+        summary = Color(0xFF8A6B00),
+    )
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .height(108.dp),
-        colors = CardDefaults.defaultColors(color = cardColor),
+        colors = CardDefaults.defaultColors(color = palette.container),
         insideMargin = PaddingValues(14.dp),
         onClick = {
             context.startActivity(
@@ -689,7 +769,7 @@ private fun UpdateWarningCard(currentHash: String, latestHash: String) {
             Icon(
                 imageVector = Icons.Outlined.Sync,
                 contentDescription = null,
-                tint = iconColor,
+                tint = palette.icon,
                 modifier = Modifier
                     .size(108.dp)
                     .align(Alignment.BottomEnd)
@@ -701,7 +781,7 @@ private fun UpdateWarningCard(currentHash: String, latestHash: String) {
                     text = androidx.compose.ui.res.stringResource(R.string.home_update_warning_title),
                     fontSize = 18.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF7A5A00),
+                    color = palette.title,
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
@@ -711,7 +791,7 @@ private fun UpdateWarningCard(currentHash: String, latestHash: String) {
                         latestHash,
                     ),
                     style = MiuixTheme.textStyles.body2,
-                    color = Color(0xFF8A6B00),
+                    color = palette.summary,
                 )
             }
         }
@@ -736,9 +816,11 @@ private fun ModuleInfoCard(
                 easterEggType == EasterEggType.APRIL_FOOLS -> androidx.compose.ui.res.stringResource(
                     R.string.home_easter_egg_april_fools_activated
                 )
+
                 easterEggType == EasterEggType.EASTER -> androidx.compose.ui.res.stringResource(
                     R.string.home_easter_egg_easter_activated
                 )
+
                 easterEggType == EasterEggType.MI_FANS -> androidx.compose.ui.res.stringResource(
                     R.string.home_easter_egg_mifans_activated
                 )
