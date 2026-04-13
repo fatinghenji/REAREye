@@ -8,6 +8,7 @@ import com.google.gson.JsonParseException
 import com.google.gson.JsonSerializationContext
 import com.google.gson.JsonSerializer
 import com.google.gson.annotations.JsonAdapter
+import com.google.gson.annotations.SerializedName
 import java.lang.reflect.Type
 import java.time.Instant
 import java.time.LocalDate
@@ -21,7 +22,9 @@ private val dateFormatter: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
 const val REAR_WIDGET_CARD_ONE_CONFIG_JSON_KEY = "__reareye_card_one_config_json__"
 
 data class RearWidgetLocalizedConfig(
+    @SerializedName("displayTitle")
     val displayTitle: String? = null,
+    @SerializedName("contentDescription")
     val contentDescription: String? = null,
 )
 
@@ -34,261 +37,433 @@ sealed interface RearWidgetCardTemplateField {
 }
 
 data class RearWidgetTextField(
+    @SerializedName("name")
     override val name: String,
+    @SerializedName("displayTitle")
     override val displayTitle: String?,
+    @SerializedName("localizedTitles")
     override val localizedTitles: Map<String, String>,
+    @SerializedName("group")
     override val group: Int,
+    @SerializedName("valueList")
     val valueList: List<String>,
+    @SerializedName("editable")
     val editable: Boolean,
+    @SerializedName("minLength")
     val minLength: Int,
+    @SerializedName("maxLength")
     val maxLength: Int,
+    @SerializedName("hint")
     val hint: String,
+    @SerializedName("localizedHints")
     val localizedHints: Map<String, String>,
 ) : RearWidgetCardTemplateField {
+    @SerializedName("tagName")
     override val tagName: String = "Text"
 }
 
 data class RearWidgetColorField(
+    @SerializedName("name")
     override val name: String,
+    @SerializedName("displayTitle")
     override val displayTitle: String?,
+    @SerializedName("localizedTitles")
     override val localizedTitles: Map<String, String>,
+    @SerializedName("group")
     override val group: Int,
+    @SerializedName("values")
     val values: List<String>,
 ) : RearWidgetCardTemplateField {
+    @SerializedName("tagName")
     override val tagName: String = "Color"
 }
 
 data class RearWidgetColorGroupItem(
+    @SerializedName("name")
     val name: String,
+    @SerializedName("values")
     val values: List<String>,
 )
 
 data class RearWidgetColorGroupField(
+    @SerializedName("name")
     override val name: String,
+    @SerializedName("displayTitle")
     override val displayTitle: String?,
+    @SerializedName("localizedTitles")
     override val localizedTitles: Map<String, String>,
+    @SerializedName("group")
     override val group: Int,
+    @SerializedName("uiType")
     val uiType: Int,
+    @SerializedName("items")
     val items: List<RearWidgetColorGroupItem>,
 ) : RearWidgetCardTemplateField {
+    @SerializedName("tagName")
     override val tagName: String = "ColorGroup"
 }
 
 data class RearWidgetRangeField(
+    @SerializedName("tagName")
     override val tagName: String,
+    @SerializedName("name")
     override val name: String,
+    @SerializedName("displayTitle")
     override val displayTitle: String?,
+    @SerializedName("localizedTitles")
     override val localizedTitles: Map<String, String>,
+    @SerializedName("group")
     override val group: Int,
+    @SerializedName("defaultValue")
     val defaultValue: Int,
+    @SerializedName("from")
     val from: Int,
+    @SerializedName("to")
     val to: Int,
+    @SerializedName("uiType")
     val uiType: Int = 0,
 ) : RearWidgetCardTemplateField
 
 data class RearWidgetImageOption(
+    @SerializedName("label")
     val label: String?,
+    @SerializedName("value")
     val value: String,
 )
 
 data class RearWidgetImageSelectField(
+    @SerializedName("name")
     override val name: String,
+    @SerializedName("displayTitle")
     override val displayTitle: String?,
+    @SerializedName("localizedTitles")
     override val localizedTitles: Map<String, String>,
+    @SerializedName("group")
     override val group: Int,
+    @SerializedName("values")
     val values: List<RearWidgetImageOption>,
+    @SerializedName("width")
     val width: Int,
+    @SerializedName("height")
     val height: Int,
+    @SerializedName("uiType")
     val uiType: Int,
 ) : RearWidgetCardTemplateField {
+    @SerializedName("tagName")
     override val tagName: String = "ImageSelect"
 }
 
 data class RearWidgetImagePickField(
+    @SerializedName("name")
     override val name: String,
+    @SerializedName("displayTitle")
     override val displayTitle: String?,
+    @SerializedName("localizedTitles")
     override val localizedTitles: Map<String, String>,
+    @SerializedName("group")
     override val group: Int,
+    @SerializedName("options")
     val options: List<RearWidgetImageOption>,
 ) : RearWidgetCardTemplateField {
+    @SerializedName("tagName")
     override val tagName: String = "ImagePick"
 }
 
 data class RearWidgetMultiImageOption(
+    @SerializedName("label")
     val label: String,
+    @SerializedName("value")
     val value: String,
+    @SerializedName("valueDark")
     val valueDark: String?,
+    @SerializedName("contentDescription")
     val contentDescription: String?,
+    @SerializedName("localizedConfigs")
     val localizedConfigs: Map<String, RearWidgetLocalizedConfig>,
 )
 
 data class RearWidgetMultiImageSelectField(
+    @SerializedName("name")
     override val name: String,
+    @SerializedName("displayTitle")
     override val displayTitle: String?,
+    @SerializedName("localizedTitles")
     override val localizedTitles: Map<String, String>,
+    @SerializedName("group")
     override val group: Int,
+    @SerializedName("single")
     val single: Boolean,
+    @SerializedName("width")
     val width: Int,
+    @SerializedName("height")
     val height: Int,
+    @SerializedName("uiType")
     val uiType: Int,
+    @SerializedName("shapeType")
     val shapeType: Int,
+    @SerializedName("defaultSelection")
     val defaultSelection: List<Double>,
+    @SerializedName("items")
     val items: List<RearWidgetMultiImageOption>,
 ) : RearWidgetCardTemplateField {
+    @SerializedName("tagName")
     override val tagName: String = "MultiImageSelect"
 }
 
 data class RearWidgetDropDownOption(
+    @SerializedName("label")
     val label: String,
+    @SerializedName("value")
     val value: String,
+    @SerializedName("valueDark")
     val valueDark: String?,
+    @SerializedName("contentDescription")
     val contentDescription: String?,
+    @SerializedName("localizedConfigs")
     val localizedConfigs: Map<String, RearWidgetLocalizedConfig>,
 )
 
 data class RearWidgetDropDownField(
+    @SerializedName("name")
     override val name: String,
+    @SerializedName("displayTitle")
     override val displayTitle: String?,
+    @SerializedName("localizedTitles")
     override val localizedTitles: Map<String, String>,
+    @SerializedName("group")
     override val group: Int,
+    @SerializedName("uiType")
     val uiType: Int,
+    @SerializedName("defaultIndex")
     val defaultIndex: Int,
+    @SerializedName("items")
     val items: List<RearWidgetDropDownOption>,
 ) : RearWidgetCardTemplateField {
+    @SerializedName("tagName")
     override val tagName: String = "DropDown"
 }
 
 data class RearWidgetIntentExtra(
+    @SerializedName("name")
     val name: String,
+    @SerializedName("type")
     val type: String,
+    @SerializedName("value")
     val value: String,
 )
 
 data class RearWidgetIntentField(
+    @SerializedName("name")
     override val name: String,
+    @SerializedName("displayTitle")
     override val displayTitle: String?,
+    @SerializedName("localizedTitles")
     override val localizedTitles: Map<String, String>,
+    @SerializedName("group")
     override val group: Int,
+    @SerializedName("action")
     val action: String?,
+    @SerializedName("packageName")
     val packageName: String?,
+    @SerializedName("className")
     val className: String?,
+    @SerializedName("uri")
     val uri: String?,
+    @SerializedName("flags")
     val flags: Int,
+    @SerializedName("uiType")
     val uiType: Int,
+    @SerializedName("returnValue")
     val returnValue: List<String>,
+    @SerializedName("valueType")
     val valueType: List<String>,
+    @SerializedName("defaultValue")
     val defaultValue: List<String>,
+    @SerializedName("extras")
     val extras: List<RearWidgetIntentExtra>,
 ) : RearWidgetCardTemplateField {
+    @SerializedName("tagName")
     override val tagName: String = "Intent"
 }
 
 data class RearWidgetDateField(
+    @SerializedName("name")
     override val name: String,
+    @SerializedName("displayTitle")
     override val displayTitle: String?,
+    @SerializedName("localizedTitles")
     override val localizedTitles: Map<String, String>,
+    @SerializedName("group")
     override val group: Int,
+    @SerializedName("defaultDate")
     val defaultDate: Long,
+    @SerializedName("repeatName")
     val repeatName: String,
+    @SerializedName("repeatValue")
     val repeatValue: Int,
 ) : RearWidgetCardTemplateField {
+    @SerializedName("tagName")
     override val tagName: String = "SetDate"
 }
 
 data class RearWidgetOnOffField(
+    @SerializedName("name")
     override val name: String,
+    @SerializedName("displayTitle")
     override val displayTitle: String?,
+    @SerializedName("localizedTitles")
     override val localizedTitles: Map<String, String>,
+    @SerializedName("group")
     override val group: Int,
+    @SerializedName("defaultOn")
     val defaultOn: Boolean,
 ) : RearWidgetCardTemplateField {
+    @SerializedName("tagName")
     override val tagName: String = "OnOff"
 }
 
 data class RearWidgetCustomColorField(
+    @SerializedName("name")
     override val name: String,
+    @SerializedName("displayTitle")
     override val displayTitle: String?,
+    @SerializedName("localizedTitles")
     override val localizedTitles: Map<String, String>,
+    @SerializedName("group")
     override val group: Int,
+    @SerializedName("values")
     val values: List<String>,
+    @SerializedName("defaultValue")
     val defaultValue: String,
+    @SerializedName("index")
     val index: Int,
 ) : RearWidgetCardTemplateField {
+    @SerializedName("tagName")
     override val tagName: String = "CustomColor"
 }
 
 data class RearWidgetBackgroundModeField(
+    @SerializedName("tagName")
     override val tagName: String,
+    @SerializedName("name")
     override val name: String,
+    @SerializedName("displayTitle")
     override val displayTitle: String?,
+    @SerializedName("localizedTitles")
     override val localizedTitles: Map<String, String>,
+    @SerializedName("group")
     override val group: Int,
+    @SerializedName("value")
     val value: Int,
+    @SerializedName("uriName")
     val uriName: String,
+    @SerializedName("uri")
     val uri: String,
+    @SerializedName("videoName")
     val videoName: String,
+    @SerializedName("videoUri")
     val videoUri: String,
+    @SerializedName("foregroundName")
     val foregroundName: String,
+    @SerializedName("foregroundUri")
     val foregroundUri: String,
+    @SerializedName("resType")
     val resType: Int,
 ) : RearWidgetCardTemplateField
 
 data class RearWidgetMultiModeImageListItem(
+    @SerializedName("value")
     val value: Int,
+    @SerializedName("uri")
     val uri: String,
+    @SerializedName("videoUri")
     val videoUri: String,
+    @SerializedName("foregroundUri")
     val foregroundUri: String,
+    @SerializedName("resType")
     val resType: Int,
 )
 
 data class RearWidgetMultiModeImageListField(
+    @SerializedName("name")
     override val name: String,
+    @SerializedName("displayTitle")
     override val displayTitle: String?,
+    @SerializedName("localizedTitles")
     override val localizedTitles: Map<String, String>,
+    @SerializedName("group")
     override val group: Int,
+    @SerializedName("size")
     val size: Int,
+    @SerializedName("items")
     val items: List<RearWidgetMultiModeImageListItem>,
 ) : RearWidgetCardTemplateField {
+    @SerializedName("tagName")
     override val tagName: String = "MultiModeImageList"
 }
 
 data class RearWidgetAnimationField(
+    @SerializedName("name")
     override val name: String,
+    @SerializedName("displayTitle")
     override val displayTitle: String? = null,
+    @SerializedName("localizedTitles")
     override val localizedTitles: Map<String, String> = emptyMap(),
+    @SerializedName("group")
     override val group: Int = 0,
+    @SerializedName("x")
     val x: Double,
+    @SerializedName("y")
     val y: Double,
+    @SerializedName("scaleX")
     val scaleX: Double,
+    @SerializedName("scaleY")
     val scaleY: Double,
+    @SerializedName("rotation")
     val rotation: Double,
+    @SerializedName("displayScale")
     val displayScale: Double,
 ) : RearWidgetCardTemplateField {
+    @SerializedName("tagName")
     override val tagName: String = "AnimatVar"
 }
 
 data class RearWidgetStringVarField(
+    @SerializedName("name")
     override val name: String,
+    @SerializedName("displayTitle")
     override val displayTitle: String? = null,
+    @SerializedName("localizedTitles")
     override val localizedTitles: Map<String, String> = emptyMap(),
+    @SerializedName("group")
     override val group: Int = 0,
+    @SerializedName("value")
     val value: String,
 ) : RearWidgetCardTemplateField {
+    @SerializedName("tagName")
     override val tagName: String = "StringVar"
 }
 
 data class RearWidgetCustomEditLinkField(
+    @SerializedName("name")
     override val name: String = "customEditLocalId",
+    @SerializedName("displayTitle")
     override val displayTitle: String? = null,
+    @SerializedName("localizedTitles")
     override val localizedTitles: Map<String, String> = emptyMap(),
+    @SerializedName("group")
     override val group: Int = 0,
+    @SerializedName("deeplink")
     val deeplink: String,
 ) : RearWidgetCardTemplateField {
+    @SerializedName("tagName")
     override val tagName: String = "CustomEditLink"
 }
 
 data class RearWidgetCardTemplateSchema(
+    @SerializedName("sourcePath")
     val sourcePath: String,
+    @SerializedName("items")
     val items: List<RearWidgetCardTemplateField>,
 ) {
     val editableItemCount: Int
@@ -348,82 +523,134 @@ class RearWidgetCardTemplateFieldJsonAdapter :
 }
 
 data class RearWidgetColorGroupSaveConfig(
+    @SerializedName("name")
     val name: String,
+    @SerializedName("selectColors")
     val selectColors: Map<String, String>,
+    @SerializedName("index")
     val index: Int,
 )
 
 data class RearWidgetIntentSaveConfig(
+    @SerializedName("name")
     val name: String,
+    @SerializedName("returnValueString")
     val returnValueString: Map<String, String> = emptyMap(),
+    @SerializedName("returnValueNumber")
     val returnValueNumber: Map<String, Double> = emptyMap(),
 )
 
 data class RearWidgetMultiImageConfig(
+    @SerializedName("name")
     val name: String,
+    @SerializedName("selectImages")
     val selectImages: List<Double>,
 )
 
 data class RearWidgetDateSetSaveConfig(
+    @SerializedName("name")
     val name: String,
+    @SerializedName("date")
     val date: Long,
+    @SerializedName("repeatName")
     val repeatName: String?,
+    @SerializedName("repeatValue")
     val repeatValue: Int,
 )
 
 data class RearWidgetCustomColorSaveConfig(
+    @SerializedName("name")
     val name: String,
+    @SerializedName("value")
     val value: String,
+    @SerializedName("index")
     val index: Int,
 )
 
 data class RearWidgetBackgroundModeSaveConfig(
+    @SerializedName("name")
     val name: String,
+    @SerializedName("value")
     val value: Int,
+    @SerializedName("uriName")
     val uriName: String,
+    @SerializedName("uri")
     val uri: String,
+    @SerializedName("videoName")
     val videoName: String,
+    @SerializedName("videoUri")
     val videoUri: String,
+    @SerializedName("foregroundName")
     val foregroundName: String,
+    @SerializedName("foregroundUri")
     val foregroundUri: String,
+    @SerializedName("resType")
     val resType: Int,
 )
 
 data class RearWidgetMultiModeImageListSaveConfig(
+    @SerializedName("name")
     val name: String,
+    @SerializedName("size")
     val size: Int,
+    @SerializedName("itemList")
     val itemList: List<RearWidgetBackgroundModeSaveConfig>?,
 )
 
 data class RearWidgetAnimationSaveConfig(
+    @SerializedName("name")
     val name: String,
+    @SerializedName("x")
     val x: Double,
+    @SerializedName("y")
     val y: Double,
+    @SerializedName("scaleX")
     val scaleX: Double,
+    @SerializedName("scaleY")
     val scaleY: Double,
+    @SerializedName("rotation")
     val rotation: Double,
+    @SerializedName("displayScale")
     val displayScale: Double,
 )
 
 data class RearWidgetOneConfig(
+    @SerializedName("textConfig")
     val textConfig: Map<String, String>? = null,
+    @SerializedName("colorConfig")
     val colorConfig: Map<String, String>? = null,
+    @SerializedName("colorGroupConfig")
     val colorGroupConfig: RearWidgetColorGroupSaveConfig? = null,
+    @SerializedName("textSizeConfig")
     val textSizeConfig: Map<String, Int>? = null,
+    @SerializedName("alignStyleConfig")
     val alignStyleConfig: Map<String, Int>? = null,
+    @SerializedName("textFontConfig")
     val textFontConfig: Map<String, String>? = null,
+    @SerializedName("imageConfig")
     val imageConfig: Map<String, String>? = null,
+    @SerializedName("multiImageConfig")
     val multiImageConfig: RearWidgetMultiImageConfig? = null,
+    @SerializedName("intentSaveConfig")
     @field:JsonAdapter(RearWidgetIntentSaveConfigMapAdapter::class)
     val intentSaveConfig: Map<String, RearWidgetIntentSaveConfig>? = null,
+    @SerializedName("dateSetConfig")
     val dateSetConfig: RearWidgetDateSetSaveConfig? = null,
+    @SerializedName("onOffConfig")
     val onOffConfig: Map<String, Boolean>? = null,
+    @SerializedName("customColorSaveConfig")
     val customColorSaveConfig: RearWidgetCustomColorSaveConfig? = null,
+    @SerializedName("backgroundModeSaveConfig")
     val backgroundModeSaveConfig: RearWidgetBackgroundModeSaveConfig? = null,
+    @SerializedName("multiModeImageListSaveConfig")
     val multiModeImageListSaveConfig: RearWidgetMultiModeImageListSaveConfig? = null,
+    @SerializedName("seekBarSaveConfig")
     val seekBarSaveConfig: Map<String, Int>? = null,
+    @SerializedName("animationSaveConfig")
     val animationSaveConfig: RearWidgetAnimationSaveConfig? = null,
+    @SerializedName("stringVarSaveConfig")
     val stringVarSaveConfig: Map<String, String>? = null,
+    @SerializedName("dropDownSaveConfig")
     val dropDownSaveConfig: Map<String, String>? = null,
 )
 

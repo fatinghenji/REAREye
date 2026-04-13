@@ -12,6 +12,7 @@ object ConfigKeys {
     const val MODULE_HIDE_LAUNCHER_ENTRY = "module_hide_launcher_entry"
     const val MODULE_THEME_MODE = "module_theme_mode"
     const val MODULE_NAVIGATION_BAR_MODE = "module_navigation_bar_mode"
+    const val MODULE_SEARCH_BAR_STYLE = "module_search_bar_style"
     const val MODULE_STORE_API_PROVIDER = "module_store_api_provider"
     const val MODULE_STORE_API_CUSTOM_DOMAIN = "module_store_api_custom_domain"
     const val MODULE_STORE_WEBVIEW_HARDWARE_ACCELERATION =
@@ -64,6 +65,7 @@ object ConfigKeys {
     const val SUPER_LYRIC_DISPLAY_MODE = "super_lyric_display_mode"
     val SUPER_LYRIC_DISPLAY_MODE_DEFAULT = LyricParser.DisplayMode.ORIGINAL.mask
     const val HOOK_REMOVE_NATIVE_LYRIC_SUPPORT = "enable_remove_native_lyric_support"
+    const val HOOK_SKIP_UNCHANGED_MEDIA_TITLE_UPDATE = "enable_skip_unchanged_media_title_update"
 
     const val HOOK_DISABLE_REAR_SCREEN_COVER = "enable_hook_rear_screen_cover"
 
@@ -96,6 +98,32 @@ enum class ModuleNavigationBarMode(
         )
 
         fun fromValue(value: Int): ModuleNavigationBarMode {
+            return entries.firstOrNull { it.value == value } ?: default
+        }
+    }
+}
+
+enum class ModuleSearchBarStyle(
+    val value: Int,
+    @param:StringRes val titleRes: Int,
+) {
+    DEFAULT(
+        value = 0,
+        titleRes = R.string.module_search_bar_style_default,
+    ),
+    MIUIX(
+        value = 1,
+        titleRes = R.string.module_search_bar_style_miuix,
+    );
+
+    companion object {
+        val default = DEFAULT
+        val selectableEntries = listOf(
+            DEFAULT,
+            MIUIX,
+        )
+
+        fun fromValue(value: Int): ModuleSearchBarStyle {
             return entries.firstOrNull { it.value == value } ?: default
         }
     }
@@ -147,6 +175,20 @@ val REAREyeConfig = listOf(
                 type = ConfigType.EnumSingleSelect(
                     defaultValue = ModuleNavigationBarMode.default.value,
                     options = ModuleNavigationBarMode.selectableEntries.map {
+                        ConfigType.EnumOption(
+                            titleRes = it.titleRes,
+                            value = it.value,
+                        )
+                    },
+                ),
+            ),
+            ConfigItem(
+                key = ConfigKeys.MODULE_SEARCH_BAR_STYLE,
+                titleRes = R.string.module_search_bar_style,
+                descriptionRes = R.string.module_search_bar_style_desc,
+                type = ConfigType.EnumSingleSelect(
+                    defaultValue = ModuleSearchBarStyle.default.value,
+                    options = ModuleSearchBarStyle.selectableEntries.map {
                         ConfigType.EnumOption(
                             titleRes = it.titleRes,
                             value = it.value,
@@ -375,6 +417,12 @@ val REAREyeConfig = listOf(
                         key = ConfigKeys.HOOK_REMOVE_NATIVE_LYRIC_SUPPORT,
                         titleRes = R.string.lyric_remove_native_lyrics,
                         descriptionRes = R.string.lyric_remove_native_lyrics_desc,
+                        type = ConfigType.BooleanVal(defaultValue = false)
+                    ),
+                    ConfigItem(
+                        key = ConfigKeys.HOOK_SKIP_UNCHANGED_MEDIA_TITLE_UPDATE,
+                        titleRes = R.string.lyric_skip_unchanged_title_update,
+                        descriptionRes = R.string.lyric_skip_unchanged_title_update_desc,
                         type = ConfigType.BooleanVal(defaultValue = false)
                     )
                 )

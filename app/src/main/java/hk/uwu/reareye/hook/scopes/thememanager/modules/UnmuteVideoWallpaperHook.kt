@@ -6,6 +6,7 @@ import androidx.annotation.RequiresApi
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.hook.utils.resolveDexKitInjectionPoint
 import org.luckypray.dexkit.DexKitBridge
 import java.io.File
 import java.lang.reflect.Modifier
@@ -23,46 +24,41 @@ class UnmuteVideoWallpaperHook : YukiBaseHooker() {
                     val pm = systemContext.packageManager
                     val info = pm.getPackageInfo(appInfo.packageName, 0)
 
-                    val dCropCache = prefs.native().getString(demuxerCacheKey).let {
-                        if (it.isEmpty()) {
-                            null
-                        } else {
-                            val spilt = it.split(";;")
-                            val versionCode = spilt[0].toLong()
-                            if (versionCode != info.longVersionCode) {
-                                null
-                            } else {
-                                spilt[1]
-                            }
-                        }
-                    }
-                    val durationCropMatchResult = dCropCache ?: bridge.findClass {
-                        searchPackages("com.android.thememanager.util")
-                        matcher {
-                            modifiers = Modifier.PUBLIC
-                            fields {
-                                addForType(String::class.java)
-                                addForType(Int::class.java)
-                                count = 4
-                            }
-                            methods {
-                                add {
-                                    paramTypes(File::class.java, File::class.java, File::class.java)
-                                    paramCount(3)
+                    val nativePrefs = prefs.native()
+                    val durationCropMatchResult = resolveDexKitInjectionPoint(
+                        bridge = bridge,
+                        cacheKey = demuxerCacheKey,
+                        packageVersionCode = info.longVersionCode,
+                        readCache = nativePrefs::getString,
+                        writeCache = { key, value ->
+                            nativePrefs.edit().putString(key, value).apply()
+                        },
+                    ) {
+                        findClass {
+                            searchPackages("com.android.thememanager.util")
+                            matcher {
+                                modifiers = Modifier.PUBLIC
+                                fields {
+                                    addForType(String::class.java)
+                                    addForType(Int::class.java)
+                                    count = 4
+                                }
+                                methods {
+                                    add {
+                                        paramTypes(
+                                            File::class.java,
+                                            File::class.java,
+                                            File::class.java
+                                        )
+                                        paramCount(3)
+                                    }
                                 }
                             }
-                        }
-                    }.singleOrNull()?.name
+                        }.singleOrNull()?.name
+                    }
                     val ref =
                         (durationCropMatchResult ?: "com.android.thememanager.util.wx16").toClass()
                             .resolve()
-                    if (dCropCache == null && durationCropMatchResult != null) {
-                        prefs.native().edit().putString(
-                            demuxerCacheKey,
-                            "${info.longVersionCode};;$durationCropMatchResult"
-                        ).apply()
-                        YLog.debug("Save $demuxerCacheKey hook point $durationCropMatchResult")
-                    }
 
                     ref.firstMethod {
                         parameters(File::class.java, File::class.java, File::class.java)

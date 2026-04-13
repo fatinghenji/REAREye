@@ -25,6 +25,7 @@ import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -56,7 +57,6 @@ import hk.uwu.reareye.ui.components.card.ModuleStyleManagerCard
 import hk.uwu.reareye.ui.components.card.SuperCard
 import hk.uwu.reareye.ui.components.config.template.WidgetTemplateConfigScreen
 import hk.uwu.reareye.ui.components.motion.ArtRevealItem
-import hk.uwu.reareye.ui.components.motion.ArtStaggeredReveal
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.PrefsManager
 import hk.uwu.reareye.ui.theme.rearAcrylicEffect
@@ -115,7 +115,7 @@ fun CardManagerScreen(
     val templateAvailability = remember { mutableStateMapOf<String, Boolean>() }
     var cardsLoaded by remember { mutableStateOf(false) }
     var dataCardsVisible by remember { mutableStateOf(false) }
-    var runtimeRefreshTick by remember { mutableStateOf(0) }
+    var runtimeRefreshTick by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
         delay(220)
@@ -140,7 +140,7 @@ fun CardManagerScreen(
     val showDialog = remember { mutableStateOf(false) }
     var editingCardId by remember { mutableStateOf<String?>(null) }
     var draftCardId by remember { mutableStateOf(RearWidgetConfigCodec.newCardId()) }
-    var activeTemplateCardId by remember { mutableStateOf<String?>(null) }
+    val activeTemplateCardId = remember { mutableStateOf<String?>(null) }
     var draftTitle by remember { mutableStateOf("") }
     var draftPackageName by remember { mutableStateOf("hk.uwu.reareye") }
     var draftBusiness by remember { mutableStateOf("") }
@@ -188,10 +188,11 @@ fun CardManagerScreen(
     }
 
     fun openTemplateConfig(item: RearCardConfig) {
-        activeTemplateCardId = item.id
+        activeTemplateCardId.value = item.id
     }
 
-    val activeTemplateCard = activeTemplateCardId?.let { id -> cards.firstOrNull { it.id == id } }
+    val activeTemplateCard =
+        activeTemplateCardId.value?.let { id -> cards.firstOrNull { it.id == id } }
     if (activeTemplateCard != null) {
         val normalizedBusiness = normalizeTemplateBusinessName(activeTemplateCard.business)
         val sourceFilePath = businesses.firstOrNull {
@@ -202,16 +203,16 @@ fun CardManagerScreen(
             sourceFilePath = sourceFilePath,
             cardStorageKey = activeTemplateCard.id,
             currentConfigJson = activeTemplateCard.oneConfigJson,
-            onBack = { activeTemplateCardId = null },
+            onBack = { activeTemplateCardId.value = null },
             onSave = { normalizedJson ->
                 val index = cards.indexOfFirst { it.id == activeTemplateCard.id }
                 if (index >= 0) {
                     cards[index] =
                         cards[index].copy(oneConfigJson = normalizedJson?.takeIf { it.isNotBlank() })
                     persist()
-                    activeTemplateCardId = null
+                    activeTemplateCardId.value = null
                 } else {
-                    activeTemplateCardId = null
+                    activeTemplateCardId.value = null
                 }
             },
         )
@@ -429,138 +430,136 @@ fun CardManagerScreen(
             }
 
             if (dataCardsVisible) {
-                itemsIndexed(cards, key = { _, item -> item.id }) { index, item ->
-                    ArtStaggeredReveal(
-                        visible = true,
-                        revealKey = item.id,
-                        delayMillis = (36 + index * 18).coerceAtMost(150),
-                    ) {
-                        val normalizedBusiness = normalizeTemplateBusinessName(item.business)
-                        val hasTemplateConfig =
-                            templateAvailability[item.business] == true ||
-                                    templateAvailability[normalizedBusiness] == true ||
-                                    item.oneConfigJson.isNullOrBlank().not()
-                        if (prefsManager.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
-                            debugLog(
-                                "card template action id=${item.id} business=${item.business} normalized=$normalizedBusiness available=$hasTemplateConfig rawAvailable=${templateAvailability[item.business]} normalizedAvailable=${templateAvailability[normalizedBusiness]} hasConfig=${
-                                    item.oneConfigJson.isNullOrBlank().not()
-                                }"
-                            )
-                        }
-                        ModuleStyleManagerCard(
-                            title = item.title,
-                            summaryLines = buildList {
-                                add(
-                                    stringResource(
-                                        R.string.rear_widget_card_summary,
-                                        item.packageName,
-                                        item.business,
-                                        item.priority,
-                                    )
-                                )
-                                add(
-                                    stringResource(
-                                        R.string.rear_widget_card_sticky_summary,
-                                        stringResource(
-                                            if (item.sticky) {
-                                                R.string.rear_wallpaper_schedule_on
-                                            } else {
-                                                R.string.rear_wallpaper_schedule_off
-                                            }
-                                        ),
-                                    )
-                                )
-                                item.storeWidgetId?.takeIf { it.isNotBlank() }?.let {
-                                    add(
-                                        stringResource(
-                                            R.string.rear_widget_store_source_summary,
-                                            it,
-                                        )
-                                    )
-                                }
-                                if (!item.renameable) {
-                                    add(stringResource(R.string.rear_widget_card_locked_summary))
-                                }
-                                add(
-                                    stringResource(
-                                        if (item.oneConfigJson.isNullOrBlank()) {
-                                            R.string.rear_widget_card_template_status_default
-                                        } else {
-                                            R.string.rear_widget_card_template_status_custom
-                                        }
-                                    )
-                                )
-                            },
-                            trailing = {
-                                if (item.renameable) {
-                                    Switch(
-                                        checked = item.enabled,
-                                        onCheckedChange = { checked ->
-                                            val i = cards.indexOfFirst { it.id == item.id }
-                                            if (i >= 0) {
-                                                cards[i] = cards[i].copy(enabled = checked)
-                                                scope.launch(Dispatchers.IO) {
-                                                    RearWidgetManagerRepository.setCardEnabled(
-                                                        context = context,
-                                                        prefsManager = prefsManager,
-                                                        cardId = item.id,
-                                                        enabled = checked,
-                                                    )
-                                                }
-                                            }
-                                        },
-                                    )
-                                } else {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.Lock,
-                                            contentDescription = null,
-                                            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                        )
-                                        Text(
-                                            text = stringResource(R.string.rear_store_locked),
-                                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                        )
-                                    }
-                                }
-                            },
-                            onCardClick = { openEditDialog(item) },
-                            leftAction = {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    ModuleStyleIconAction(
-                                        icon = Icons.Rounded.EditNote,
-                                        onClick = { openEditDialog(item) },
-                                    )
-                                    if (hasTemplateConfig) {
-                                        ModuleStyleDeleteAction(
-                                            icon = Icons.Filled.Tune,
-                                            text = stringResource(R.string.rear_widget_action_config),
-                                            onClick = { openTemplateConfig(item) },
-                                        )
-                                    }
-                                }
-                            },
-                            rightAction = {
-                                if (item.renameable) {
-                                    ModuleStyleDeleteAction(
-                                        icon = MiuixIcons.Delete,
-                                        text = stringResource(R.string.rear_widget_action_delete),
-                                        onClick = {
-                                            if (!item.renameable) return@ModuleStyleDeleteAction
-                                            cards.remove(item)
-                                            persist()
-                                        },
-                                    )
-                                }
-                            },
+                itemsIndexed(
+                    items = cards,
+                    key = { _, item -> item.id },
+                    contentType = { _, _ -> "card_item" },
+                ) { _, item ->
+                    val normalizedBusiness = normalizeTemplateBusinessName(item.business)
+                    val hasTemplateConfig =
+                        templateAvailability[item.business] == true ||
+                                templateAvailability[normalizedBusiness] == true ||
+                                item.oneConfigJson.isNullOrBlank().not()
+                    if (prefsManager.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+                        debugLog(
+                            "card template action id=${item.id} business=${item.business} normalized=$normalizedBusiness available=$hasTemplateConfig rawAvailable=${templateAvailability[item.business]} normalizedAvailable=${templateAvailability[normalizedBusiness]} hasConfig=${
+                                item.oneConfigJson.isNullOrBlank().not()
+                            }"
                         )
                     }
+                    ModuleStyleManagerCard(
+                        title = item.title,
+                        summaryLines = buildList {
+                            add(
+                                stringResource(
+                                    R.string.rear_widget_card_summary,
+                                    item.packageName,
+                                    item.business,
+                                    item.priority,
+                                )
+                            )
+                            add(
+                                stringResource(
+                                    R.string.rear_widget_card_sticky_summary,
+                                    stringResource(
+                                        if (item.sticky) {
+                                            R.string.rear_wallpaper_schedule_on
+                                        } else {
+                                            R.string.rear_wallpaper_schedule_off
+                                        }
+                                    ),
+                                )
+                            )
+                            item.storeWidgetId?.takeIf { it.isNotBlank() }?.let {
+                                add(
+                                    stringResource(
+                                        R.string.rear_widget_store_source_summary,
+                                        it,
+                                    )
+                                )
+                            }
+                            if (!item.renameable) {
+                                add(stringResource(R.string.rear_widget_card_locked_summary))
+                            }
+                            add(
+                                stringResource(
+                                    if (item.oneConfigJson.isNullOrBlank()) {
+                                        R.string.rear_widget_card_template_status_default
+                                    } else {
+                                        R.string.rear_widget_card_template_status_custom
+                                    }
+                                )
+                            )
+                        },
+                        trailing = {
+                            if (item.renameable) {
+                                Switch(
+                                    checked = item.enabled,
+                                    onCheckedChange = { checked ->
+                                        val i = cards.indexOfFirst { it.id == item.id }
+                                        if (i >= 0) {
+                                            cards[i] = cards[i].copy(enabled = checked)
+                                            scope.launch(Dispatchers.IO) {
+                                                RearWidgetManagerRepository.setCardEnabled(
+                                                    context = context,
+                                                    prefsManager = prefsManager,
+                                                    cardId = item.id,
+                                                    enabled = checked,
+                                                )
+                                            }
+                                        }
+                                    },
+                                )
+                            } else {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Lock,
+                                        contentDescription = null,
+                                        tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.rear_store_locked),
+                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                    )
+                                }
+                            }
+                        },
+                        onCardClick = { openEditDialog(item) },
+                        leftAction = {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                ModuleStyleIconAction(
+                                    icon = Icons.Rounded.EditNote,
+                                    onClick = { openEditDialog(item) },
+                                )
+                                if (hasTemplateConfig) {
+                                    ModuleStyleDeleteAction(
+                                        icon = Icons.Filled.Tune,
+                                        text = stringResource(R.string.rear_widget_action_config),
+                                        onClick = { openTemplateConfig(item) },
+                                    )
+                                }
+                            }
+                        },
+                        rightAction = {
+                            if (item.renameable) {
+                                ModuleStyleDeleteAction(
+                                    icon = MiuixIcons.Delete,
+                                    text = stringResource(R.string.rear_widget_action_delete),
+                                    onClick = {
+                                        if (!item.renameable) return@ModuleStyleDeleteAction
+                                        cards.remove(item)
+                                        persist()
+                                    },
+                                )
+                            }
+                        },
+                    )
                 }
             }
 

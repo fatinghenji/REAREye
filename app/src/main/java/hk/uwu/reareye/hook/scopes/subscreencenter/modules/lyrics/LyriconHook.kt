@@ -288,21 +288,46 @@ class LyriconHook : YukiBaseHooker() {
                         return@replaceUnit
                     }
                     elements.addIfAbsent(i)
-                    if (prefs.getBoolean(ConfigKeys.HOOK_REMOVE_NATIVE_LYRIC_SUPPORT, false)) {
-                        val moreDebug = prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)
+                    val moreDebug = prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)
+                    val removeNativeLyric =
+                        prefs.getBoolean(ConfigKeys.HOOK_REMOVE_NATIVE_LYRIC_SUPPORT, false)
+                    val skipTitleOnlyUpdate =
+                        prefs.getBoolean(ConfigKeys.HOOK_SKIP_UNCHANGED_MEDIA_TITLE_UPDATE, false)
+                    if (!removeNativeLyric && !skipTitleOnlyUpdate) {
+                        invokeOriginal(metadata)
+                        return@replaceUnit
+                    }
+                    val metadataForUpdate = if (
+                        removeNativeLyric && metadata != null
+                    ) {
                         val builder = MediaMetadata.Builder(metadata)
                         if (moreDebug) {
-                            YLog.debug("Native lyric: ${metadata?.getString(XIAOMI_LYRIC_METADATA)}")
+                            YLog.debug("Native lyric: ${metadata.getString(XIAOMI_LYRIC_METADATA)}")
                         }
                         builder.putString(XIAOMI_LYRIC_METADATA, null)
-                        val newMeta = builder.build()
                         if (moreDebug) {
                             YLog.debug("Force removed native lyric data")
                         }
-                        invokeOriginal(newMeta)
+                        builder.build()
                     } else {
-                        invokeOriginal(metadata)
+                        metadata
                     }
+                    if (skipTitleOnlyUpdate) {
+                        val previousMetadata = i.asResolver().firstField {
+                            name = "mMetadata"
+                        }.get<MediaMetadata>()
+                        if (shouldSkipTitleOnlyMetadataUpdate(
+                                previousMetadata,
+                                metadataForUpdate
+                            )
+                        ) {
+                            if (moreDebug) {
+                                YLog.debug("Skip metadata update: mediaId unchanged and only title changed")
+                            }
+                            return@replaceUnit
+                        }
+                    }
+                    invokeOriginal(metadataForUpdate)
                 }
 
                 after {
@@ -352,6 +377,44 @@ class LyriconHook : YukiBaseHooker() {
                 updateFallbackLine(instance, line)
             }
         }
+    }
+
+    private fun shouldSkipTitleOnlyMetadataUpdate(
+        previousMetadata: MediaMetadata?,
+        nextMetadata: MediaMetadata?
+    ): Boolean {
+        if (previousMetadata == null || nextMetadata == null) {
+            return false
+        }
+        val previousToken = buildMetadataCompareToken(previousMetadata)
+        val nextToken = buildMetadataCompareToken(nextMetadata)
+        if (previousToken.mediaId.isNullOrEmpty() || previousToken.mediaId != nextToken.mediaId) {
+            return false
+        }
+        if (previousToken.title == nextToken.title) {
+            return false
+        }
+        return true
+    }
+
+    private fun buildMetadataCompareToken(metadata: MediaMetadata): MetadataCompareToken {
+        return MetadataCompareToken(
+            mediaId = metadata.description.mediaId,
+            title = resolveTrackTitle(metadata)
+        )
+    }
+
+    private fun resolveTrackTitle(metadata: MediaMetadata): String? {
+        val customTitle = metadata.getString(METADATA_CUSTOM_TITLE).normalizedMetadataText()
+        return if (customTitle.isNullOrEmpty()) {
+            metadata.getString(METADATA_TITLE).normalizedMetadataText()
+        } else {
+            customTitle
+        }
+    }
+
+    private fun String?.normalizedMetadataText(): String? {
+        return this?.trim()
     }
 
     private fun isPackageInstalled(context: Context, pkg: String): Boolean {
@@ -876,6 +939,11 @@ class LyriconHook : YukiBaseHooker() {
         val lineProgress: Double,
     )
 
+    private data class MetadataCompareToken(
+        val mediaId: String?,
+        val title: String?
+    )
+
     private data class ManagedElementState(
         var tempLrc: String? = null,
         var tempLyricLine: String? = null,
@@ -929,6 +997,8 @@ class LyriconHook : YukiBaseHooker() {
     private companion object {
         private const val TARGET_LYRICON_PACKAGE = "io.github.proify.lyricon"
         private const val LYRICON_CORE_PACKAGE = "io.github.proify.lyricon.core"
+        private const val METADATA_CUSTOM_TITLE = "android.media.metadata.CUSTOM_FIELD_TITLE"
+        private const val METADATA_TITLE = "android.media.metadata.TITLE"
         private const val XIAOMI_LYRIC_METADATA = "android.media.metadata.LYRIC"
         private const val DURATION_METADATA = "android.media.metadata.DURATION"
         private const val MIN_PROGRESS_INTERVAL_MS = 100L

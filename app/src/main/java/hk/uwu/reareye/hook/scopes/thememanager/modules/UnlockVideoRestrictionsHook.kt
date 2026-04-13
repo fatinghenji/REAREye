@@ -2,7 +2,6 @@ package hk.uwu.reareye.hook.scopes.thememanager.modules
 
 import android.annotation.SuppressLint
 import android.app.Activity
-import android.content.pm.PackageInfo
 import android.os.Build
 import android.util.Log
 import android.util.Size
@@ -11,6 +10,7 @@ import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.hook.utils.resolveDexKitInjectionPoint
 import hk.uwu.reareye.ui.config.ConfigKeys
 import org.luckypray.dexkit.DexKitBridge
 import java.lang.reflect.Modifier
@@ -25,19 +25,6 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
     @OptIn(ExperimentalAtomicApi::class)
     @SuppressLint("ResourceType")
     override fun onHook() {
-        val getCacheKeyOrNull: (String, PackageInfo) -> String? = { data, info ->
-            if (data.isEmpty()) {
-                null
-            } else {
-                val spilt = data.split(";;")
-                val versionCode = spilt[0].toLong()
-                if (versionCode != info.longVersionCode) {
-                    null
-                } else {
-                    spilt[1]
-                }
-            }
-        }
         loadApp("com.android.thememanager") {
             val bridge = DexKitBridge.create(this.appInfo.sourceDir)
             val durationCropCacheKey = "DURATION_CROP_CLZ"
@@ -55,73 +42,85 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                 $$"com.personalizedEditor.interceptor.VideoCheckForDepthInterceptor$checkVideo$2".toClass()
                     .resolve()
 
-            val saveCacheData: (String, String, PackageInfo) -> Unit = { key, clz, info ->
-                prefs.native().edit().putString(key, "${info.longVersionCode};;$clz").apply()
-                YLog.debug("Save $key hook point $clz")
-            }
-
             onAppLifecycle {
                 onCreate {
                     val pm = systemContext.packageManager
                     val info = pm.getPackageInfo(appInfo.packageName, 0)
-                    val dCropCache = prefs.native().getString(durationCropCacheKey).let {
-                        getCacheKeyOrNull(it, info)
-                    }
-                    val videoEditCache = prefs.native().getString(videoEditCacheKey).let {
-                        getCacheKeyOrNull(it, info)
-                    }
-                    val historyHelperCache = prefs.native().getString(historyHelperCacheKey).let {
-                        getCacheKeyOrNull(it, info)
-                    }
+                    val nativePrefs = prefs.native()
 
-                    val durationCropMatchResult = dCropCache ?: bridge.findClass {
-                        searchPackages("com.android.thememanager.util")
-                        matcher {
-                            modifiers = Modifier.PUBLIC or Modifier.FINAL
-                            fieldCount(1)
-                            methods {
-                                add {
-                                    name = "toString"
-                                    returnType(String::class.java)
-                                    usingStrings("DurationCrop")
+                    val durationCropMatchResult = resolveDexKitInjectionPoint(
+                        bridge = bridge,
+                        cacheKey = durationCropCacheKey,
+                        packageVersionCode = info.longVersionCode,
+                        readCache = nativePrefs::getString,
+                        writeCache = { key, value ->
+                            nativePrefs.edit().putString(key, value).apply()
+                        },
+                    ) {
+                        findClass {
+                            searchPackages("com.android.thememanager.util")
+                            matcher {
+                                modifiers = Modifier.PUBLIC or Modifier.FINAL
+                                fieldCount(1)
+                                methods {
+                                    add {
+                                        name = "toString"
+                                        returnType(String::class.java)
+                                        usingStrings("DurationCrop")
+                                    }
                                 }
                             }
-                        }
-                    }.singleOrNull()?.name
+                        }.singleOrNull()?.name
+                    }
                     val durationCropClz = (durationCropMatchResult
                         ?: $$"com.android.thememanager.util.uc$k$toq").toClass()
-                    if (dCropCache == null && durationCropMatchResult != null) {
-                        saveCacheData(durationCropCacheKey, durationCropMatchResult, info)
-                    }
 
-                    val videoEditMethod = videoEditCache ?: bridge.findMethod {
-                        searchPackages("com.android.thememanager.videoedit")
-                        matcher {
-                            returnType = "void"
-                            usingStrings("onPlayViewCreated")
-                        }
-                    }.singleOrNull()?.name
-                    if (videoEditCache == null && videoEditMethod != null) {
-                        saveCacheData(videoEditCacheKey, videoEditMethod, info)
-                    }
-
-                    val historyHelperResult = bridge.findClass {
-                        searchPackages("com.android.thememanager.settings")
-                        matcher {
-                            modifiers = Modifier.PUBLIC
-                            fields {
-                                addForType(String::class.java)
-                                addForType(Any::class.java)
-                                count = 2
+                    val videoEditMethod = resolveDexKitInjectionPoint(
+                        bridge = bridge,
+                        cacheKey = videoEditCacheKey,
+                        packageVersionCode = info.longVersionCode,
+                        readCache = nativePrefs::getString,
+                        writeCache = { key, value ->
+                            nativePrefs.edit().putString(key, value).apply()
+                        },
+                    ) {
+                        findMethod {
+                            searchPackages("com.android.thememanager.videoedit")
+                            matcher {
+                                returnType = "void"
+                                usingStrings("onPlayViewCreated")
                             }
-                            usingStrings("updateVideoResource")
                         }
-                    }.singleOrNull()?.name
+                            .singleOrNull()
+                            ?.name
+                    }
+
+                    val historyHelperResult = resolveDexKitInjectionPoint(
+                        bridge = bridge,
+                        cacheKey = historyHelperCacheKey,
+                        packageVersionCode = info.longVersionCode,
+                        readCache = nativePrefs::getString,
+                        writeCache = { key, value ->
+                            nativePrefs.edit().putString(key, value).apply()
+                        },
+                    ) {
+                        findClass {
+                            searchPackages("com.android.thememanager.settings")
+                            matcher {
+                                modifiers = Modifier.PUBLIC
+                                fields {
+                                    addForType(String::class.java)
+                                    addForType(Any::class.java)
+                                    count = 2
+                                }
+                                usingStrings("updateVideoResource")
+                            }
+                        }
+                            .singleOrNull()
+                            ?.name
+                    }
                     val historyHelperClz =
                         (historyHelperResult ?: "com.android.thememanager.settings.a9").toClass()
-                    if (historyHelperCache == null && historyHelperResult != null) {
-                        saveCacheData(historyHelperCacheKey, historyHelperResult, info)
-                    }
 
                     checkDepthClz.firstMethod {
                         name = "invokeSuspend"

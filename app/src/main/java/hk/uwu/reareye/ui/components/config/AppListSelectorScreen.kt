@@ -6,8 +6,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,9 +29,6 @@ import androidx.compose.foundation.style.MutableStyleState
 import androidx.compose.foundation.style.Style
 import androidx.compose.foundation.style.selected
 import androidx.compose.foundation.style.styleable
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Apps
@@ -53,10 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
@@ -65,13 +57,11 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import hk.uwu.reareye.R
+import hk.uwu.reareye.ui.components.RearSearchBar
 import hk.uwu.reareye.ui.components.rememberApplicationIconBitmap
 import hk.uwu.reareye.ui.config.ConfigItem
 import hk.uwu.reareye.ui.config.PrefsManager
@@ -84,7 +74,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.FabPosition
 import top.yukonga.miuix.kmp.basic.FloatingActionButton
@@ -552,93 +541,20 @@ private fun SelectionIndicator(selected: Boolean) {
 
 @Composable
 private fun AppSelectorHeader(
+    prefsManager: PrefsManager,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     onSearchFocusChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val focusManager = LocalFocusManager.current
-    val keyboardController = LocalSoftwareKeyboardController.current
-    val searchAcrylicShape = RoundedCornerShape(14.dp)
-    val searchAcrylicBase = Color(0xFF9EA6B2).copy(alpha = 0.34f)
-    val searchAcrylicStroke = Color.White.copy(alpha = 0.34f)
-    val searchAcrylicOverlay = Brush.verticalGradient(
-        colors = listOf(
-            Color.White.copy(alpha = 0.18f),
-            Color.White.copy(alpha = 0.04f),
-        )
+    RearSearchBar(
+        query = searchQuery,
+        hint = stringResource(R.string.search_apps),
+        prefsManager = prefsManager,
+        modifier = modifier,
+        onQueryChange = onSearchQueryChange,
+        onSearchFocusChange = onSearchFocusChange,
     )
-    val searchHint = stringResource(R.string.search_apps)
-    val searchTextStyle = TextStyle(
-        color = MiuixTheme.colorScheme.onBackground,
-        fontSize = 14.sp,
-    )
-
-    Column(
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Card(
-            modifier = Modifier
-                .border(1.dp, searchAcrylicStroke, searchAcrylicShape)
-                .fillMaxWidth(),
-            cornerRadius = 14.dp,
-            colors = CardDefaults.defaultColors(
-                color = searchAcrylicBase,
-                contentColor = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            )
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(44.dp)
-                    .background(searchAcrylicOverlay)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Search,
-                    contentDescription = null,
-                    tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    modifier = Modifier
-                        .size(18.dp)
-                        .padding(end = 6.dp),
-                )
-
-                BasicTextField(
-                    value = searchQuery,
-                    onValueChange = onSearchQueryChange,
-                    modifier = Modifier
-                        .weight(1f)
-                        .onFocusChanged { onSearchFocusChange(it.isFocused) },
-                    singleLine = true,
-                    textStyle = searchTextStyle,
-                    cursorBrush = SolidColor(MiuixTheme.colorScheme.primary),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(
-                        onSearch = {
-                            focusManager.clearFocus(force = true)
-                            keyboardController?.hide()
-                        }
-                    ),
-                    decorationBox = { innerTextField ->
-                        Box(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentAlignment = Alignment.CenterStart,
-                        ) {
-                            if (searchQuery.isEmpty()) {
-                                Text(
-                                    text = searchHint,
-                                    style = MiuixTheme.textStyles.body2,
-                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                )
-                            }
-                            innerTextField()
-                        }
-                    },
-                )
-            }
-        }
-    }
 }
 
 @Composable
@@ -944,6 +860,7 @@ fun AppListSelectorScreen(
                 )
 
                 AppSelectorHeader(
+                    prefsManager = prefsManager,
                     modifier = Modifier
                         .padding(horizontal = 12.dp)
                         .padding(bottom = 12.dp),

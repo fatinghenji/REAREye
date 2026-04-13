@@ -41,6 +41,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Refresh
@@ -264,6 +265,23 @@ fun RearWallpaperManagerScreen(
         toast(R.string.rear_wallpaper_added)
     }
 
+    fun clearAllRotatingWallpapers() {
+        if (schedule.isEmpty() && !scheduleEnabled) {
+            toast(R.string.rear_wallpaper_schedule_empty)
+            return
+        }
+        schedule.clear()
+        scheduleEnabled = false
+        draggedId = null
+        draggedInsertIndex = null
+        draggedItemHeight = 0f
+        draggedOffsetY = 0f
+        settlingOverlay = null
+        settlingWallpaperId = null
+        persistSchedule()
+        toast(R.string.rear_wallpaper_schedule_cleared)
+    }
+
     LaunchedEffect(Unit) {
         schedule.clear()
         schedule.addAll(RearWallpaperRepository.loadSchedule(prefsManager))
@@ -327,6 +345,14 @@ fun RearWallpaperManagerScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = { clearAllRotatingWallpapers() },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Delete,
+                            contentDescription = stringResource(R.string.rear_wallpaper_clear_schedule),
+                        )
+                    }
                     IconButton(
                         onClick = { if (!refreshing) refreshCatalog(showSuccessToast = true) },
                     ) {

@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import hk.uwu.reareye.R
 import hk.uwu.reareye.repository.rearwidget.RearBusinessConfig
+import hk.uwu.reareye.repository.rearwidget.RearCardConfig
 import hk.uwu.reareye.repository.rearwidget.RearWidgetConfigCodec
 import hk.uwu.reareye.repository.rearwidget.RearWidgetManagerRepository
 import hk.uwu.reareye.ui.components.card.ModuleStyleDeleteAction
@@ -50,7 +51,6 @@ import hk.uwu.reareye.ui.components.card.ModuleStyleIconAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleManagerCard
 import hk.uwu.reareye.ui.components.card.SuperCard
 import hk.uwu.reareye.ui.components.motion.ArtRevealItem
-import hk.uwu.reareye.ui.components.motion.ArtStaggeredReveal
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.PrefsManager
 import hk.uwu.reareye.ui.theme.rearAcrylicEffect
@@ -74,6 +74,7 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
@@ -100,6 +101,14 @@ fun BusinessManagerScreen(
     var editingId by remember { mutableStateOf<String?>(null) }
     var draftWidget by remember { mutableStateOf("") }
     var draftFilePath by remember { mutableStateOf("") }
+
+    val showRegisterCardDialog = remember { mutableStateOf(false) }
+    var draftCardId by remember { mutableStateOf(RearWidgetConfigCodec.newCardId()) }
+    var draftCardTitle by remember { mutableStateOf("") }
+    var draftCardPackageName by remember { mutableStateOf("hk.uwu.reareye") }
+    var draftCardBusiness by remember { mutableStateOf("") }
+    var draftCardPriorityText by remember { mutableStateOf("500") }
+    var draftCardSticky by remember { mutableStateOf(true) }
 
     fun debugLog(message: String) {
         if (prefsManager.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
@@ -151,6 +160,17 @@ fun BusinessManagerScreen(
         draftWidget = item.business
         draftFilePath = item.filePath
         showDialog.value = true
+    }
+
+    fun openRegisterCardDialog(item: RearBusinessConfig) {
+        if (item.downloadedFromStore) return
+        draftCardId = RearWidgetConfigCodec.newCardId()
+        draftCardTitle = item.business
+        draftCardPackageName = "hk.uwu.reareye"
+        draftCardBusiness = item.business
+        draftCardPriorityText = item.defaultPriority.toString()
+        draftCardSticky = true
+        showRegisterCardDialog.value = true
     }
 
     @SuppressLint("LocalContextGetResourceValueCall")
@@ -223,6 +243,43 @@ fun BusinessManagerScreen(
         Toast.makeText(
             context,
             context.getString(R.string.rear_widget_business_saved),
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    @SuppressLint("LocalContextGetResourceValueCall")
+    fun submitRegisterCardDialog() {
+        val packageName = draftCardPackageName.trim()
+        val business = draftCardBusiness.trim()
+        if (packageName.isBlank() || business.isBlank()) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.rear_widget_form_invalid),
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        val nextCards = RearWidgetManagerRepository.loadCards(prefsManager)
+            .toMutableList()
+            .apply {
+                add(
+                    RearCardConfig(
+                        id = draftCardId,
+                        title = draftCardTitle.trim().ifBlank { business },
+                        packageName = packageName,
+                        business = business,
+                        enabled = true,
+                        sticky = draftCardSticky,
+                        priority = draftCardPriorityText.toIntOrNull() ?: 500,
+                    )
+                )
+            }
+        RearWidgetManagerRepository.saveCards(context, prefsManager, nextCards)
+        showRegisterCardDialog.value = false
+        Toast.makeText(
+            context,
+            context.getString(R.string.rear_widget_card_saved),
             Toast.LENGTH_SHORT
         ).show()
     }
@@ -360,34 +417,37 @@ fun BusinessManagerScreen(
             }
 
             if (dataCardsVisible) {
-                itemsIndexed(widgets, key = { _, item -> item.id }) { index, item ->
-                    ArtStaggeredReveal(
-                        visible = true,
-                        revealKey = item.id,
-                        delayMillis = (36 + index * 18).coerceAtMost(150),
-                    ) {
-                        ModuleStyleManagerCard(
-                            title = item.business,
-                            summaryLines = buildList {
-                                add(item.filePath)
-                                item.storeWidgetId?.takeIf { it.isNotBlank() }?.let {
-                                    add(
-                                        context.getString(
-                                            R.string.rear_widget_store_source_summary,
-                                            it,
-                                        )
+                itemsIndexed(
+                    items = widgets,
+                    key = { _, item -> item.id },
+                    contentType = { _, _ -> "business_item" },
+                ) { _, item ->
+                    ModuleStyleManagerCard(
+                        title = item.business,
+                        summaryLines = buildList {
+                            add(item.filePath)
+                            item.storeWidgetId?.takeIf { it.isNotBlank() }?.let {
+                                add(
+                                    context.getString(
+                                        R.string.rear_widget_store_source_summary,
+                                        it,
                                     )
-                                }
-                                if (!item.renameable) {
-                                    add(context.getString(R.string.rear_widget_business_locked_summary))
-                                }
-                            },
-                            onCardClick = if (item.renameable) {
-                                { openEditDialog(item) }
-                            } else {
-                                null
-                            },
-                            leftAction = {
+                                )
+                            }
+                            if (!item.renameable) {
+                                add(context.getString(R.string.rear_widget_business_locked_summary))
+                            }
+                        },
+                        onCardClick = if (item.renameable) {
+                            { openEditDialog(item) }
+                        } else {
+                            null
+                        },
+                        leftAction = {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
                                 if (item.renameable) {
                                     ModuleStyleIconAction(
                                         icon = Icons.Rounded.EditNote,
@@ -400,19 +460,25 @@ fun BusinessManagerScreen(
                                         tint = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.82f),
                                     )
                                 }
-                            },
-                            rightAction = {
-                                ModuleStyleDeleteAction(
-                                    icon = MiuixIcons.Delete,
-                                    text = stringResource(R.string.rear_widget_action_delete),
-                                    onClick = {
-                                        widgets.remove(item)
-                                        persist()
-                                    },
-                                )
-                            },
-                        )
-                    }
+                                if (!item.downloadedFromStore) {
+                                    ModuleStyleIconAction(
+                                        icon = Icons.Filled.Add,
+                                        onClick = { openRegisterCardDialog(item) },
+                                    )
+                                }
+                            }
+                        },
+                        rightAction = {
+                            ModuleStyleDeleteAction(
+                                icon = MiuixIcons.Delete,
+                                text = stringResource(R.string.rear_widget_action_delete),
+                                onClick = {
+                                    widgets.remove(item)
+                                    persist()
+                                },
+                            )
+                        },
+                    )
                 }
             }
 
@@ -502,6 +568,73 @@ fun BusinessManagerScreen(
                     Text(stringResource(R.string.rear_widget_confirm))
                 }
                 Button(onClick = { showDialog.value = false }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.rear_widget_cancel))
+                }
+            }
+        }
+    }
+
+    OverlayDialog(
+        show = showRegisterCardDialog.value,
+        title = stringResource(R.string.rear_widget_add_card),
+        onDismissRequest = { showRegisterCardDialog.value = false },
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .imePadding(),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            TextField(
+                value = draftCardTitle,
+                onValueChange = { draftCardTitle = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = stringResource(R.string.rear_widget_card_title),
+                singleLine = true,
+            )
+            TextField(
+                value = draftCardPackageName,
+                onValueChange = { draftCardPackageName = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = stringResource(R.string.rear_widget_target_package),
+                singleLine = true,
+            )
+            TextField(
+                value = draftCardBusiness,
+                onValueChange = { draftCardBusiness = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = stringResource(R.string.rear_widget_business_name),
+                singleLine = true,
+            )
+            TextField(
+                value = draftCardPriorityText,
+                onValueChange = { draftCardPriorityText = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = stringResource(R.string.rear_widget_default_priority),
+                singleLine = true,
+            )
+            SwitchPreference(
+                title = stringResource(R.string.rear_widget_card_sticky),
+                summary = stringResource(R.string.rear_widget_card_sticky_desc),
+                checked = draftCardSticky,
+                onCheckedChange = { draftCardSticky = it },
+            )
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(
+                    onClick = { submitRegisterCardDialog() },
+                    colors = ButtonDefaults.buttonColorsPrimary(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.rear_widget_confirm))
+                }
+                Button(
+                    onClick = { showRegisterCardDialog.value = false },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
                     Text(stringResource(R.string.rear_widget_cancel))
                 }
             }

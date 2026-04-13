@@ -29,7 +29,6 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,12 +44,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.AccessTime
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.runtime.Composable
@@ -64,11 +59,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -80,10 +72,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
@@ -104,6 +95,7 @@ import hk.uwu.reareye.repository.rearstore.RearStoreWidgetDetail
 import hk.uwu.reareye.repository.rearstore.RearStoreWidgetInfoType
 import hk.uwu.reareye.repository.rearstore.RearStoreWidgetMetadataType
 import hk.uwu.reareye.repository.rearstore.resolvedType
+import hk.uwu.reareye.ui.components.RearSearchBar
 import hk.uwu.reareye.ui.components.card.SuperCard
 import hk.uwu.reareye.ui.components.motion.ArtRevealItem
 import hk.uwu.reareye.ui.components.motion.ArtStaggeredReveal
@@ -127,7 +119,6 @@ import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
@@ -831,12 +822,14 @@ private fun RearStoreRootContent(
                     },
                     scrollBehavior = scrollBehavior,
                 )
-                RearStoreSearchField(
-                    value = searchInput,
+                RearSearchBar(
+                    query = searchInput,
+                    hint = stringResource(R.string.rear_store_search_hint),
+                    prefsManager = prefsManager,
                     modifier = Modifier
                         .padding(horizontal = 12.dp)
                         .padding(bottom = 12.dp),
-                    onValueChange = { searchInput = it },
+                    onQueryChange = { searchInput = it },
                     onSearchSubmit = { searchQuery = searchInput.trim() },
                     onSearchFocusChange = { focused -> searchFocusedState.value = focused },
                 )
@@ -1399,6 +1392,10 @@ private fun RearStoreStatusPill(
     emphasized: Boolean,
     palette: RearStoreBadgePalette? = null,
 ) {
+    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+    val pillFontSize = (13f / fontScale).sp
+    val horizontalPadding = (12f / fontScale).dp.coerceAtLeast(8.dp)
+    val verticalPadding = (7f / fontScale).dp.coerceAtLeast(5.dp)
     val resolvedPalette = palette ?: RearStoreBadgePalette(
         background = if (emphasized) {
             MiuixTheme.colorScheme.primary.copy(alpha = 0.18f)
@@ -1418,10 +1415,13 @@ private fun RearStoreStatusPill(
     ) {
         Text(
             text = text,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+            modifier = Modifier.padding(horizontal = horizontalPadding, vertical = verticalPadding),
             color = resolvedPalette.text,
-            fontSize = 13.sp,
+            fontSize = pillFontSize,
             fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -1887,20 +1887,22 @@ private fun MarkdownCardBody(
     val maxWindowHeightPx = remember(maxWindowHeight, density) {
         (maxWindowHeight.value * density.density).roundToInt().coerceAtLeast(1)
     }
-    var webViewHeightPx by remember(webViewKey) { mutableIntStateOf(1) }
-    val webViewHeightDp = (webViewHeightPx / density.density).dp
+    val webViewHeightPx = remember(webViewKey) { mutableIntStateOf(1) }
+    val webViewHeightDp = (webViewHeightPx.intValue / density.density).dp
+    val nestedScrollInterop = rememberNestedScrollInteropConnection()
 
     AndroidView(
         modifier = Modifier
             .fillMaxWidth()
-            .height(webViewHeightDp),
+            .height(webViewHeightDp)
+            .nestedScroll(nestedScrollInterop),
         factory = { viewContext ->
             webViewCache.getOrPut(webViewKey) {
                 createGithubMarkdownWebView(
                     context = viewContext,
                     hardwareAccelerationEnabled = webViewHardwareAccelerationEnabled,
                     onContentHeightChanged = { height ->
-                        webViewHeightPx = height.coerceIn(1, maxWindowHeightPx)
+                        webViewHeightPx.intValue = height.coerceIn(1, maxWindowHeightPx)
                     },
                     backgroundColor = webViewBackgroundColor.toArgb(),
                 ).apply {
@@ -1927,11 +1929,11 @@ private fun MarkdownCardBody(
             val currentLayoutParams = webView.layoutParams
             if (currentLayoutParams == null ||
                 currentLayoutParams.width != ViewGroup.LayoutParams.MATCH_PARENT ||
-                currentLayoutParams.height != webViewHeightPx
+                currentLayoutParams.height != webViewHeightPx.intValue
             ) {
                 webView.layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    webViewHeightPx,
+                    webViewHeightPx.intValue,
                 )
             }
             if (webView.tag != htmlDocument) {
@@ -1946,7 +1948,7 @@ private fun MarkdownCardBody(
             } else {
                 // Re-entering the page reuses cached WebView. Re-publish height to avoid 1dp blank body.
                 webView.publishMarkdownContentHeight { height ->
-                    webViewHeightPx = height.coerceIn(1, maxWindowHeightPx)
+                    webViewHeightPx.intValue = height.coerceIn(1, maxWindowHeightPx)
                 }
             }
         },
@@ -1975,6 +1977,7 @@ private fun createGithubMarkdownWebView(
         setBackgroundColor(backgroundColor)
         isVerticalScrollBarEnabled = false
         isHorizontalScrollBarEnabled = false
+        overScrollMode = View.OVER_SCROLL_NEVER
         settings.apply {
             domStorageEnabled = true
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
@@ -2057,95 +2060,6 @@ private fun WebView.publishMarkdownContentHeight(onContentHeightChanged: (Int) -
         val resolvedHeight =
             (measuredOrContentHeight + paddingTop + paddingBottom).coerceAtLeast(1)
         onContentHeightChanged(resolvedHeight)
-    }
-}
-
-@Composable
-private fun RearStoreSearchField(
-    value: String,
-    modifier: Modifier = Modifier,
-    onValueChange: (String) -> Unit,
-    onSearchSubmit: () -> Unit,
-    onSearchFocusChange: (Boolean) -> Unit,
-) {
-    val focusManager = LocalFocusManager.current
-    val keyboardController = LocalSoftwareKeyboardController.current
-    val searchAcrylicShape = RoundedCornerShape(14.dp)
-    val searchAcrylicBase = Color(0xFF9EA6B2).copy(alpha = 0.34f)
-    val searchAcrylicStroke = Color.White.copy(alpha = 0.34f)
-    val searchAcrylicOverlay = Brush.verticalGradient(
-        colors = listOf(
-            Color.White.copy(alpha = 0.18f),
-            Color.White.copy(alpha = 0.04f),
-        )
-    )
-    val searchHint = stringResource(R.string.rear_store_search_hint)
-    val searchTextStyle = TextStyle(
-        color = MiuixTheme.colorScheme.onBackground,
-        fontSize = 14.sp,
-    )
-
-    Card(
-        modifier = modifier
-            .border(1.dp, searchAcrylicStroke, searchAcrylicShape)
-            .fillMaxWidth(),
-        cornerRadius = 14.dp,
-        colors = CardDefaults.defaultColors(
-            color = searchAcrylicBase,
-            contentColor = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(44.dp)
-                .background(searchAcrylicOverlay)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Search,
-                contentDescription = null,
-                tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                modifier = Modifier
-                    .size(18.dp)
-                    .padding(end = 6.dp),
-            )
-
-            BasicTextField(
-                value = value,
-                onValueChange = onValueChange,
-                modifier = Modifier
-                    .weight(1f)
-                    .onFocusChanged { onSearchFocusChange(it.isFocused) },
-                singleLine = true,
-                textStyle = searchTextStyle,
-                cursorBrush = SolidColor(MiuixTheme.colorScheme.primary),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(
-                    onSearch = {
-                        focusManager.clearFocus(force = true)
-                        keyboardController?.hide()
-                        onSearchSubmit()
-                    }
-                ),
-                decorationBox = { innerTextField ->
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.CenterStart,
-                    ) {
-                        if (value.isEmpty()) {
-                            Text(
-                                text = searchHint,
-                                style = MiuixTheme.textStyles.body2,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            )
-                        }
-                        innerTextField()
-                    }
-                },
-            )
-        }
     }
 }
 

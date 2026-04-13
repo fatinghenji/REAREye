@@ -1,79 +1,87 @@
-package hk.uwu.reareye.ui.components.webview;
+package hk.uwu.reareye.ui.components.webview
 
-import android.annotation.SuppressLint;
-import android.content.Context;
-import android.util.AttributeSet;
-import android.view.MotionEvent;
-import android.view.View;
-import android.view.ViewConfiguration;
-import android.view.ViewParent;
-import android.webkit.WebView;
+import android.annotation.SuppressLint
+import android.content.Context
+import android.util.AttributeSet
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewConfiguration
+import android.webkit.WebView
+import kotlin.math.abs
 
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
+class ScrollWebView : WebView {
+    private val touchSlop: Int
+    private var gestureStartY = 0f
+    private var disallowInterceptRequested = false
 
-public class ScrollWebView extends WebView {
-    private final int touchSlop;
-    private float lastTouchY;
-
-    public ScrollWebView(@NonNull Context context) {
-        super(context);
-        touchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
+    constructor(context: Context) : super(context) {
+        touchSlop = ViewConfiguration.get(context).scaledTouchSlop
     }
 
-    public ScrollWebView(@NonNull Context context, @Nullable AttributeSet attrs) {
-        super(context, attrs);
-        touchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
+    constructor(context: Context, attrs: AttributeSet?) : super(context, attrs) {
+        touchSlop = ViewConfiguration.get(context).scaledTouchSlop
     }
 
-    public ScrollWebView(@NonNull Context context, @Nullable AttributeSet attrs, int defStyleAttr) {
-        super(context, attrs, defStyleAttr);
-        touchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
+    constructor(context: Context, attrs: AttributeSet?, defStyleAttr: Int) : super(
+        context,
+        attrs,
+        defStyleAttr
+    ) {
+        touchSlop = ViewConfiguration.get(context).scaledTouchSlop
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    @Override
-    public boolean onTouchEvent(MotionEvent event) {
-        switch (event.getActionMasked()) {
-            case MotionEvent.ACTION_DOWN:
-                lastTouchY = event.getY();
-                requestParentDisallowIntercept(true);
-                break;
-            case MotionEvent.ACTION_MOVE:
-                float deltaY = event.getY() - lastTouchY;
-                lastTouchY = event.getY();
-                if (Math.abs(deltaY) >= touchSlop) {
-                    boolean fingerMovingDown = deltaY > 0;
-                    boolean canConsumeMove = fingerMovingDown
-                            ? canScrollVertically(-1)
-                            : canScrollVertically(1);
-                    requestParentDisallowIntercept(canConsumeMove);
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                gestureStartY = event.y
+                requestParentDisallowIntercept(true)
+            }
+
+            MotionEvent.ACTION_MOVE -> {
+                val deltaY = event.y - gestureStartY
+                if (abs(deltaY) >= touchSlop) {
+                    val fingerMovingDown = deltaY > 0f
+                    val canConsumeMove = if (fingerMovingDown)
+                        canScrollVertically(-1)
+                    else
+                        canScrollVertically(1)
+                    requestParentDisallowIntercept(canConsumeMove)
                 }
-                break;
-            case MotionEvent.ACTION_UP:
-            case MotionEvent.ACTION_CANCEL:
-                requestParentDisallowIntercept(false);
-                break;
+            }
+
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                gestureStartY = 0f
+                requestParentDisallowIntercept(false)
+            }
         }
-        return super.onTouchEvent(event);
+        return super.onTouchEvent(event)
     }
 
-    @Override
-    protected void onOverScrolled(int scrollX, int scrollY, boolean clampedX, boolean clampedY) {
+    override fun onOverScrolled(
+        scrollX: Int,
+        scrollY: Int,
+        clampedX: Boolean,
+        clampedY: Boolean,
+    ) {
         if (clampedY) {
-            requestParentDisallowIntercept(false);
+            requestParentDisallowIntercept(false)
         }
-        super.onOverScrolled(scrollX, scrollY, clampedX, clampedY);
+        super.onOverScrolled(scrollX, scrollY, clampedX, clampedY)
     }
 
-    private void requestParentDisallowIntercept(boolean disallowIntercept) {
-        ViewParent parent = getParent();
+    private fun requestParentDisallowIntercept(disallowIntercept: Boolean) {
+        if (disallowInterceptRequested == disallowIntercept) {
+            return
+        }
+        disallowInterceptRequested = disallowIntercept
+        var parent = getParent()
         while (parent != null) {
-            parent.requestDisallowInterceptTouchEvent(disallowIntercept);
-            if (parent instanceof View) {
-                parent = ((View) parent).getParent();
+            parent.requestDisallowInterceptTouchEvent(disallowIntercept)
+            if (parent is View) {
+                parent = (parent as View).parent
             } else {
-                break;
+                break
             }
         }
     }
