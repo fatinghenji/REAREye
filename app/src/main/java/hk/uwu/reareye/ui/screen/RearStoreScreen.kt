@@ -274,15 +274,37 @@ private fun String?.normalizedOrNull(): String? {
     return this?.trim()?.takeIf { it.isNotEmpty() }
 }
 
-private fun String.asBadgeFriendlyTitle(): String {
+private fun String.asBadgeFriendlyTitle(
+    fontScale: Float,
+    badgeCount: Int,
+): String {
     if (length <= 1) return this
+
+    val safeFontScale = fontScale.coerceIn(1f, 2.4f)
+    val safeBadgeCount = badgeCount.coerceAtLeast(1)
+    val scalePenalty = ((safeFontScale - 1f) * 8f).roundToInt()
+    val badgePenalty = (safeBadgeCount - 1) * 3
+    val maxCharsPerLine = (18 - scalePenalty - badgePenalty).coerceIn(8, 18)
+
     val wrapped = StringBuilder(length * 2)
+    var currentLineChars = 0
     forEachIndexed { index, current ->
         wrapped.append(current)
+        if (current == '\n') {
+            currentLineChars = 0
+            return@forEachIndexed
+        }
+
+        currentLineChars += 1
         if (index >= lastIndex) return@forEachIndexed
+
         val next = this[index + 1]
         if (current.isLetterOrDigit() && next.isLetterOrDigit()) {
-            wrapped.append("\u200B")
+            wrapped.append('\u200B')
+        }
+        if (currentLineChars >= maxCharsPerLine && next != '\n') {
+            wrapped.append('\n')
+            currentLineChars = 0
         }
     }
     return wrapped.toString()
@@ -1259,9 +1281,18 @@ private fun RearStoreListCard(
 ) {
     val descriptionText = item.description.normalizedOrNull()
     val metadataType = item.displayMetadataType()
+    val titleFontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+    val showStatusBadge = updateAvailable ||
+            (installedWidget != null && item.latestReleaseTag.normalizedOrNull() != null)
+    val titleText = remember(item.displayName, titleFontScale, showStatusBadge) {
+        item.displayName.asBadgeFriendlyTitle(
+            fontScale = titleFontScale,
+            badgeCount = if (showStatusBadge) 2 else 1,
+        )
+    }
     Card(modifier = Modifier.fillMaxWidth()) {
         SuperCard(
-            title = item.displayName.asBadgeFriendlyTitle(),
+            title = titleText,
             summary = item.author.displayName.ifBlank {
                 stringResource(R.string.rear_store_unknown_author)
             },
@@ -1353,9 +1384,13 @@ private fun RearStoreDetailHeroCard(
     updateAvailable: Boolean,
     metadataType: RearStoreWidgetMetadataType,
 ) {
+    val titleFontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     Card(modifier = Modifier.fillMaxWidth()) {
         SuperCard(
-            title = detail.name.asBadgeFriendlyTitle(),
+            title = detail.name.asBadgeFriendlyTitle(
+                fontScale = titleFontScale,
+                badgeCount = 1,
+            ),
             summary = detail.author.displayName.ifBlank {
                 stringResource(R.string.rear_store_unknown_author)
             },
@@ -1433,8 +1468,8 @@ private fun RearStoreStatusPill(
             color = resolvedPalette.text,
             fontSize = pillFontSize,
             fontWeight = FontWeight.Medium,
-            maxLines = 2,
-            softWrap = true,
+            maxLines = 1,
+            softWrap = false,
             overflow = TextOverflow.Ellipsis,
         )
     }
