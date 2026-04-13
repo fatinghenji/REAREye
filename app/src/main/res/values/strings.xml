@@ -17,6 +17,11 @@
     <string name="selection_clear">Clear</string>
     <string name="config_selected_apps">Selected %1$d apps</string>
     <string name="config_slider_current_value">Current value: %1$s</string>
+    <string name="config_favorites_title">Favorite Config</string>
+    <string name="config_favorites_empty">Long press a config node to add it here</string>
+    <string name="config_favorites_count">Saved %1$d items</string>
+    <string name="config_favorite_add">Add to Favorites</string>
+    <string name="config_favorite_remove">Remove from Favorites</string>
     <string name="app_list_more_actions">More actions</string>
     <string name="app_list_sort">Sort</string>
     <string name="app_list_filter">Filter</string>

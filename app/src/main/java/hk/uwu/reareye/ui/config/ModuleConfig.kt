@@ -70,6 +70,7 @@ object ConfigKeys {
     const val HOOK_DISABLE_REAR_SCREEN_COVER = "enable_hook_rear_screen_cover"
 
     const val MORE_DEBUG = "enable_more_debug_logging"
+    const val MODULE_FAVORITE_CONFIG_NODES = "module_favorite_config_nodes"
 }
 
 enum class ModuleNavigationBarMode(

@@ -18,6 +18,11 @@
     <string name="selection_clear">清空</string>
     <string name="config_selected_apps">已选择 %1$d 个应用</string>
     <string name="config_slider_current_value">当前值：%1$s</string>
+    <string name="config_favorites_title">收藏的配置</string>
+    <string name="config_favorites_empty">长按配置节点即可添加到这里</string>
+    <string name="config_favorites_count">已收藏 %1$d 项</string>
+    <string name="config_favorite_add">收藏</string>
+    <string name="config_favorite_remove">取消收藏</string>
     <string name="app_list_more_actions">更多操作</string>
     <string name="app_list_sort">排序</string>
     <string name="app_list_filter">筛选</string>

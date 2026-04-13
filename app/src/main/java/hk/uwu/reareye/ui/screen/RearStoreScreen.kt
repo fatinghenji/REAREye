@@ -274,6 +274,20 @@ private fun String?.normalizedOrNull(): String? {
     return this?.trim()?.takeIf { it.isNotEmpty() }
 }
 
+private fun String.asBadgeFriendlyTitle(): String {
+    if (length <= 1) return this
+    val wrapped = StringBuilder(length * 2)
+    forEachIndexed { index, current ->
+        wrapped.append(current)
+        if (index >= lastIndex) return@forEachIndexed
+        val next = this[index + 1]
+        if (current.isLetterOrDigit() && next.isLetterOrDigit()) {
+            wrapped.append("\u200B")
+        }
+    }
+    return wrapped.toString()
+}
+
 private fun isoDateLabel(value: String?): String {
     return value?.substringBefore('T')?.trim().takeUnless { it.isNullOrEmpty() } ?: "-"
 }
@@ -1247,7 +1261,7 @@ private fun RearStoreListCard(
     val metadataType = item.displayMetadataType()
     Card(modifier = Modifier.fillMaxWidth()) {
         SuperCard(
-            title = item.displayName,
+            title = item.displayName.asBadgeFriendlyTitle(),
             summary = item.author.displayName.ifBlank {
                 stringResource(R.string.rear_store_unknown_author)
             },
@@ -1341,7 +1355,7 @@ private fun RearStoreDetailHeroCard(
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         SuperCard(
-            title = detail.name,
+            title = detail.name.asBadgeFriendlyTitle(),
             summary = detail.author.displayName.ifBlank {
                 stringResource(R.string.rear_store_unknown_author)
             },
@@ -1353,7 +1367,7 @@ private fun RearStoreDetailHeroCard(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         RearStoreStatusPill(
@@ -1394,7 +1408,7 @@ private fun RearStoreStatusPill(
 ) {
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     val pillFontSize = (13f / fontScale).sp
-    val horizontalPadding = (12f / fontScale).dp.coerceAtLeast(8.dp)
+    val horizontalPadding = (10f / fontScale).dp.coerceAtLeast(7.dp)
     val verticalPadding = (7f / fontScale).dp.coerceAtLeast(5.dp)
     val resolvedPalette = palette ?: RearStoreBadgePalette(
         background = if (emphasized) {
@@ -1419,8 +1433,8 @@ private fun RearStoreStatusPill(
             color = resolvedPalette.text,
             fontSize = pillFontSize,
             fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            softWrap = false,
+            maxLines = 2,
+            softWrap = true,
             overflow = TextOverflow.Ellipsis,
         )
     }
