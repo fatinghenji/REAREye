@@ -116,6 +116,7 @@ tasks.withType<KotlinJvmCompile>().configureEach {
 
 dependencies {
     implementation(project(":rear-widget-api"))
+    implementation(libs.androidx.compose.foundation.layout)
 
     compileOnly(libs.rovo89.xposed.api)
     ksp(libs.yukihookapi.ksp.xposed)
@@ -143,6 +144,7 @@ dependencies {
     implementation(libs.miuix.ui)
     implementation(libs.miuix.preference)
     implementation(libs.miuix.icons)
+    implementation(libs.miuix.blur)
     implementation(libs.haze)
     implementation(libs.backdrop)
     implementation(libs.capsule)
