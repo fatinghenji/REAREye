@@ -68,7 +68,6 @@ class RearWallpaperHook : YukiBaseHooker() {
     private val bootstrapReceiverRegistered = AtomicBoolean(false)
     private var hostContext: Context? = null
     private var mainPanel: Any? = null
-    private var smartPanel: Any? = null
     private var mainHandler: Handler? = null
     private var schedulerTask: Runnable? = null
 
@@ -122,7 +121,6 @@ class RearWallpaperHook : YukiBaseHooker() {
             }.hook().before {
                 stopScheduler()
                 mainPanel = null
-                smartPanel = null
                 mainHandler = null
             }
         }
@@ -246,9 +244,6 @@ class RearWallpaperHook : YukiBaseHooker() {
         val resolver = launcherInstance?.asResolver() ?: return
         mainPanel = runCatching {
             resolver.firstField { name = "y" }.get()
-        }.getOrNull()
-        smartPanel = runCatching {
-            resolver.firstField { name = "z" }.get()
         }.getOrNull()
         mainHandler = runCatching {
             resolver.firstField { name = "c0" }.get() as? Handler
@@ -401,10 +396,7 @@ class RearWallpaperHook : YukiBaseHooker() {
         mainPanel?.let { panel ->
             applied = dispatchSelection(panel, widgets, targetIndex) || false
         }
-        smartPanel?.let { panel ->
-            applied = dispatchSelection(panel, widgets, targetIndex) || applied
-        }
-        debugLog("switchToResolved result wallpaperId=${item.wallpaperId} applied=$applied main=${mainPanel != null} smart=${smartPanel != null}")
+        debugLog("switchToResolved result wallpaperId=${item.wallpaperId} applied=$applied main=${mainPanel != null}")
         return SwitchResult(exists = true, applied = applied)
     }
 
