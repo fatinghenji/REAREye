@@ -61,6 +61,38 @@ open class RearWallpaperApiClient(
         return requireRemote().syncSchedule(enabled, scheduleData)
     }
 
+    open fun importWallpaperPackage(
+        packageUri: String,
+        displayNameHint: String,
+        metadataUri: String?,
+        previewUri: String?,
+        options: Bundle,
+    ): Bundle {
+        return requireRemote().importWallpaperPackage(
+            packageUri,
+            displayNameHint,
+            metadataUri,
+            previewUri,
+            options,
+        ) ?: Bundle()
+    }
+
+    open fun updateWallpaperMetadata(
+        wallpaperId: Int,
+        previewUri: String?,
+        options: Bundle,
+    ): Bundle {
+        return requireRemote().updateWallpaperMetadata(wallpaperId, previewUri, options) ?: Bundle()
+    }
+
+    open fun generateWallpaperPreview(wallpaperId: Int): Bundle {
+        return requireRemote().generateWallpaperPreview(wallpaperId) ?: Bundle()
+    }
+
+    open fun deleteWallpaper(wallpaperId: Int): Bundle {
+        return requireRemote().deleteWallpaper(wallpaperId) ?: Bundle()
+    }
+
     private fun requireRemote(): IRearWallpaperApiService {
         return remote ?: error("RearWallpaper API service is not connected")
     }

@@ -1,13 +1,17 @@
 package hk.uwu.reareye.repository.rearwallpaper
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.provider.OpenableColumns
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.PrefsManager
 import hk.uwu.reareye.widgetapi.RearWallpaperApiClient
 import hk.uwu.reareye.widgetapi.RearWallpaperApiContract
 import hk.uwu.reareye.widgetapi.RearWallpaperScheduleCodec
 import hk.uwu.reareye.widgetapi.RearWallpaperScheduleEntry
+import hk.uwu.reareye.widgetapi.RearWidgetApiContract
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -50,6 +54,77 @@ object RearWallpaperRepository {
             withRemote(context) { client ->
                 client.switchWallpaper(wallpaperId)
             }
+        }
+    }
+
+    suspend fun importWallpaperPackage(
+        context: Context,
+        packageUri: Uri,
+        metadataUri: Uri?,
+        previewUri: Uri?,
+        options: RearWallpaperMetadataOptions,
+    ): RearWallpaperOperationResult {
+        return withContext(Dispatchers.IO) {
+            grantReadAccess(context, packageUri)
+            metadataUri?.let { grantReadAccess(context, it) }
+            previewUri?.let { grantReadAccess(context, it) }
+            val displayNameHint = queryDisplayName(context, packageUri)
+                ?.trim()
+                ?.ifBlank { null }
+                ?: "wallpaper.mrc"
+            val result = withRemote(context) { client ->
+                client.importWallpaperPackage(
+                    packageUri = packageUri.toString(),
+                    displayNameHint = displayNameHint,
+                    metadataUri = metadataUri?.toString(),
+                    previewUri = previewUri?.toString(),
+                    options = options.toBundle(),
+                )
+            }
+            parseOperationResult(result)
+        }
+    }
+
+    suspend fun updateWallpaperMetadata(
+        context: Context,
+        wallpaperId: Int,
+        previewUri: Uri?,
+        options: RearWallpaperMetadataOptions,
+    ): RearWallpaperOperationResult {
+        return withContext(Dispatchers.IO) {
+            previewUri?.let { grantReadAccess(context, it) }
+            val result = withRemote(context) { client ->
+                client.updateWallpaperMetadata(
+                    wallpaperId = wallpaperId,
+                    previewUri = previewUri?.toString(),
+                    options = options.toBundle(),
+                )
+            }
+            parseOperationResult(result)
+        }
+    }
+
+    suspend fun generateWallpaperPreview(
+        context: Context,
+        wallpaperId: Int,
+    ): RearWallpaperOperationResult {
+        return withContext(Dispatchers.IO) {
+            val result = withRemote(context) { client ->
+                client.generateWallpaperPreview(wallpaperId)
+            }
+            parseOperationResult(result)
+        }
+    }
+
+    suspend fun deleteWallpaper(
+        context: Context,
+        wallpaperId: Int,
+    ): RearWallpaperOperationResult {
+        return withContext(Dispatchers.IO) {
+            val result = withRemote(context) { client ->
+                client.deleteWallpaper(wallpaperId)
+            }
+            parseOperationResult(result)
         }
     }
 
@@ -145,6 +220,27 @@ object RearWallpaperRepository {
                 ),
                 previewSignature = item.getString(RearWallpaperApiContract.BundleKeys.PREVIEW_SIGNATURE)
                     .orEmpty(),
+                description = item.getString(RearWallpaperApiContract.BundleKeys.DESCRIPTION)
+                    .orEmpty(),
+                author = item.getString(RearWallpaperApiContract.BundleKeys.AUTHOR).orEmpty(),
+                designer = item.getString(RearWallpaperApiContract.BundleKeys.DESIGNER).orEmpty(),
+                resSubType = item.getString(RearWallpaperApiContract.BundleKeys.RES_SUB_TYPE)
+                    .orEmpty(),
+                imported = item.getBoolean(RearWallpaperApiContract.BundleKeys.IMPORTED, false),
+                canEditMetadata = item.getBoolean(
+                    RearWallpaperApiContract.BundleKeys.CAN_EDIT_METADATA,
+                    false,
+                ),
+                canDelete = item.getBoolean(RearWallpaperApiContract.BundleKeys.CAN_DELETE, false),
+                editable = item.getBoolean(RearWallpaperApiContract.BundleKeys.EDITABLE, false),
+                thirdParties = item.getBoolean(
+                    RearWallpaperApiContract.BundleKeys.THIRD_PARTIES,
+                    false,
+                ),
+                supportAon = item.getBoolean(
+                    RearWallpaperApiContract.BundleKeys.SUPPORT_AON,
+                    false,
+                ),
             )
         }
     }
@@ -214,6 +310,63 @@ object RearWallpaperRepository {
 
     private fun resolvePreviewCacheRoot(context: Context): File {
         return File(context.filesDir, PREVIEW_CACHE_DIR)
+    }
+
+    private fun grantReadAccess(context: Context, uri: Uri) {
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+        }
+        context.grantUriPermission(
+            RearWidgetApiContract.HOOK_HOST_PACKAGE,
+            uri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION,
+        )
+    }
+
+    private fun queryDisplayName(context: Context, uri: Uri): String? {
+        return runCatching {
+            context.contentResolver.query(
+                uri,
+                arrayOf(OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (idx < 0 || !cursor.moveToFirst()) return@use null
+                cursor.getString(idx)
+            }
+        }.getOrNull()
+    }
+
+    private fun RearWallpaperMetadataOptions.toBundle(): Bundle {
+        return Bundle().apply {
+            putString(RearWallpaperApiContract.BundleKeys.META_TITLE_FALLBACK, titleFallback)
+            putString(RearWallpaperApiContract.BundleKeys.META_TITLE_ZH_CN, titleZhCn)
+            putString(
+                RearWallpaperApiContract.BundleKeys.META_DESCRIPTION_FALLBACK,
+                descriptionFallback,
+            )
+            putString(RearWallpaperApiContract.BundleKeys.META_DESCRIPTION_ZH_CN, descriptionZhCn)
+            putString(RearWallpaperApiContract.BundleKeys.META_AUTHOR, author)
+            putString(RearWallpaperApiContract.BundleKeys.META_DESIGNER, designer)
+            putString(RearWallpaperApiContract.BundleKeys.META_CATEGORY, category)
+            putString(RearWallpaperApiContract.BundleKeys.META_RES_SUB_TYPE, resSubType)
+            putBoolean(RearWallpaperApiContract.BundleKeys.META_EDITABLE, editable)
+            putBoolean(RearWallpaperApiContract.BundleKeys.META_THIRD_PARTIES, thirdParties)
+            putBoolean(RearWallpaperApiContract.BundleKeys.META_SUPPORT_AON, supportAon)
+        }
+    }
+
+    private fun parseOperationResult(bundle: Bundle): RearWallpaperOperationResult {
+        return RearWallpaperOperationResult(
+            success = bundle.getBoolean(RearWallpaperApiContract.BundleKeys.SUCCESS, false),
+            wallpaperId = bundle.readNullableInt(RearWallpaperApiContract.BundleKeys.WALLPAPER_ID),
+            error = bundle.getString(RearWallpaperApiContract.BundleKeys.ERROR),
+        )
     }
 
     private fun Bundle.readNullableInt(key: String): Int? {

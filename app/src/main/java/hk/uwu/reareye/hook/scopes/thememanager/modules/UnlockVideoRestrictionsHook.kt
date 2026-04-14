@@ -10,7 +10,10 @@ import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.hook.utils.DexKitMethodInjectionPoint
 import hk.uwu.reareye.hook.utils.resolveDexKitInjectionPoint
+import hk.uwu.reareye.hook.utils.resolveDexKitMethodInjectionPoint
+import hk.uwu.reareye.hook.utils.resolveHookPackageVersionCode
 import hk.uwu.reareye.ui.config.ConfigKeys
 import org.luckypray.dexkit.DexKitBridge
 import java.lang.reflect.Modifier
@@ -18,6 +21,23 @@ import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 class UnlockVideoRestrictionsHook : YukiBaseHooker() {
+    companion object {
+        private const val VIDEO_EDIT_PLAY_CREATED_METHOD_CACHE_KEY =
+            "TM_VIDEO_EDIT_PLAY_CREATED_METHOD"
+        private const val VIDEO_EDIT_FPS_LIMIT_METHOD_CACHE_KEY = "TM_VIDEO_EDIT_FPS_LIMIT_METHOD"
+        private const val VIDEO_EDITOR_CONFIG_BUILD_METHOD_CACHE_KEY =
+            "TM_VIDEO_EDITOR_CONFIG_BUILD_METHOD"
+        private const val VIDEO_DEPTH_CHECK_METHOD_CACHE_KEY = "TM_VIDEO_DEPTH_CHECK_METHOD"
+        private const val FALLBACK_VIDEO_EDIT_ACTIVITY_CLASS =
+            "com.android.thememanager.videoedit.VideoEditActivity"
+        private const val FALLBACK_VIDEO_EDIT_FPS_RUNNABLE_CLASS =
+            $$"com.android.thememanager.videoedit.VideoEditActivity$zy"
+        private const val FALLBACK_VIDEO_EDITOR_CONFIG_BUILDER_CLASS =
+            $$"com.android.thememanager.videoedit.VideoEditorConfig$k"
+        private const val FALLBACK_VIDEO_DEPTH_CHECK_CLASS =
+            $$"com.personalizedEditor.interceptor.VideoCheckForDepthInterceptor$checkVideo$2"
+    }
+
     @OptIn(ExperimentalAtomicApi::class)
     private val state = AtomicBoolean(false)
 
@@ -28,30 +48,31 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
         loadApp("com.android.thememanager") {
             val bridge = DexKitBridge.create(this.appInfo.sourceDir)
             val durationCropCacheKey = "DURATION_CROP_CLZ"
-            val videoEditCacheKey = "VIDEO_EDIT_CLZ"
             val historyHelperCacheKey = "HISTORY_HELPER_CLZ"
-            val videoEditClz = "com.android.thememanager.videoedit.VideoEditActivity".toClass()
-            val videoEditRef = videoEditClz.resolve()
-            val fpsLimitClz =
-                $$"com.android.thememanager.videoedit.VideoEditActivity$zy".toClass().resolve()
-            val editorCfgClz =
-                "com.android.thememanager.videoedit.VideoEditorConfig".toClass()
-            val editorCfgBuilderClz =
-                $$"com.android.thememanager.videoedit.VideoEditorConfig$k".toClass().resolve()
-            val checkDepthClz =
-                $$"com.personalizedEditor.interceptor.VideoCheckForDepthInterceptor$checkVideo$2".toClass()
-                    .resolve()
+            val versionCode = resolveHookPackageVersionCode(
+                systemContext,
+                appInfo.packageName,
+                appInfo.sourceDir,
+            )
 
             onAppLifecycle {
                 onCreate {
-                    val pm = systemContext.packageManager
-                    val info = pm.getPackageInfo(appInfo.packageName, 0)
                     val nativePrefs = prefs.native()
+                    val videoEditPoint = resolveVideoEditPlayCreatedMethod(bridge, versionCode)
+                    val fpsLimitPoint = resolveVideoEditFpsLimitMethod(bridge, versionCode)
+                    val editorConfigBuildPoint =
+                        resolveVideoEditorConfigBuildMethod(bridge, versionCode)
+                    val checkDepthPoint = resolveVideoDepthCheckMethod(bridge, versionCode)
+                    val videoEditClz = videoEditPoint.className.toClass()
+                    val videoEditRef = videoEditClz.resolve()
+                    val fpsLimitClz = fpsLimitPoint.className.toClass().resolve()
+                    val editorCfgBuilderClz = editorConfigBuildPoint.className.toClass().resolve()
+                    val checkDepthClz = checkDepthPoint.className.toClass().resolve()
 
                     val durationCropMatchResult = resolveDexKitInjectionPoint(
                         bridge = bridge,
                         cacheKey = durationCropCacheKey,
-                        packageVersionCode = info.longVersionCode,
+                        packageVersionCode = versionCode,
                         readCache = nativePrefs::getString,
                         writeCache = { key, value ->
                             nativePrefs.edit().putString(key, value).apply()
@@ -75,30 +96,10 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                     val durationCropClz = (durationCropMatchResult
                         ?: $$"com.android.thememanager.util.uc$k$toq").toClass()
 
-                    val videoEditMethod = resolveDexKitInjectionPoint(
-                        bridge = bridge,
-                        cacheKey = videoEditCacheKey,
-                        packageVersionCode = info.longVersionCode,
-                        readCache = nativePrefs::getString,
-                        writeCache = { key, value ->
-                            nativePrefs.edit().putString(key, value).apply()
-                        },
-                    ) {
-                        findMethod {
-                            searchPackages("com.android.thememanager.videoedit")
-                            matcher {
-                                returnType = "void"
-                                usingStrings("onPlayViewCreated")
-                            }
-                        }
-                            .singleOrNull()
-                            ?.name
-                    }
-
                     val historyHelperResult = resolveDexKitInjectionPoint(
                         bridge = bridge,
                         cacheKey = historyHelperCacheKey,
-                        packageVersionCode = info.longVersionCode,
+                        packageVersionCode = versionCode,
                         readCache = nativePrefs::getString,
                         writeCache = { key, value ->
                             nativePrefs.edit().putString(key, value).apply()
@@ -123,7 +124,7 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                         (historyHelperResult ?: "com.android.thememanager.settings.a9").toClass()
 
                     checkDepthClz.firstMethod {
-                        name = "invokeSuspend"
+                        name = checkDepthPoint.methodName
                     }.hook().after {
                         if (!prefs.getBoolean(
                                 ConfigKeys.HOOK_UNLOCK_VIDEO_RESTRICTIONS,
@@ -147,7 +148,7 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
 
                     // 修补视频编辑器
                     videoEditRef.firstMethod {
-                        name = videoEditMethod ?: "nsb"
+                        name = videoEditPoint.methodName
                         returnType = Void.TYPE
                     }.hook().replaceUnit {
                         if (!prefs.getBoolean(ConfigKeys.HOOK_UNLOCK_VIDEO_RESTRICTIONS, true)) {
@@ -208,7 +209,7 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
 
                     // 修补帧率限制
                     fpsLimitClz.firstMethod {
-                        name = "run"
+                        name = fpsLimitPoint.methodName
                     }.hook().replaceUnit {
                         if (!prefs.getBoolean(ConfigKeys.HOOK_UNLOCK_VIDEO_RESTRICTIONS, true)) {
                             invokeOriginal()
@@ -283,33 +284,137 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                             toqVar
                         )
                     }
-                }
-            }
 
-            editorCfgBuilderClz.firstMethod {
-                returnType = editorCfgClz
-            }.hook().before {
-                if (!prefs.getBoolean(
-                        ConfigKeys.HOOK_UNLOCK_VIDEO_RESTRICTIONS,
-                        true
-                    )
-                ) return@before
-                val ref = instance.asResolver()
-                val isCallFromRearScreen = ref.field {
-                    type = Boolean::class.java
-                }.all { it.get() == true }
-                if (isCallFromRearScreen) {
-                    YLog.debug("Overwriting video editor max duration & frame-rate limitations")
-                    // 视频长度
-                    ref.firstField {
-                        type = Long::class.java
-                    }.set(Long.MAX_VALUE)
-                    // 帧率限制 120帧给背屏够了
-                    ref.firstField {
-                        type = Int::class.java
-                    }.set(120)
+                    editorCfgBuilderClz.firstMethod {
+                        name = editorConfigBuildPoint.methodName
+                    }.hook().before {
+                        if (!prefs.getBoolean(
+                                ConfigKeys.HOOK_UNLOCK_VIDEO_RESTRICTIONS,
+                                true
+                            )
+                        ) return@before
+                        val ref = instance.asResolver()
+                        val isCallFromRearScreen = ref.field {
+                            type = Boolean::class.java
+                        }.all { it.get() == true }
+                        if (isCallFromRearScreen) {
+                            YLog.debug("Overwriting video editor max duration & frame-rate limitations")
+                            ref.firstField {
+                                type = Long::class.java
+                            }.set(Long.MAX_VALUE)
+                            ref.firstField {
+                                type = Int::class.java
+                            }.set(120)
+                        }
+                    }
                 }
             }
         }
+    }
+
+    private fun resolveVideoEditPlayCreatedMethod(
+        bridge: DexKitBridge,
+        packageVersionCode: Long,
+    ): DexKitMethodInjectionPoint {
+        val nativePrefs = prefs.native()
+        return resolveDexKitMethodInjectionPoint(
+            bridge = bridge,
+            cacheKey = VIDEO_EDIT_PLAY_CREATED_METHOD_CACHE_KEY,
+            packageVersionCode = packageVersionCode,
+            readCache = nativePrefs::getString,
+            writeCache = { key, value -> nativePrefs.edit().putString(key, value).apply() },
+        ) {
+            // DexKit source anchor:
+            // .tmp-ref/thememanager-jadx/sources/com/android/thememanager/videoedit/VideoEditActivity.java:132
+            // VideoEditActivity.ebn()/onPlayViewCreated path logs "onPlayViewCreated".
+            findMethod {
+                searchPackages("com.android.thememanager.videoedit")
+                matcher {
+                    returnType = "void"
+                    usingStrings("onPlayViewCreated")
+                }
+            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+        } ?: DexKitMethodInjectionPoint(FALLBACK_VIDEO_EDIT_ACTIVITY_CLASS, "nsb")
+    }
+
+    private fun resolveVideoEditFpsLimitMethod(
+        bridge: DexKitBridge,
+        packageVersionCode: Long,
+    ): DexKitMethodInjectionPoint {
+        val nativePrefs = prefs.native()
+        return resolveDexKitMethodInjectionPoint(
+            bridge = bridge,
+            cacheKey = VIDEO_EDIT_FPS_LIMIT_METHOD_CACHE_KEY,
+            packageVersionCode = packageVersionCode,
+            readCache = nativePrefs::getString,
+            writeCache = { key, value -> nativePrefs.edit().putString(key, value).apply() },
+        ) {
+            // DexKit source anchor:
+            // .tmp-ref/thememanager-jadx/sources/com/android/thememanager/videoedit/VideoEditActivity.java:110
+            // VideoEditActivity.zy.run() builds ExportConfig and caps fps at 30.
+            findMethod {
+                searchPackages("com.android.thememanager.videoedit")
+                matcher {
+                    name = "run"
+                    paramCount(0)
+                    returnType = "void"
+                    usingStrings("ExportConfig %s", "export videopath is ")
+                }
+            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+        } ?: DexKitMethodInjectionPoint(FALLBACK_VIDEO_EDIT_FPS_RUNNABLE_CLASS, "run")
+    }
+
+    private fun resolveVideoEditorConfigBuildMethod(
+        bridge: DexKitBridge,
+        packageVersionCode: Long,
+    ): DexKitMethodInjectionPoint {
+        val nativePrefs = prefs.native()
+        return resolveDexKitMethodInjectionPoint(
+            bridge = bridge,
+            cacheKey = VIDEO_EDITOR_CONFIG_BUILD_METHOD_CACHE_KEY,
+            packageVersionCode = packageVersionCode,
+            readCache = nativePrefs::getString,
+            writeCache = { key, value -> nativePrefs.edit().putString(key, value).apply() },
+        ) {
+            // DexKit source anchor:
+            // .tmp-ref/thememanager-jadx/sources/com/android/thememanager/videoedit/VideoEditorConfig.java:42
+            // VideoEditorConfig.Builder.k() creates the config that carries duration/fps limits.
+            findMethod {
+                searchPackages("com.android.thememanager.videoedit")
+                matcher {
+                    paramCount(0)
+                    returnType = "com.android.thememanager.videoedit.VideoEditorConfig"
+                }
+            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+        } ?: DexKitMethodInjectionPoint(FALLBACK_VIDEO_EDITOR_CONFIG_BUILDER_CLASS, "k")
+    }
+
+    private fun resolveVideoDepthCheckMethod(
+        bridge: DexKitBridge,
+        packageVersionCode: Long,
+    ): DexKitMethodInjectionPoint {
+        val nativePrefs = prefs.native()
+        return resolveDexKitMethodInjectionPoint(
+            bridge = bridge,
+            cacheKey = VIDEO_DEPTH_CHECK_METHOD_CACHE_KEY,
+            packageVersionCode = packageVersionCode,
+            readCache = nativePrefs::getString,
+            writeCache = { key, value -> nativePrefs.edit().putString(key, value).apply() },
+        ) {
+            // DexKit source anchor:
+            // .tmp-ref/thememanager-jadx/sources/com/personalizedEditor/interceptor/VideoCheckForDepthInterceptor$checkVideo$2.java:41
+            // invokeSuspend() returns duration/ratio/fps validation results for rear video wallpapers.
+            findMethod {
+                searchPackages("com.personalizedEditor.interceptor")
+                matcher {
+                    name = "invokeSuspend"
+                    paramCount(1)
+                    usingStrings(
+                        "checkVideo: gallery return data is null",
+                        "checkVideo: is horizontal video",
+                    )
+                }
+            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+        } ?: DexKitMethodInjectionPoint(FALLBACK_VIDEO_DEPTH_CHECK_CLASS, "invokeSuspend")
     }
 }

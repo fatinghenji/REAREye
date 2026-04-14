@@ -3,6 +3,7 @@
 package hk.uwu.reareye.ui.components.config
 
 import android.annotation.SuppressLint
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
@@ -78,6 +79,7 @@ import androidx.compose.ui.zIndex
 import hk.uwu.reareye.R
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperCatalog
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperInfo
+import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperMetadataOptions
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperRepository
 import hk.uwu.reareye.ui.components.card.ModuleStyleDeleteAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleIconAction
@@ -135,6 +137,8 @@ private const val SETTLING_OVERLAY_DURATION_MS = 320L
 
 private enum class WallpaperPickerMode { ADD_TO_SCHEDULE }
 
+private enum class RearWallpaperPage { ROTATION, MANAGEMENT }
+
 private const val WALLPAPER_PREVIEW_RATIO = 1.6f
 private val SCHEDULE_ITEM_SHAPE = RoundedCornerShape(24.dp)
 private val scheduleDraggedStateKey = StyleStateKey(false)
@@ -169,6 +173,7 @@ fun RearWallpaperManagerScreen(
     var loading by remember { mutableStateOf(true) }
     var refreshing by remember { mutableStateOf(false) }
     var scheduleEnabled by remember { mutableStateOf(false) }
+    var activePage by remember { mutableStateOf(RearWallpaperPage.ROTATION) }
     val pickerMode = remember { mutableStateOf<WallpaperPickerMode?>(null) }
 
     val editTargetId = remember { mutableStateOf<Int?>(null) }
@@ -245,6 +250,124 @@ fun RearWallpaperManagerScreen(
                 pickerMode.value = null
             } else {
                 toast(R.string.rear_wallpaper_switch_failed)
+            }
+        }
+    }
+
+    @SuppressLint("LocalContextGetResourceValueCall")
+    fun importWallpaperPackage(
+        packageUri: Uri,
+        metadataUri: Uri?,
+        previewUri: Uri?,
+        options: RearWallpaperMetadataOptions,
+    ) {
+        scope.launch {
+            refreshing = true
+            val result = withContext(Dispatchers.IO) {
+                RearWallpaperRepository.importWallpaperPackage(
+                    context = context,
+                    packageUri = packageUri,
+                    metadataUri = metadataUri,
+                    previewUri = previewUri,
+                    options = options,
+                )
+            }
+            refreshing = false
+            if (result.success) {
+                toast(R.string.rear_wallpaper_import_success)
+                refreshCatalog(showSuccessToast = false)
+            } else {
+                Toast.makeText(
+                    context,
+                    context.getString(
+                        R.string.rear_wallpaper_import_failed,
+                        result.error ?: "unknown",
+                    ),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
+    }
+
+    @SuppressLint("LocalContextGetResourceValueCall")
+    fun updateWallpaperMetadata(
+        wallpaper: RearWallpaperInfo,
+        options: RearWallpaperMetadataOptions,
+        previewUri: Uri?,
+    ) {
+        scope.launch {
+            refreshing = true
+            val result = withContext(Dispatchers.IO) {
+                RearWallpaperRepository.updateWallpaperMetadata(
+                    context = context,
+                    wallpaperId = wallpaper.wallpaperId,
+                    previewUri = previewUri,
+                    options = options,
+                )
+            }
+            refreshing = false
+            if (result.success) {
+                toast(R.string.rear_wallpaper_metadata_saved)
+                refreshCatalog(showSuccessToast = false)
+            } else {
+                Toast.makeText(
+                    context,
+                    context.getString(
+                        R.string.rear_wallpaper_metadata_save_failed,
+                        result.error ?: "unknown",
+                    ),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
+    }
+
+    @SuppressLint("LocalContextGetResourceValueCall")
+    fun generateWallpaperPreview(wallpaper: RearWallpaperInfo) {
+        scope.launch {
+            refreshing = true
+            val result = withContext(Dispatchers.IO) {
+                RearWallpaperRepository.generateWallpaperPreview(context, wallpaper.wallpaperId)
+            }
+            refreshing = false
+            if (result.success) {
+                toast(R.string.rear_wallpaper_preview_generated)
+                refreshCatalog(showSuccessToast = false)
+            } else {
+                Toast.makeText(
+                    context,
+                    context.getString(
+                        R.string.rear_wallpaper_preview_generate_failed,
+                        result.error ?: "unknown",
+                    ),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
+    }
+
+    @SuppressLint("LocalContextGetResourceValueCall")
+    fun deleteWallpaper(wallpaper: RearWallpaperInfo) {
+        scope.launch {
+            refreshing = true
+            val result = withContext(Dispatchers.IO) {
+                RearWallpaperRepository.deleteWallpaper(context, wallpaper.wallpaperId)
+            }
+            refreshing = false
+            if (result.success) {
+                schedule.removeAll { it.wallpaperId == wallpaper.wallpaperId }
+                persistSchedule()
+                toast(R.string.rear_wallpaper_delete_success)
+                refreshCatalog(showSuccessToast = false)
+            } else {
+                Toast.makeText(
+                    context,
+                    context.getString(
+                        R.string.rear_wallpaper_delete_failed,
+                        result.error ?: "unknown",
+                    ),
+                    Toast.LENGTH_SHORT,
+                ).show()
             }
         }
     }
@@ -330,11 +453,25 @@ fun RearWallpaperManagerScreen(
             TopAppBar(
                 modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
                 color = Color.Transparent,
-                title = stringResource(R.string.rear_wallpaper_manager),
+                title = stringResource(
+                    if (activePage == RearWallpaperPage.MANAGEMENT) {
+                        R.string.rear_wallpaper_manage_title
+                    } else {
+                        R.string.rear_wallpaper_manager
+                    }
+                ),
                 navigationIconPadding = 12.dp,
                 actionIconPadding = 12.dp,
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(
+                        onClick = {
+                            if (activePage == RearWallpaperPage.MANAGEMENT) {
+                                activePage = RearWallpaperPage.ROTATION
+                            } else {
+                                onBack()
+                            }
+                        },
+                    ) {
                         Icon(
                             modifier = Modifier.graphicsLayer {
                                 if (layoutDirection == LayoutDirection.Rtl) scaleX = -1f
@@ -345,13 +482,15 @@ fun RearWallpaperManagerScreen(
                     }
                 },
                 actions = {
-                    IconButton(
-                        onClick = { clearAllRotatingWallpapers() },
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Delete,
-                            contentDescription = stringResource(R.string.rear_wallpaper_clear_schedule),
-                        )
+                    if (activePage == RearWallpaperPage.ROTATION) {
+                        IconButton(
+                            onClick = { clearAllRotatingWallpapers() },
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Delete,
+                                contentDescription = stringResource(R.string.rear_wallpaper_clear_schedule),
+                            )
+                        }
                     }
                     IconButton(
                         onClick = { if (!refreshing) refreshCatalog(showSuccessToast = true) },
@@ -363,7 +502,24 @@ fun RearWallpaperManagerScreen(
             )
         },
     ) { paddingValues ->
-        Box(
+        if (activePage == RearWallpaperPage.MANAGEMENT) {
+            RearWallpaperManagementContent(
+                paddingValues = paddingValues,
+                scrollBehavior = scrollBehavior,
+                hazeState = hazeState,
+                wallpapers = wallpapers,
+                currentWallpaperId = currentWallpaperId,
+                loading = loading,
+                refreshing = refreshing,
+                onRefresh = { if (!refreshing) refreshCatalog(showSuccessToast = true) },
+                onSetCurrent = ::switchWallpaper,
+                onImport = ::importWallpaperPackage,
+                onUpdateMetadata = ::updateWallpaperMetadata,
+                onGeneratePreview = ::generateWallpaperPreview,
+                onDelete = ::deleteWallpaper,
+            )
+        } else {
+            Box(
             modifier = Modifier
                 .fillMaxSize()
                 .onGloballyPositioned { coordinates ->
@@ -405,7 +561,7 @@ fun RearWallpaperManagerScreen(
                                                     WallpaperPickerMode.ADD_TO_SCHEDULE
                                             },
                                             colors = ButtonDefaults.buttonColorsPrimary(),
-                                            modifier = Modifier.fillMaxWidth(),
+                                            modifier = Modifier.weight(1f),
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Filled.Add,
@@ -413,6 +569,14 @@ fun RearWallpaperManagerScreen(
                                                 modifier = Modifier.padding(end = 6.dp),
                                             )
                                             Text(stringResource(R.string.rear_wallpaper_add_sheet_trigger))
+                                        }
+                                        Button(
+                                            onClick = {
+                                                activePage = RearWallpaperPage.MANAGEMENT
+                                            },
+                                            modifier = Modifier.weight(1f),
+                                        ) {
+                                            Text(stringResource(R.string.rear_wallpaper_manage_title))
                                         }
                                     }
                                 },
@@ -681,6 +845,7 @@ fun RearWallpaperManagerScreen(
                     },
                 )
             }
+        }
         }
     }
 

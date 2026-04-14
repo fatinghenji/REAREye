@@ -4,6 +4,12 @@ import com.highcapable.yukihookapi.hook.log.YLog
 import org.luckypray.dexkit.DexKitBridge
 
 private const val DEX_KIT_CACHE_SEPARATOR = ";;"
+private const val DEX_KIT_MEMBER_SEPARATOR = "::"
+
+internal data class DexKitMethodInjectionPoint(
+    val className: String,
+    val methodName: String,
+)
 
 internal inline fun resolveDexKitInjectionPoint(
     bridge: DexKitBridge,
@@ -25,6 +31,25 @@ internal inline fun resolveDexKitInjectionPoint(
     return resolved
 }
 
+internal inline fun resolveDexKitMethodInjectionPoint(
+    bridge: DexKitBridge,
+    cacheKey: String,
+    packageVersionCode: Long,
+    readCache: (String) -> String?,
+    writeCache: (String, String) -> Unit,
+    finder: DexKitBridge.() -> DexKitMethodInjectionPoint?,
+): DexKitMethodInjectionPoint? {
+    return resolveDexKitInjectionPoint(
+        bridge = bridge,
+        cacheKey = cacheKey,
+        packageVersionCode = packageVersionCode,
+        readCache = readCache,
+        writeCache = writeCache,
+    ) {
+        finder()?.encode()
+    }?.decodeDexKitMethodInjectionPoint()
+}
+
 private fun decodeDexKitInjectionCache(raw: String?, expectedVersionCode: Long): String? {
     val normalized = raw?.trim().orEmpty()
     if (normalized.isEmpty()) return null
@@ -41,4 +66,17 @@ private fun decodeDexKitInjectionCache(raw: String?, expectedVersionCode: Long):
 
 private fun encodeDexKitInjectionCache(versionCode: Long, point: String): String {
     return "$versionCode$DEX_KIT_CACHE_SEPARATOR$point"
+}
+
+private fun DexKitMethodInjectionPoint.encode(): String {
+    return "$className$DEX_KIT_MEMBER_SEPARATOR$methodName"
+}
+
+private fun String.decodeDexKitMethodInjectionPoint(): DexKitMethodInjectionPoint? {
+    val separatorIndex = indexOf(DEX_KIT_MEMBER_SEPARATOR)
+    if (separatorIndex <= 0) return null
+    val className = substring(0, separatorIndex).trim()
+    val methodName = substring(separatorIndex + DEX_KIT_MEMBER_SEPARATOR.length).trim()
+    if (className.isEmpty() || methodName.isEmpty()) return null
+    return DexKitMethodInjectionPoint(className, methodName)
 }
