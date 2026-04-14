@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -155,7 +156,10 @@ fun CardManagerScreen(
     }
 
     fun persist() {
-        RearWidgetManagerRepository.saveCards(context, prefsManager, cards.toList())
+        val nextCards = cards.toList()
+        scope.launch(Dispatchers.IO) {
+            RearWidgetManagerRepository.saveCards(context, prefsManager, nextCards)
+        }
     }
 
     fun openCreateDialog() {
@@ -219,18 +223,29 @@ fun CardManagerScreen(
         return
     }
 
-    LaunchedEffect(cardsLoaded, cards.toList(), businesses.toList(), runtimeRefreshTick) {
+    val normalizedBusinessSourceByName by remember {
+        derivedStateOf {
+            businesses.associate { normalizeTemplateBusinessName(it.business) to it.filePath }
+        }
+    }
+    val availabilityProbeBusinesses by remember {
+        derivedStateOf {
+            cards.map { normalizeTemplateBusinessName(it.business.trim()) }
+                .filter { it.isNotBlank() }
+                .distinct()
+        }
+    }
+
+    LaunchedEffect(
+        cardsLoaded,
+        runtimeRefreshTick,
+        availabilityProbeBusinesses,
+        normalizedBusinessSourceByName,
+    ) {
         if (!cardsLoaded) return@LaunchedEffect
-        val businessSourceByName = businesses.associate { it.business to it.filePath }
-        val uniqueBusinesses = cards.map { it.business.trim() }
-            .filter { it.isNotBlank() }
-            .map(::normalizeTemplateBusinessName)
-            .distinct()
         val availability = linkedMapOf<String, Boolean>()
-        uniqueBusinesses.forEach { business ->
-            val sourcePath = businessSourceByName.entries.firstOrNull {
-                it.key == business || normalizeTemplateBusinessName(it.key) == business
-            }?.value.orEmpty()
+        availabilityProbeBusinesses.forEach { business ->
+            val sourcePath = normalizedBusinessSourceByName[business].orEmpty()
 
             var editableCount: Int
             var available = false

@@ -14,6 +14,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -207,8 +209,8 @@ fun WidgetTemplateConfigScreenContent(
             }
         },
         onReset = { onSave(null) },
-        editorContent = { schemaValue, configValue ->
-            WidgetTemplateEditorContent(
+        editorItems = { schemaValue, configValue ->
+            widgetTemplateEditorItems(
                 business = business,
                 cardStorageKey = cardStorageKey,
                 schema = schemaValue,
@@ -219,31 +221,28 @@ fun WidgetTemplateConfigScreenContent(
     )
 }
 
-@Composable
-private fun WidgetTemplateEditorContent(
+private fun LazyListScope.widgetTemplateEditorItems(
     business: String,
     cardStorageKey: String,
     schema: WidgetTemplateSchema,
     workingConfig: RearWidgetOneConfig,
     onConfigChange: (RearWidgetOneConfig) -> Unit,
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        schema.groupItems().forEach { (_, items) ->
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    items.forEach { field ->
-                        WidgetTemplateFieldEditor(
-                            field = field,
-                            business = business,
-                            cardStorageKey = cardStorageKey,
-                            templateSourcePath = schema.sourcePath,
-                            config = workingConfig,
-                            onConfigChange = onConfigChange,
-                        )
-                    }
+    schema.groupItems().forEachIndexed { groupIndex, (_, items) ->
+        items.forEachIndexed { fieldIndex, field ->
+            item(
+                key = "template_field_${groupIndex}_${fieldIndex}_${field.name}_${field.tagName}",
+                contentType = "template_field",
+            ) {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    WidgetTemplateFieldEditor(
+                        field = field,
+                        business = business,
+                        cardStorageKey = cardStorageKey,
+                        templateSourcePath = schema.sourcePath,
+                        config = workingConfig,
+                        onConfigChange = onConfigChange,
+                    )
                 }
             }
         }
@@ -507,67 +506,74 @@ private fun RangeFieldEditor(
         return
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        TemplateSectionHeader(
-            title = field.resolvedTitle(),
-            summary = stringResource(R.string.rear_widget_card_template_range_summary, current),
-            modifier = Modifier.padding(bottom = 2.dp),
-            insideMargin = PaddingValues(vertical = 10.dp),
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val compactWidth = maxWidth < 360.dp
+        val contentHorizontalPadding = if (compactWidth) 12.dp else 16.dp
+        val sliderHorizontalPadding = if (compactWidth) 8.dp else 12.dp
+        val previewFontSize = if (compactWidth) current.coerceAtMost(34).sp else current.sp
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = contentHorizontalPadding, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(
-                text = field.from.toString(),
-                style = MiuixTheme.textStyles.body2,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            TemplateSectionHeader(
+                title = field.resolvedTitle(),
+                summary = stringResource(R.string.rear_widget_card_template_range_summary, current),
+                modifier = Modifier.padding(bottom = 2.dp),
+                insideMargin = PaddingValues(vertical = 10.dp),
             )
-            Slider(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 12.dp),
-                value = current.toFloat(),
-                onValueChange = { next ->
-                    val normalized = next.roundToInt().coerceIn(field.from, rangeEnd)
-                    val nextConfig = when (field.tagName) {
-                        "FontSize" -> config.putTextSizeValue(field.name, normalized)
-                        "Align" -> config.putAlignValue(field.name, normalized)
-                        else -> config.putSeekBarValue(field.name, normalized)
-                    }
-                    onConfigChange(nextConfig)
-                },
-                valueRange = field.from.toFloat()..rangeEnd.toFloat(),
-                steps = (rangeEnd - field.from - 1).coerceAtLeast(0),
-            )
-            Text(
-                text = rangeEnd.toString(),
-                style = MiuixTheme.textStyles.body2,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            )
-        }
-        if (field.tagName == "FontSize" || (field.tagName == "SeekBar" && field.uiType == 1)) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = field.from.toString(),
+                    style = MiuixTheme.textStyles.body2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+                Slider(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.rear_widget_card_template_font_preview_title),
-                        style = MiuixTheme.textStyles.body2,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
-                    Text(
-                        text = stringResource(R.string.rear_widget_card_template_font_preview_text),
-                        fontSize = current.sp,
-                    )
+                        .weight(1f)
+                        .padding(horizontal = sliderHorizontalPadding),
+                    value = current.toFloat(),
+                    onValueChange = { next ->
+                        val normalized = next.roundToInt().coerceIn(field.from, rangeEnd)
+                        val nextConfig = when (field.tagName) {
+                            "FontSize" -> config.putTextSizeValue(field.name, normalized)
+                            "Align" -> config.putAlignValue(field.name, normalized)
+                            else -> config.putSeekBarValue(field.name, normalized)
+                        }
+                        onConfigChange(nextConfig)
+                    },
+                    valueRange = field.from.toFloat()..rangeEnd.toFloat(),
+                    steps = (rangeEnd - field.from - 1).coerceAtLeast(0),
+                )
+                Text(
+                    text = rangeEnd.toString(),
+                    style = MiuixTheme.textStyles.body2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+            }
+            if (field.tagName == "FontSize" || (field.tagName == "SeekBar" && field.uiType == 1)) {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = contentHorizontalPadding, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.rear_widget_card_template_font_preview_title),
+                            style = MiuixTheme.textStyles.body2,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                        Text(
+                            text = stringResource(R.string.rear_widget_card_template_font_preview_text),
+                            fontSize = previewFontSize,
+                        )
+                    }
                 }
             }
         }

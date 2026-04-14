@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.runtime.Composable
@@ -50,7 +51,7 @@ fun <TSchema, TConfig> TemplateVarConfigScreenScaffold(
     onBack: () -> Unit,
     onConfirm: () -> Unit,
     onReset: () -> Unit,
-    editorContent: @Composable (TSchema, TConfig) -> Unit,
+    editorItems: LazyListScope.(TSchema, TConfig) -> Unit,
 ) {
     val scrollBehavior = MiuixScrollBehavior()
     val hazeState = rememberAcrylicHazeState()
@@ -122,14 +123,12 @@ fun <TSchema, TConfig> TemplateVarConfigScreenScaffold(
                         .padding(horizontal = 12.dp),
                     contentPadding = PaddingValues(
                         top = paddingValues.calculateTopPadding() + 12.dp,
-                        bottom = paddingValues.calculateBottomPadding() + 12.dp,
+                        bottom = paddingValues.calculateBottomPadding() + 28.dp,
                     ),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     overscrollEffect = null,
                 ) {
-                    item {
-                        editorContent(schema, config)
-                    }
+                    editorItems(schema, config)
                     item {
                         Column(
                             modifier = Modifier.fillMaxWidth(),

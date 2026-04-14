@@ -3,7 +3,6 @@ package hk.uwu.reareye.ui.components.config
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -39,9 +38,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -116,11 +115,6 @@ data class AppItem(
 private data class AppCatalog(
     val byLabel: List<AppItem>,
     val byPackage: List<AppItem>,
-)
-
-private val appRowPlacementSpec = spring<Float>(
-    dampingRatio = 0.92f,
-    stiffness = 520f,
 )
 
 private fun buildAppCatalog(packageManager: PackageManager): AppCatalog {
@@ -266,22 +260,12 @@ private fun AppSelectorRow(
     appItem: AppItem,
     packageManager: PackageManager,
     selected: Boolean,
-    currentIndex: Int,
-    averageItemHeightPx: Float,
     onToggle: () -> Unit,
 ) {
     val density = LocalDensity.current
     val primaryColor = MiuixTheme.colorScheme.primary
-    var previousIndex by remember(appItem.packageName) { mutableStateOf(currentIndex) }
-    val placementOffset = remember(appItem.packageName) { mutableFloatStateOf(0f) }
-    val animatedPlacementOffset by animateFloatAsState(
-        targetValue = placementOffset.floatValue,
-        animationSpec = appRowPlacementSpec,
-        label = "AppRowPlacementOffset",
-    )
     val selectionStyleState = remember(appItem.packageName) { MutableStyleState(null) }
     selectionStyleState.isSelected = selected
-    val placementStyle = Style { translationY(animatedPlacementOffset) }
     val overlayShape = remember { RoundedCornerShape(20.dp) }
     val selectionOverlayStyle = remember(primaryColor, overlayShape) {
         Style {
@@ -337,21 +321,9 @@ private fun AppSelectorRow(
         }
     }
 
-    LaunchedEffect(currentIndex, averageItemHeightPx) {
-        if (previousIndex == currentIndex) {
-            return@LaunchedEffect
-        }
-
-        placementOffset.floatValue = (previousIndex - currentIndex) * averageItemHeightPx
-        previousIndex = currentIndex
-        withFrameNanos { }
-        placementOffset.floatValue = 0f
-    }
-
     Card(
         modifier = Modifier
             .padding(top = 10.dp)
-            .styleable(selectionStyleState, placementStyle)
             .fillMaxWidth(),
         insideMargin = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
         onClick = onToggle,
@@ -567,7 +539,7 @@ fun AppListSelectorScreen(
     val context = LocalContext.current
     val pm = context.packageManager
     val layoutDirection = LocalLayoutDirection.current
-    val density = LocalDensity.current
+    LocalDensity.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val popupScope = rememberCoroutineScope()
@@ -622,7 +594,8 @@ fun AppListSelectorScreen(
     val selectedLookup = remember(selectedOrderSnapshot) {
         selectedOrderSnapshot.toHashSet()
     }
-    val filteredApps by remember(
+    val filteredApps by produceState(
+        initialValue = emptyList<AppItem>(),
         appCatalog,
         showSystemApps,
         searchQuery,
@@ -630,28 +603,19 @@ fun AppListSelectorScreen(
         sortMode,
         reverseOrder,
     ) {
-        derivedStateOf {
-            appCatalog?.buildVisibleApps(
+        val catalog = appCatalog
+        if (catalog == null) {
+            value = emptyList()
+            return@produceState
+        }
+        value = withContext(Dispatchers.Default) {
+            catalog.buildVisibleApps(
                 sortMode = sortMode,
                 reverseOrder = reverseOrder,
                 showSystemApps = showSystemApps,
                 query = searchQuery,
                 selectedOrder = selectedOrderSnapshot,
-            ) ?: emptyList()
-        }
-    }
-    val indexMap = remember(filteredApps) {
-        filteredApps.mapIndexed { index, appItem -> appItem.packageName to index }.toMap()
-    }
-    val averageItemHeightPx by remember(listState, density) {
-        derivedStateOf {
-            listState.layoutInfo.visibleItemsInfo
-                .takeIf { it.isNotEmpty() }
-                ?.map { it.size }
-                ?.average()
-                ?.toFloat()
-                ?.takeIf { it > 0f }
-                ?: with(density) { 82.dp.toPx() }
+            )
         }
     }
     val dismissThenApply = remember(popupScope) {
@@ -913,13 +877,10 @@ fun AppListSelectorScreen(
                 }
             } else {
                 items(filteredApps, key = { it.packageName }) { appItem ->
-                    val currentIndex = indexMap.getValue(appItem.packageName)
                     AppSelectorRow(
                         appItem = appItem,
                         packageManager = pm,
                         selected = appItem.packageName in selectedLookup,
-                        currentIndex = currentIndex,
-                        averageItemHeightPx = averageItemHeightPx,
                         onToggle = { selectedOrder.toggleSelection(appItem.packageName) },
                     )
                 }
