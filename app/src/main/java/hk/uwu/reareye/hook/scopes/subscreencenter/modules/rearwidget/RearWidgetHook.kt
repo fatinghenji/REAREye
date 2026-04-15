@@ -13,6 +13,7 @@ import android.graphics.BitmapFactory
 import android.os.Binder
 import android.os.Bundle
 import android.os.Handler
+import android.os.Looper
 import android.os.Process
 import android.util.Base64
 import android.view.View
@@ -22,6 +23,10 @@ import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.hook.utils.DexKitMethodInjectionPoint
+import hk.uwu.reareye.hook.utils.resolveDexKitInjectionPoint
+import hk.uwu.reareye.hook.utils.resolveDexKitMethodInjectionPoint
+import hk.uwu.reareye.hook.utils.resolveHookPackageVersionCode
 import hk.uwu.reareye.repository.rearwidget.REAR_WIDGET_CARD_ONE_CONFIG_JSON_KEY
 import hk.uwu.reareye.repository.rearwidget.RearBusinessExtraConfigRepository.getShowTimeTipForBusiness
 import hk.uwu.reareye.repository.rearwidget.RearWidgetConfigCodec
@@ -36,8 +41,11 @@ import hk.uwu.reareye.widgetapi.RearWidgetNoticeOptions
 import hk.uwu.reareye.widgetapi.RearWidgetNoticeTicket
 import hk.uwu.reareye.widgetapi.RearWidgetTemplateConfigState
 import hk.uwu.reareye.widgetapi.RearWidgetTemplateImagePreview
+import org.luckypray.dexkit.DexKitBridge
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.lang.reflect.Modifier
+import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -51,8 +59,48 @@ class RearWidgetHook : YukiBaseHooker() {
         val ejectBusiness: Pair<String, String>? = null,
     )
 
+    private data class PostRunnableSnapshot(
+        val owner: Any?,
+        val packageName: String,
+        val extras: Bundle,
+    )
+
     companion object {
         private const val TAG = "REAREye-RearWidget"
+        private const val PERSISTENCE_MANAGER_CLASS_CACHE_KEY =
+            "SSC_PERSISTENCE_MANAGER_CLASS"
+        private const val SMART_ASSISTANT_POST_RUNNABLE_CLASS_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_POST_RUNNABLE_CLASS"
+        private const val SMART_ASSISTANT_MANAGER_HANDLER_FIELD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_MANAGER_HANDLER_FIELD"
+        private const val SMART_ASSISTANT_MANAGER_ALLOWED_MAP_FIELD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_MANAGER_ALLOWED_MAP_FIELD"
+        private const val SMART_ASSISTANT_MANAGER_ALLOWED_SET_FIELD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_MANAGER_ALLOWED_SET_FIELD"
+        private const val SMART_ASSISTANT_WIDGET_SPEC_BUSINESS_FIELD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_WIDGET_SPEC_BUSINESS_FIELD"
+        private const val SMART_ASSISTANT_MANAGER_INIT_METHOD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_MANAGER_INIT_METHOD"
+        private const val SMART_ASSISTANT_MANAGER_REFRESH_METHOD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_MANAGER_REFRESH_METHOD"
+        private const val SMART_ASSISTANT_MANAGER_REMOVE_NOTIFICATION_METHOD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_MANAGER_REMOVE_NOTIFICATION_METHOD"
+        private const val SMART_ASSISTANT_MANAGER_REMOVE_BUSINESS_METHOD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_MANAGER_REMOVE_BUSINESS_METHOD"
+        private const val SMART_ASSISTANT_PARSE_WIDGET_METHOD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_PARSE_WIDGET_METHOD"
+        private const val SMART_ASSISTANT_RESOLVE_PATH_METHOD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_RESOLVE_PATH_METHOD"
+        private const val SMART_ASSISTANT_ALLOW_APP_METHOD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_ALLOW_APP_METHOD"
+        private const val SMART_ASSISTANT_DECORATE_EXTRAS_METHOD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_DECORATE_EXTRAS_METHOD"
+        private const val SMART_ASSISTANT_PARSE_PARAMS_METHOD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_PARSE_PARAMS_METHOD"
+        private const val SMART_ASSISTANT_BUILTIN_SUPPORT_METHOD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_BUILTIN_SUPPORT_METHOD"
+        private const val NOTIFICATION_WIDGET_APPLY_METHOD_CACHE_KEY =
+            "SSC_NOTIFICATION_WIDGET_APPLY_METHOD"
         private const val TEMPLATE_BASE =
             "/data/system/theme_magic/users/%s/subscreencenter/smart_assistant"
         private const val CARD_CONFIG_BASE =
@@ -99,6 +147,11 @@ class RearWidgetHook : YukiBaseHooker() {
     private var manager: Any? = null
     private var mainHandler: Handler? = null
     private var hostContext: Context? = null
+    private var dexKitBridge: DexKitBridge? = null
+    private var dexKitVersionCode: Long = 0L
+    private var dexKitReadCache: ((String) -> String?)? = null
+    private var dexKitWriteCache: ((String, String) -> Unit)? = null
+    private val postRunnableSnapshots = WeakHashMap<Any, PostRunnableSnapshot>()
 
     override fun onHook() {
         loadApp("com.xiaomi.subscreencenter") {
@@ -106,12 +159,16 @@ class RearWidgetHook : YukiBaseHooker() {
             RearWidgetRuntimeStore.install(packageName)
             debugLog("onHook start")
 
+            val bridge = DexKitBridge.create(this.appInfo.sourceDir)
+            dexKitBridge = bridge
+            dexKitVersionCode = resolveHookPackageVersionCode(
+                context = systemContext,
+                packageName = appInfo.packageName,
+                sourceDir = appInfo.sourceDir,
+            )
+
             val appRef = "com.xiaomi.subscreencenter.SubScreenCenterApp".toClass().resolve()
-            val d0Ref = "Z1.d0".toClass().resolve()
-            val persistenceRef = "H.d".toClass().resolve()
-            val p2cRef = "p2.c".toClass().resolve()
-            val z1mRef = "Z1.m".toClass().resolve()
-            val t2jRef = "t2.j".toClass().resolve()
+
 
             appRef.firstMethod {
                 name = "attachBaseContext"
@@ -123,111 +180,691 @@ class RearWidgetHook : YukiBaseHooker() {
                 debugLog("attachBaseContext applied runtime maps and waiting for preset release")
             }
 
-            persistenceRef.firstConstructor {
-                parameterCount = 0
-            }.hook().after {
-                schedulePostPresetBootstrap(instance)
-                debugLog("PersistenceManager created, scheduled custom widget restore after preset release")
-            }
+            onAppLifecycle {
+                onCreate {
+                    val nativePrefs = prefs.native()
+                    dexKitReadCache = { key -> nativePrefs.getString(key) }
+                    dexKitWriteCache =
+                        { key, value -> nativePrefs.edit().putString(key, value).apply() }
+                    val managerInitPoint = resolveSmartAssistantManagerInitMethod()
+                    val managerRefreshPoint = resolveSmartAssistantManagerRefreshMethod()
+                    val parseWidgetPoint = resolveSmartAssistantParseWidgetMethod()
+                    val resolvePathPoint = resolveSmartAssistantResolvePathMethod()
+                    val allowAppPoint = resolveSmartAssistantAllowAppMethod()
+                    val decorateExtrasPoint = resolveSmartAssistantDecorateExtrasMethod()
+                    val widgetApplyPoint = resolveNotificationWidgetApplyMethod()
+                    resolveSmartAssistantManagerHandlerFieldName()
+                    resolveSmartAssistantManagerAllowedMapFieldName()
+                    resolveSmartAssistantManagerAllowedSetFieldName()
+                    resolveSmartAssistantWidgetSpecBusinessFieldName()
+                    val managerRef = managerInitPoint.className.toClass().resolve()
+                    val persistenceRef = resolvePersistenceManagerClassName().toClass().resolve()
+                    val postRunnableRef =
+                        resolveSmartAssistantPostRunnableClassName().toClass().resolve()
 
-            d0Ref.firstMethod {
-                name = "l"
-                parameterCount = 1
-            }.hook().after {
-                val oldManager = manager
-                manager = instance
-                mainHandler = runCatching {
-                    d0Ref.firstField { name = "E" }.get() as? Handler
-                }.getOrNull()
-                val managerChanged = oldManager !== manager
-                if (managerChanged) {
-                    managerEpoch.incrementAndGet()
-                    injectedCardSignatureCache.clear()
-                    injectedCompositeAt.clear()
+                    persistenceRef.firstConstructor {
+                        parameterCount = 0
+                    }.hook().after {
+                        schedulePostPresetBootstrap()
+                        debugLog("PersistenceManager created, scheduled custom widget restore after preset release")
+                    }
+
+                    managerRef.firstMethod {
+                        name = managerInitPoint.methodName
+                        parameterCount = 1
+                    }.hook().after {
+                        val oldManager = manager
+                        manager = instance
+                        mainHandler = runCatching {
+                            managerRef.firstField {
+                                name = resolveSmartAssistantManagerHandlerFieldName()
+                            }.get() as? Handler
+                        }.getOrNull()
+                        val managerChanged = oldManager !== manager
+                        if (managerChanged) {
+                            managerEpoch.incrementAndGet()
+                            injectedCardSignatureCache.clear()
+                            injectedCompositeAt.clear()
+                        }
+
+                        if (!managerChanged && startupBootstrapped.get()) {
+                            applyRuntimeMaps(force = true)
+                            patchManagerAppGates(manager)
+                            scheduleInjectAllActiveNotices()
+                            debugLog("captured manager unchanged, skip bootstrap and reinject active notices")
+                            return@after
+                        }
+
+                        val bootOk = bootstrapFromPrefsOnInit(force = false)
+                        if (!bootOk) scheduleBootstrapRetry()
+                        applyRuntimeMaps(force = true)
+                        patchManagerAppGates(manager)
+                        scheduleInjectAllActiveNotices()
+                        debugLog("captured manager=${manager != null}, handler=${mainHandler != null}")
+                    }
+
+                    managerRefreshPoint.className.toClass().resolve().firstMethod {
+                        name = managerRefreshPoint.methodName
+                        parameterCount = 1
+                    }.hook().after {
+                        patchManagerAppGates(instance)
+                    }
+
+                    parseWidgetPoint.className.toClass().resolve().firstMethod {
+                        name = parseWidgetPoint.methodName
+                        parameterCount = 2
+                    }.hook().after {
+                        val pkg = args[0] as? String ?: return@after
+                        if (result != null) return@after
+                        val biz = RearWidgetRuntimeStore.fallbackBusiness(pkg) ?: return@after
+                        result = createU0b(biz, 0, 600)
+                        debugLog("smart assistant parse fallback pkg=$pkg -> business=$biz")
+                    }
+
+                    resolvePathPoint.className.toClass().resolve().firstMethod {
+                        name = resolvePathPoint.methodName
+                        parameterCount = 2
+                    }.hook().after {
+                        val pkg = args[0] as? String ?: return@after
+                        val biz = args[1] as? String ?: return@after
+                        // business 文件映射是全局覆盖 只要注册了该 business 文件 就覆盖系统内置路径
+                        val path = RearWidgetRuntimeStore.getBusinessFile(biz) ?: return@after
+                        result = path
+                        debugLog("smart assistant override path pkg=$pkg biz=$biz path=$path")
+                    }
+
+                    allowAppPoint.className.toClass().resolve().firstMethod {
+                        name = allowAppPoint.methodName
+                        parameterCount = 3
+                    }.hook().before {
+                        val pkg = args[0] as? String ?: return@before
+                        if (RearWidgetRuntimeStore.allPkgBusinesses().containsKey(pkg)) {
+                            result = true
+                            debugLog("smart assistant allow force pass pkg=$pkg")
+                        }
+                    }
+
+                    postRunnableRef.firstMethod {
+                        name = "run"
+                        parameterCount = 0
+                    }.hook().before {
+                        allowSelfDescribedNotificationPackage(instance)
+                    }
+
+                    postRunnableRef.firstConstructor {
+                        parameterCount = 5
+                    }.hook().after {
+                        val packageName = args.getOrNull(2) as? String ?: return@after
+                        val extras = args.getOrNull(4) as? Bundle ?: return@after
+                        synchronized(postRunnableSnapshots) {
+                            postRunnableSnapshots[instance] = PostRunnableSnapshot(
+                                owner = args.getOrNull(0),
+                                packageName = packageName,
+                                extras = Bundle(extras),
+                            )
+                        }
+                    }
+
+                    widgetApplyPoint.className.toClass().resolve().firstMethod {
+                        name = widgetApplyPoint.methodName
+                        parameterCount = 1
+                    }.hook().after {
+                        applyCardOneConfig(
+                            instance,
+                            args.getOrNull(0),
+                            "notificationWidget.${widgetApplyPoint.methodName}"
+                        )
+                    }
+
+                    decorateExtrasPoint.className.toClass().resolve().firstMethod {
+                        name = decorateExtrasPoint.methodName
+                        parameterCount = 10
+                    }.hook().after {
+                        applyRuntimeMaps(force = false)
+                        val out = result as? Bundle ?: return@after
+                        val key = out.getString("composite_key") ?: (args.getOrNull(1) as? String)
+                        val notice =
+                            key?.let { RearWidgetRuntimeStore.getNotice(it) } ?: return@after
+                        out.putAll(RearWidgetRuntimeStore.buildDecoratedExtras(notice.ticket))
+                    }
                 }
-
-                if (!managerChanged && startupBootstrapped.get()) {
-                    applyRuntimeMaps(force = true)
-                    patchManagerAppGates(manager)
-                    scheduleInjectAllActiveNotices()
-                    debugLog("captured manager unchanged, skip bootstrap and reinject active notices")
-                    return@after
-                }
-
-                val bootOk = bootstrapFromPrefsOnInit(force = false)
-                if (!bootOk) scheduleBootstrapRetry()
-                applyRuntimeMaps(force = true)
-                patchManagerAppGates(manager)
-                scheduleInjectAllActiveNotices()
-                debugLog("captured manager=${manager != null}, handler=${mainHandler != null}")
-            }
-
-            d0Ref.firstMethod {
-                name = "o"
-                parameterCount = 1
-            }.hook().after {
-                patchManagerAppGates(instance)
-            }
-
-            p2cRef.firstMethod {
-                name = "r"
-                parameterCount = 2
-            }.hook().after {
-                val pkg = args[0] as? String ?: return@after
-                if (result != null) return@after
-                val biz = RearWidgetRuntimeStore.fallbackBusiness(pkg) ?: return@after
-                result = createU0b(biz, 0, 600)
-                debugLog("p2.c.r fallback pkg=$pkg -> business=$biz")
-            }
-
-            p2cRef.firstMethod {
-                name = "i"
-                parameterCount = 2
-            }.hook().after {
-                val pkg = args[0] as? String ?: return@after
-                val biz = args[1] as? String ?: return@after
-                // business 文件映射是全局覆盖 只要注册了该 business 文件 就覆盖系统内置路径
-                val path = RearWidgetRuntimeStore.getBusinessFile(biz) ?: return@after
-                result = path
-                debugLog("p2.c.i override path pkg=$pkg biz=$biz path=$path")
-            }
-
-            p2cRef.firstMethod {
-                name = "k"
-                parameterCount = 3
-            }.hook().before {
-                val pkg = args[0] as? String ?: return@before
-                if (RearWidgetRuntimeStore.allPkgBusinesses().containsKey(pkg)) {
-                    result = true
-                    debugLog("p2.c.k force pass pkg=$pkg")
-                }
-            }
-
-            z1mRef.firstMethod {
-                name = "run"
-                parameterCount = 0
-            }.hook().before {
-                allowSelfDescribedNotificationPackage(instance)
-            }
-
-            t2jRef.firstMethod {
-                name = "J"
-                parameterCount = 1
-            }.hook().after {
-                applyCardOneConfig(instance, args.getOrNull(0), "t2.j.J")
-            }
-
-            p2cRef.firstMethod {
-                name = "s"
-                parameterCount = 10
-            }.hook().after {
-                applyRuntimeMaps(force = false)
-                val out = result as? Bundle ?: return@after
-                val key = out.getString("composite_key") ?: (args.getOrNull(1) as? String)
-                val notice = key?.let { RearWidgetRuntimeStore.getNotice(it) } ?: return@after
-                out.putAll(RearWidgetRuntimeStore.buildDecoratedExtras(notice.ticket))
             }
         }
+    }
+
+    private inline fun resolveCachedMethodPoint(
+        cacheKey: String,
+        fallbackClass: String,
+        fallbackMethod: String,
+        crossinline finder: DexKitBridge.() -> DexKitMethodInjectionPoint?,
+    ): DexKitMethodInjectionPoint {
+        val bridge = dexKitBridge ?: error("DexKit bridge is not ready for method cache=$cacheKey")
+        val readCache = dexKitReadCache
+            ?: {
+                YLog.warn("DexKit cache must be initialized in onCreate before resolving methods")
+                null
+            }
+        val writeCache = dexKitWriteCache
+            ?: { _, _ ->
+                YLog.warn("DexKit cache must be initialized in onCreate before resolving methods")
+            }
+        val point = resolveDexKitMethodInjectionPoint(
+            bridge = bridge,
+            cacheKey = cacheKey,
+            packageVersionCode = dexKitVersionCode,
+            readCache = readCache,
+            writeCache = writeCache,
+        ) {
+            finder()
+        } ?: DexKitMethodInjectionPoint(fallbackClass, fallbackMethod)
+        require(point.className.isNotBlank() && point.methodName.isNotBlank()) {
+            "DexKit failed to resolve method cache=$cacheKey"
+        }
+        return point
+    }
+
+    private inline fun resolveCachedClassName(
+        cacheKey: String,
+        fallbackClass: String,
+        crossinline finder: DexKitBridge.() -> String?,
+    ): String {
+        val bridge = dexKitBridge ?: error("DexKit bridge is not ready for class cache=$cacheKey")
+        val readCache = dexKitReadCache
+            ?: error("DexKit cache must be initialized in onCreate before resolving classes")
+        val writeCache = dexKitWriteCache
+            ?: error("DexKit cache must be initialized in onCreate before resolving classes")
+        val className = resolveDexKitInjectionPoint(
+            bridge = bridge,
+            cacheKey = cacheKey,
+            packageVersionCode = dexKitVersionCode,
+            readCache = readCache,
+            writeCache = writeCache,
+        ) {
+            finder()
+        } ?: fallbackClass
+        require(className.isNotBlank()) {
+            "DexKit failed to resolve class cache=$cacheKey"
+        }
+        return className
+    }
+
+    private inline fun resolveCachedFieldName(
+        cacheKey: String,
+        fallbackField: String,
+        crossinline finder: DexKitBridge.() -> String?,
+    ): String {
+        val bridge = dexKitBridge ?: error("DexKit bridge is not ready for field cache=$cacheKey")
+        val readCache = dexKitReadCache
+            ?: error("DexKit cache must be initialized in onCreate before resolving fields")
+        val writeCache = dexKitWriteCache
+            ?: error("DexKit cache must be initialized in onCreate before resolving fields")
+        val fieldName = resolveDexKitInjectionPoint(
+            bridge = bridge,
+            cacheKey = cacheKey,
+            packageVersionCode = dexKitVersionCode,
+            readCache = readCache,
+            writeCache = writeCache,
+        ) {
+            finder()
+        } ?: fallbackField
+        require(fieldName.isNotBlank()) {
+            "DexKit failed to resolve field cache=$cacheKey"
+        }
+        return fieldName
+    }
+
+    private fun resolvePersistenceManagerClassName(): String {
+        return resolveCachedClassName(
+            cacheKey = PERSISTENCE_MANAGER_CLASS_CACHE_KEY,
+            fallbackClass = "",
+        ) {
+            // Decompiled source anchor:
+            // .tmp-ref/decompiled-jadx/sources/H/d.java
+            // Original class in jadx: H.d (PersistenceManager)
+            findClass {
+                matcher {
+                    usingStrings(
+                        "PersistenceManager",
+                        "Widgets loaded success, widgets = ",
+                        "Save notification widgets to ",
+                    )
+                }
+            }.singleOrNull()?.name
+        }
+    }
+
+    private fun resolveSmartAssistantPostRunnableClassName(): String {
+        return resolveCachedClassName(
+            cacheKey = SMART_ASSISTANT_POST_RUNNABLE_CLASS_CACHE_KEY,
+            fallbackClass = "",
+        ) {
+            // Decompiled source anchor:
+            // .tmp-ref/decompiled-jadx/sources/Z1/m.java
+            // Original class in jadx: Z1.m (notification post runnable)
+            findClass {
+                matcher {
+                    usingStrings(
+                        "No valid params: %s",
+                        "Using compositeKey: %s (business: %s)",
+                        "Triggered upside-down check for business: %s, key: %s",
+                    )
+                }
+            }.singleOrNull()?.name
+        }
+    }
+
+    private fun resolveSmartAssistantManagerClassName(): String {
+        return resolveSmartAssistantManagerInitMethod().className
+    }
+
+    private fun resolveSmartAssistantUtilsClassName(): String {
+        return resolveSmartAssistantParseWidgetMethod().className
+    }
+
+    private fun resolveSmartAssistantConfigClassName(): String {
+        return resolveSmartAssistantBuiltinSupportMethod().className
+    }
+
+    private fun resolveSmartAssistantManagerHandlerFieldName(): String {
+        return resolveCachedFieldName(
+            cacheKey = SMART_ASSISTANT_MANAGER_HANDLER_FIELD_CACHE_KEY,
+            fallbackField = "",
+        ) {
+            val managerClass = resolveSmartAssistantManagerClassName()
+            findField {
+                searchPackages(managerClass.substringBeforeLast('.'))
+                matcher {
+                    declaredClass = managerClass
+                    modifiers = Modifier.PUBLIC or Modifier.STATIC or Modifier.FINAL
+                    type = "android.os.Handler"
+                }
+            }.singleOrNull()?.name
+        }
+    }
+
+    private fun resolveSmartAssistantManagerAllowedMapFieldName(): String {
+        return resolveCachedFieldName(
+            cacheKey = SMART_ASSISTANT_MANAGER_ALLOWED_MAP_FIELD_CACHE_KEY,
+            fallbackField = "",
+        ) {
+            val managerClass = resolveSmartAssistantManagerClassName()
+            val refreshPoint = resolveSmartAssistantManagerRefreshMethod()
+            findField {
+                searchPackages(managerClass.substringBeforeLast('.'))
+                matcher {
+                    declaredClass = managerClass
+                    type = "java.util.concurrent.ConcurrentHashMap"
+                    readMethods {
+                        add {
+                            declaredClass = refreshPoint.className
+                            name = refreshPoint.methodName
+                            paramTypes("boolean")
+                            returnType = "java.util.HashSet"
+                            usingStrings("Converted travel key: %s -> %s = %s")
+                        }
+                    }
+                }
+            }.singleOrNull()?.name
+        }
+    }
+
+    private fun resolveSmartAssistantManagerAllowedSetFieldName(): String {
+        return resolveCachedFieldName(
+            cacheKey = SMART_ASSISTANT_MANAGER_ALLOWED_SET_FIELD_CACHE_KEY,
+            fallbackField = "",
+        ) {
+            val managerClass = resolveSmartAssistantManagerClassName()
+            val refreshPoint = resolveSmartAssistantManagerRefreshMethod()
+            findField {
+                searchPackages(managerClass.substringBeforeLast('.'))
+                matcher {
+                    declaredClass = managerClass
+                    type = "java.util.concurrent.ConcurrentHashMap\$KeySetView"
+                    readMethods {
+                        add {
+                            declaredClass = refreshPoint.className
+                            name = refreshPoint.methodName
+                            paramTypes("boolean")
+                            returnType = "java.util.HashSet"
+                            usingStrings("Converted travel key: %s -> %s = %s")
+                        }
+                    }
+                }
+            }.singleOrNull()?.name
+        }
+    }
+
+    private fun resolveSmartAssistantWidgetSpecBusinessFieldName(): String {
+        return resolveCachedFieldName(
+            cacheKey = SMART_ASSISTANT_WIDGET_SPEC_BUSINESS_FIELD_CACHE_KEY,
+            fallbackField = "",
+        ) {
+            val specClass = resolveSmartAssistantWidgetSpecClassName()
+            YLog.debug(specClass)
+            findField {
+                searchPackages(specClass.substringBeforeLast('.'))
+                matcher {
+                    declaredClass = specClass
+                    type(Any::class.java)
+                }
+            }.singleOrNull()?.name
+        }
+    }
+
+    private fun resolveSmartAssistantWidgetSpecClassName(): String {
+        val point = resolveSmartAssistantParseWidgetMethod()
+        return runCatching {
+            point.className.toClass().resolve().firstMethod {
+                name = point.methodName
+                parameterCount = 2
+            }.self.returnType.name
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+            ?: error("DexKit failed to resolve smart assistant widget spec class")
+    }
+
+    private fun resolveSmartAssistantManagerInitMethod(): DexKitMethodInjectionPoint {
+        return resolveCachedMethodPoint(
+            cacheKey = SMART_ASSISTANT_MANAGER_INIT_METHOD_CACHE_KEY,
+            fallbackClass = "",
+            fallbackMethod = "",
+        ) {
+            // Decompiled source anchor:
+            // .tmp-ref/decompiled-vineflower/Z1/D0.java:1342
+            // Original method in jadx/vineflower: Z1.d0.l(Context)
+            findMethod {
+                matcher {
+                    paramTypes(Context::class.java)
+                    returnType = "void"
+                    usingStrings(
+                        "SmartAssistantManager initialized",
+                        "SmartAssistant not supported, skip manager initialization",
+                    )
+                }
+            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+        }
+    }
+
+    private fun resolveSmartAssistantManagerRefreshMethod(): DexKitMethodInjectionPoint {
+        return resolveCachedMethodPoint(
+            cacheKey = SMART_ASSISTANT_MANAGER_REFRESH_METHOD_CACHE_KEY,
+            fallbackClass = "",
+            fallbackMethod = "",
+        ) {
+            // Decompiled source anchor:
+            // .tmp-ref/decompiled-vineflower/Z1/D0.java:1513
+            // Original method in jadx/vineflower: Z1.d0.o(boolean)
+            findMethod {
+                matcher {
+                    declaredClass = resolveSmartAssistantManagerClassName()
+                    paramTypes("boolean")
+                    returnType = "java.util.HashSet"
+                    usingStrings("Converted travel key: %s -> %s = %s")
+                }
+            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+        }
+    }
+
+    private fun resolveSmartAssistantManagerRemoveNotificationMethod(): DexKitMethodInjectionPoint {
+        return resolveCachedMethodPoint(
+            cacheKey = SMART_ASSISTANT_MANAGER_REMOVE_NOTIFICATION_METHOD_CACHE_KEY,
+            fallbackClass = "",
+            fallbackMethod = "",
+        ) {
+            // Decompiled source anchor:
+            // .tmp-ref/decompiled-vineflower/Z1/D0.java:1730
+            // Original method in jadx/vineflower: Z1.d0.p(int, String, int)
+            findMethod {
+                matcher {
+                    declaredClass = resolveSmartAssistantManagerClassName()
+                    paramTypes("int", "java.lang.String", "int")
+                    returnType = "void"
+                    usingStrings("Widget not found for multi-business app: %s, ID: %d")
+                }
+            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+        }
+    }
+
+    private fun resolveSmartAssistantManagerRemoveBusinessMethod(): DexKitMethodInjectionPoint {
+        return resolveCachedMethodPoint(
+            cacheKey = SMART_ASSISTANT_MANAGER_REMOVE_BUSINESS_METHOD_CACHE_KEY,
+            fallbackClass = "",
+            fallbackMethod = "",
+        ) {
+            // Decompiled source anchor:
+            // .tmp-ref/decompiled-vineflower/Z1/D0.java:2007
+            // Original method in jadx/vineflower: Z1.d0.v(String, String)
+            findMethod {
+                matcher {
+                    declaredClass = resolveSmartAssistantManagerClassName()
+                    paramTypes(String::class.java, String::class.java)
+                    returnType = "void"
+                    usingStrings("Removing widgets for %s:%s")
+                }
+            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+        }
+    }
+
+    private fun resolveSmartAssistantParseWidgetMethod(): DexKitMethodInjectionPoint {
+        return resolveCachedMethodPoint(
+            cacheKey = SMART_ASSISTANT_PARSE_WIDGET_METHOD_CACHE_KEY,
+            fallbackClass = "",
+            fallbackMethod = "",
+        ) {
+            // Decompiled source anchor:
+            // .tmp-ref/decompiled-jadx/sources/P2/c.java:391
+            // Original method in jadx: p2.c.r(String, j2.a)
+            findMethod {
+                matcher {
+                    paramCount(2)
+                    usingStrings(
+                        "Found business in rear.paramV1: %s",
+                        "No business found for %s and not in config",
+                    )
+                }
+            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+        }
+    }
+
+    private fun resolveSmartAssistantResolvePathMethod(): DexKitMethodInjectionPoint {
+        return resolveCachedMethodPoint(
+            cacheKey = SMART_ASSISTANT_RESOLVE_PATH_METHOD_CACHE_KEY,
+            fallbackClass = "",
+            fallbackMethod = "",
+        ) {
+            // Decompiled source anchor:
+            // .tmp-ref/decompiled-jadx/sources/P2/c.java:224
+            // Original method in jadx: p2.c.i(String, String)
+            findMethod {
+                matcher {
+                    declaredClass = resolveSmartAssistantUtilsClassName()
+                    paramTypes(String::class.java, String::class.java)
+                    returnType = "java.lang.String"
+                    usingStrings("unified.music", "music")
+                }
+            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+        }
+    }
+
+    private fun resolveSmartAssistantAllowAppMethod(): DexKitMethodInjectionPoint {
+        return resolveCachedMethodPoint(
+            cacheKey = SMART_ASSISTANT_ALLOW_APP_METHOD_CACHE_KEY,
+            fallbackClass = "",
+            fallbackMethod = "",
+        ) {
+            // Decompiled source anchor:
+            // .tmp-ref/decompiled-jadx/sources/P2/c.java:286
+            // Original method in jadx: p2.c.k(String, Set, Map)
+            findMethod {
+                matcher {
+                    declaredClass = resolveSmartAssistantUtilsClassName()
+                    paramTypes("java.lang.String", "java.util.Set", "java.util.Map")
+                    returnType = "boolean"
+                    usingStrings(
+                        "Music app %s allowed: %s (music switch: %s)",
+                        "Multi-business app %s allowed: false (no business enabled)",
+                    )
+                }
+            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+        }
+    }
+
+    private fun resolveSmartAssistantDecorateExtrasMethod(): DexKitMethodInjectionPoint {
+        return resolveCachedMethodPoint(
+            cacheKey = SMART_ASSISTANT_DECORATE_EXTRAS_METHOD_CACHE_KEY,
+            fallbackClass = "",
+            fallbackMethod = "",
+        ) {
+            // Decompiled source anchor:
+            // .tmp-ref/decompiled-jadx/sources/P2/c.java:492
+            // Original method in jadx: p2.c.s(Bundle, ... , j2.a)
+            findMethod {
+                matcher {
+                    declaredClass = resolveSmartAssistantUtilsClassName()
+                    paramCount(10)
+                    returnType = "android.os.Bundle"
+                    usingStrings("composite_key", "disable_popup", "is_remote_view")
+                }
+            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+        }
+    }
+
+    private fun resolveSmartAssistantParseParamsMethod(): DexKitMethodInjectionPoint {
+        return resolveCachedMethodPoint(
+            cacheKey = SMART_ASSISTANT_PARSE_PARAMS_METHOD_CACHE_KEY,
+            fallbackClass = "",
+            fallbackMethod = "",
+        ) {
+            // Decompiled source anchor:
+            // .tmp-ref/decompiled-jadx/sources/L1/a.java:967
+            // Original method in jadx: L1.a.y(Bundle)
+            findMethod {
+                matcher {
+                    paramTypes(Bundle::class.java)
+                    usingStrings(
+                        "Original params - rearParam: ",
+                        "miui.rear.param",
+                        "miui.focus.param"
+                    )
+                }
+            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+        }
+    }
+
+    private fun resolveSmartAssistantBuiltinSupportMethod(): DexKitMethodInjectionPoint {
+        return resolveCachedMethodPoint(
+            cacheKey = SMART_ASSISTANT_BUILTIN_SUPPORT_METHOD_CACHE_KEY,
+            fallbackClass = "",
+            fallbackMethod = "",
+        ) {
+            // Decompiled source anchor:
+            // .tmp-ref/decompiled-jadx/sources/P2/a.java:106
+            // Original method in jadx: p2.a.d(String, String)
+            findMethod {
+                matcher {
+                    declaredClass {
+                        usingStrings("unified.music", "music", "foodDelivery", "carHailing")
+                        methods {
+                            add {
+                                paramTypes(String::class.java)
+                                returnType = "boolean"
+                                usingStrings("unified.music", "music")
+                            }
+                        }
+                    }
+                    paramTypes(String::class.java, String::class.java)
+                    returnType = "boolean"
+                }
+            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+        }
+    }
+
+    private fun resolveNotificationWidgetApplyMethod(): DexKitMethodInjectionPoint {
+        return resolveCachedMethodPoint(
+            cacheKey = NOTIFICATION_WIDGET_APPLY_METHOD_CACHE_KEY,
+            fallbackClass = "",
+            fallbackMethod = "",
+        ) {
+            // Decompiled source anchor:
+            // .tmp-ref/decompiled-jadx/sources/T2/j.java:110
+            // Original method in jadx: t2.j.J(t2.f)
+            findMethod {
+                matcher {
+                    returnType = "void"
+                    usingStrings("notification_received", "params_transferred")
+                }
+            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+        }
+    }
+
+    private fun invokeSmartAssistantManagerRemoveNotification(
+        target: Any,
+        notificationId: Int,
+        packageName: String,
+        removeReason: Int,
+    ) {
+        val point = resolveSmartAssistantManagerRemoveNotificationMethod()
+        target.asResolver().firstMethod {
+            name = point.methodName
+            parameterCount = 3
+        }.invoke(notificationId, packageName, removeReason)
+    }
+
+    private fun invokeSmartAssistantManagerRemoveBusiness(
+        target: Any,
+        packageName: String,
+        business: String
+    ) {
+        val point = resolveSmartAssistantManagerRemoveBusinessMethod()
+        target.asResolver().firstMethod {
+            name = point.methodName
+            parameterCount = 2
+        }.invoke(packageName, business)
+    }
+
+    private fun invokeSmartAssistantParseParams(bundle: Bundle): Any? {
+        val point = resolveSmartAssistantParseParamsMethod()
+        return point.className.toClass().resolve().firstMethod {
+            name = point.methodName
+            parameterCount = 1
+        }.invoke(bundle)
+    }
+
+    private fun invokeSmartAssistantParseWidget(packageName: String, parsedParams: Any): Any? {
+        val point = resolveSmartAssistantParseWidgetMethod()
+        return point.className.toClass().resolve().firstMethod {
+            name = point.methodName
+            parameterCount = 2
+        }.invoke(packageName, parsedParams)
+    }
+
+    private fun invokeSmartAssistantBuiltinSupport(packageName: String, business: String): Boolean {
+        val point = resolveSmartAssistantBuiltinSupportMethod()
+        return point.className.toClass().resolve().firstMethod {
+            name = point.methodName
+            parameterCount = 2
+        }.invoke<Boolean>(packageName, business) ?: false
+    }
+
+    private fun invokeSmartAssistantResolvePath(packageName: String, business: String): String? {
+        val point = resolveSmartAssistantResolvePathMethod()
+        return point.className.toClass().resolve().firstMethod {
+            name = point.methodName
+            parameterCount = 2
+        }.invoke<String>(packageName, business)
+    }
+
+    private fun readManagerAllowedPackageSet(target: Any): ConcurrentHashMap.KeySetView<String, *> {
+        @Suppress("UNCHECKED_CAST")
+        return target.asResolver().firstField {
+            name = resolveSmartAssistantManagerAllowedSetFieldName()
+        }.get() as ConcurrentHashMap.KeySetView<String, *>
+    }
+
+    private fun readManagerAllowedPackageMap(target: Any): ConcurrentHashMap<String, Boolean> {
+        @Suppress("UNCHECKED_CAST")
+        return target.asResolver().firstField {
+            name = resolveSmartAssistantManagerAllowedMapFieldName()
+        }.get() as ConcurrentHashMap<String, Boolean>
     }
 
     private val hookBinder = object : IRearWidgetApiService.Stub() {
@@ -667,10 +1304,8 @@ class RearWidgetHook : YukiBaseHooker() {
         }, 2800L)
     }
 
-    private fun schedulePostPresetBootstrap(persistenceManager: Any?) {
-        val handler = runCatching {
-            persistenceManager?.asResolver()?.firstField { name = "c" }?.get() as? Handler
-        }.getOrNull() ?: return
+    private fun schedulePostPresetBootstrap() {
+        val handler = mainHandler ?: Handler(Looper.getMainLooper())
 
         handler.post {
             runCatching {
@@ -711,7 +1346,8 @@ class RearWidgetHook : YukiBaseHooker() {
 
         runCatching {
             val extras = RearWidgetRuntimeStore.buildDecoratedExtras(notice.ticket)
-            val runnable = "Z1.m".toClass().resolve().firstConstructor {
+            val runnable =
+                resolveSmartAssistantPostRunnableClassName().toClass().resolve().firstConstructor {
                 parameterCount = 5
             }.create(
                 mgr,
@@ -734,10 +1370,12 @@ class RearWidgetHook : YukiBaseHooker() {
         runCatching {
             handler.post {
                 runCatching {
-                    mgr.asResolver().firstMethod {
-                        name = "p"
-                        parameterCount = 3
-                    }.invoke(ticket.notificationId, ticket.packageName, 0)
+                    invokeSmartAssistantManagerRemoveNotification(
+                        target = mgr,
+                        notificationId = ticket.notificationId,
+                        packageName = ticket.packageName,
+                        removeReason = 0,
+                    )
                     debugLog("ejected ticket key=${ticket.compositeKey}")
                 }.onFailure {
                     debugLog("eject failed key=${ticket.compositeKey} err=${it.message}")
@@ -757,10 +1395,7 @@ class RearWidgetHook : YukiBaseHooker() {
         runCatching {
             handler.post {
                 runCatching {
-                    mgr.asResolver().firstMethod {
-                        name = "v"
-                        parameterCount = 2
-                    }.invoke(packageName, business)
+                    invokeSmartAssistantManagerRemoveBusiness(mgr, packageName, business)
                     debugLog("ejected business display pkg=$packageName biz=$business")
                 }.onFailure {
                     debugLog("eject business display failed pkg=$packageName biz=$business err=${it.message}")
@@ -782,20 +1417,22 @@ class RearWidgetHook : YukiBaseHooker() {
         val pkgBiz = RearWidgetRuntimeStore.allPkgBusinesses()
         val pkgPrimary = RearWidgetRuntimeStore.primaryBusinessByPkg()
         val bizPath = RearWidgetRuntimeStore.allBusinessPath()
+        val configClassName = resolveSmartAssistantConfigClassName()
+        val utilsClassName = resolveSmartAssistantUtilsClassName()
 
-        replaceStaticMap("p2.a", "a") { map ->
+        replaceStaticMap(configClassName, "a") { map ->
             pkgPrimary.forEach { (pkg, biz) -> if (biz.isNotBlank()) map[pkg] = biz }
         }
-        replaceStaticMap("p2.a", "c") { map ->
+        replaceStaticMap(configClassName, "c") { map ->
             pkgBiz.forEach { (pkg, set) -> map[pkg] = HashSet(set) }
         }
-        replaceStaticMap("p2.a", "d") { map ->
+        replaceStaticMap(configClassName, "d") { map ->
             bizPath.forEach { (biz, path) -> map[biz] = path }
         }
-        replaceStaticMap("p2.c", "d") { map ->
+        replaceStaticMap(utilsClassName, "d") { map ->
             pkgBiz.keys.forEach { pkg -> map[pkg] = null }
         }
-        replaceStaticList("p2.c", "b") { list ->
+        replaceStaticList(utilsClassName, "b") { list ->
             bizPath.keys.forEach { biz -> if (!list.contains(biz)) list.add(biz) }
         }
 
@@ -808,13 +1445,8 @@ class RearWidgetHook : YukiBaseHooker() {
         if (pkgBiz.isEmpty()) return
 
         runCatching {
-            @Suppress("UNCHECKED_CAST")
-            val rSet = instance.asResolver().firstField { name = "r" }
-                .get() as ConcurrentHashMap.KeySetView<String, *>
-
-            @Suppress("UNCHECKED_CAST")
-            val qMap = instance.asResolver().firstField { name = "q" }
-                .get() as ConcurrentHashMap<String, Boolean>
+            val rSet = readManagerAllowedPackageSet(instance)
+            val qMap = readManagerAllowedPackageMap(instance)
 
             pkgBiz.forEach { (pkg, businesses) ->
                 rSet.add(pkg)
@@ -829,20 +1461,16 @@ class RearWidgetHook : YukiBaseHooker() {
 
     private fun allowSelfDescribedNotificationPackage(runnable: Any) {
         if (!prefs.getBoolean(ConfigKeys.HOOK_ALLOW_REAR_FOCUS_NOTICES, false)) return
-        val ref = runnable.asResolver()
-        val owner = runCatching {
-            ref.firstField { name = "c" }.get<Any>()
-        }.getOrNull() ?: return
-        if (owner.javaClass.name != "Z1.d0") return
+        val snapshot = synchronized(postRunnableSnapshots) {
+            postRunnableSnapshots[runnable]
+        } ?: return
+        val owner = snapshot.owner ?: return
+        if (owner.javaClass.name != resolveSmartAssistantManagerClassName()) return
 
-        val packageName = runCatching {
-            ref.firstField { name = "d" }.get<String>()
-        }.getOrNull()?.trim().orEmpty()
+        val packageName = snapshot.packageName.trim()
         if (packageName.isBlank()) return
 
-        val extras = runCatching {
-            ref.firstField { name = "f" }.get<Bundle>()
-        }.getOrNull() ?: return
+        val extras = snapshot.extras
         if (extras.isEmpty) return
 
         val business = parseBusinessFromParams(packageName, extras) ?: return
@@ -852,13 +1480,8 @@ class RearWidgetHook : YukiBaseHooker() {
         logNoWidgetPathIfNeeded(packageName, business, extras)
 
         runCatching {
-            @Suppress("UNCHECKED_CAST")
-            val rSet = owner.asResolver().firstField { name = "r" }
-                .get() as ConcurrentHashMap.KeySetView<String, *>
-
-            @Suppress("UNCHECKED_CAST")
-            val qMap = owner.asResolver().firstField { name = "q" }
-                .get() as ConcurrentHashMap<String, Boolean>
+            val rSet = readManagerAllowedPackageSet(owner)
+            val qMap = readManagerAllowedPackageMap(owner)
 
             rSet.add(packageName)
             qMap[packageName] = true
@@ -871,21 +1494,17 @@ class RearWidgetHook : YukiBaseHooker() {
 
     private fun parseBusinessFromParams(packageName: String, extras: Bundle): String? {
         val parser = runCatching {
-            "L1.a".toClass().resolve().firstMethod {
-                name = "y"
-                parameterCount = 1
-            }.invoke(extras)
+            invokeSmartAssistantParseParams(extras)
         }.getOrNull() ?: return null
 
         val parsed = runCatching {
-            "p2.c".toClass().resolve().firstMethod {
-                name = "r"
-                parameterCount = 2
-            }.invoke(packageName, parser)
+            invokeSmartAssistantParseWidget(packageName, parser)
         }.getOrNull() ?: return null
 
         return runCatching {
-            parsed.asResolver().firstField { name = "c" }.get<String>()
+            parsed.asResolver().firstField {
+                name = resolveSmartAssistantWidgetSpecBusinessFieldName()
+            }.get<String>()
         }.getOrNull()?.trim()?.ifBlank { null }
     }
 
@@ -895,18 +1514,12 @@ class RearWidgetHook : YukiBaseHooker() {
         if (hasRemoteView) return
 
         val builtInSupported = runCatching {
-            "p2.a".toClass().resolve().firstMethod {
-                name = "d"
-                parameterCount = 2
-            }.invoke<Boolean>(packageName, business) ?: false
+            invokeSmartAssistantBuiltinSupport(packageName, business)
         }.getOrDefault(false)
         if (builtInSupported) return
 
         val widgetPath = runCatching {
-            "p2.c".toClass().resolve().firstMethod {
-                name = "i"
-                parameterCount = 2
-            }.invoke<String>(packageName, business)
+            invokeSmartAssistantResolvePath(packageName, business)
         }.getOrNull()
 
         if (widgetPath.isNullOrBlank()) {
@@ -916,7 +1529,7 @@ class RearWidgetHook : YukiBaseHooker() {
 
     @Suppress("SameParameterValue")
     private fun createU0b(business: String, index: Int, priority: Int): Any {
-        return "U0.b".toClass().resolve().firstConstructor {
+        return resolveSmartAssistantWidgetSpecClassName().toClass().resolve().firstConstructor {
             parameterCount = 3
         }.create(
             business,
@@ -956,26 +1569,14 @@ class RearWidgetHook : YukiBaseHooker() {
 
     private fun unwrapMutableMap(any: Any): MutableMap<*, *> {
         if (any is MutableMap<*, *>) {
-            return runCatching {
-                any.asResolver().firstField { name = "m" }.get<MutableMap<*, *>>() ?: any
-            }.recoverCatching {
-                any.asResolver().firstField { name = "isReadOnly" }.set(false)
-                any
-            }.getOrElse { any }
+            return any
         }
         error("Not a map: ${any.javaClass.name}")
     }
 
     private fun unwrapMutableList(any: Any): MutableList<*> {
         if (any is MutableList<*>) {
-            return runCatching {
-                any.asResolver().firstField { name = "list" }.get<MutableList<*>>() ?: any
-            }.recoverCatching {
-                any.asResolver().firstField { name = "c" }.get<MutableList<*>>() ?: any
-            }.recoverCatching {
-                any.asResolver().firstField { name = "isReadOnly" }.set(false)
-                any
-            }.getOrElse { any }
+            return any
         }
         error("Not a list: ${any.javaClass.name}")
     }
@@ -1264,17 +1865,8 @@ class RearWidgetHook : YukiBaseHooker() {
 
     private fun applyHostOneConfig(mamlView: Any, json: String) {
         runCatching {
-            val classLoader = mamlView.javaClass.classLoader
-            val oneConfigClass = Class.forName(
-                "com.miui.maml.widget.edit.OneConfig",
-                false,
-                classLoader,
-            )
-            val widgetEditSaveClass = Class.forName(
-                "com.miui.maml.widget.edit.WidgetEditSave",
-                false,
-                classLoader,
-            )
+            val oneConfigClass = "com.miui.maml.widget.edit.OneConfig".toClass()
+            val widgetEditSaveClass = "com.miui.maml.widget.edit.WidgetEditSave".toClass()
 
             val hostOneConfig = com.google.gson.Gson().fromJson(json, oneConfigClass) ?: return
 

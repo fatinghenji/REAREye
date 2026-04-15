@@ -1,7 +1,6 @@
 package hk.uwu.reareye.hook.scopes.subscreencenter.modules.rearwidget
 
 import android.os.Bundle
-import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
@@ -15,7 +14,6 @@ import org.luckypray.dexkit.DexKitBridge
 class ExtraTimeTipHook : YukiBaseHooker() {
     companion object {
         private const val WIDGET_SPEC_CLASS_CACHE_KEY = "SSC_WIDGET_SPEC_CLASS"
-        private const val FALLBACK_WIDGET_SPEC_CLASS = "m2.a"
     }
 
     override fun onHook() {
@@ -29,18 +27,14 @@ class ExtraTimeTipHook : YukiBaseHooker() {
                         appInfo.sourceDir
                     )
                     val clz = resolveWidgetSpecClass(bridge, versionCode).toClass().resolve()
-                    clz.constructor().build().hookAll().after {
-                        val ref = instance.asResolver()
+                    clz.constructor().build().hookAll().before {
                         val moreDebug = prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)
-                        val bundle = ref.firstField {
-                            name = "d"
-                            type = Bundle::class.java
-                        }.get<Bundle>()
+                        val bundle = args.getOrNull(3) as? Bundle
                         if (bundle == null) {
                             if (moreDebug) {
                                 YLog.debug("bundle is null ${args.joinToString { it.toString() }}")
                             }
-                            return@after
+                            return@before
                         }
                         val pm = prefs.getPrefsManager()
                         val business = bundle.getString("business")
@@ -49,10 +43,9 @@ class ExtraTimeTipHook : YukiBaseHooker() {
                                 YLog.debug("time tip process biz: $business")
                             }
                             val showTimeTip = pm.getShowTimeTipForBusiness(business)
-                            ref.firstField {
-                                name = "l"
-                                type = Boolean::class.java
-                            }.set(showTimeTip)
+                            if (args.size > 11) {
+                                args[11] = showTimeTip
+                            }
                             if (moreDebug) {
                                 YLog.debug("time tip state biz=$business showTimeTip=$showTimeTip")
                             }
@@ -103,6 +96,6 @@ class ExtraTimeTipHook : YukiBaseHooker() {
                 ?.invokes
                 ?.singleOrNull { method -> method.isConstructor && method.paramCount >= 10 }
                 ?.className
-        } ?: FALLBACK_WIDGET_SPEC_CLASS
+        } ?: error("DexKit failed to resolve widget spec class")
     }
 }

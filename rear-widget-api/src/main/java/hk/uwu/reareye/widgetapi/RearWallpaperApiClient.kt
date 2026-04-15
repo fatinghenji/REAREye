@@ -74,7 +74,7 @@ open class RearWallpaperApiClient(
             metadataUri,
             previewUri,
             options,
-        ) ?: Bundle()
+        ) ?: operationFailureBundle("hook service returned empty import result")
     }
 
     open fun updateWallpaperMetadata(
@@ -82,19 +82,29 @@ open class RearWallpaperApiClient(
         previewUri: String?,
         options: Bundle,
     ): Bundle {
-        return requireRemote().updateWallpaperMetadata(wallpaperId, previewUri, options) ?: Bundle()
+        return requireRemote().updateWallpaperMetadata(wallpaperId, previewUri, options)
+            ?: operationFailureBundle("hook service returned empty metadata update result")
     }
 
     open fun generateWallpaperPreview(wallpaperId: Int): Bundle {
-        return requireRemote().generateWallpaperPreview(wallpaperId) ?: Bundle()
+        return requireRemote().generateWallpaperPreview(wallpaperId)
+            ?: operationFailureBundle("hook service returned empty preview generation result")
     }
 
     open fun deleteWallpaper(wallpaperId: Int): Bundle {
-        return requireRemote().deleteWallpaper(wallpaperId) ?: Bundle()
+        return requireRemote().deleteWallpaper(wallpaperId)
+            ?: operationFailureBundle("hook service returned empty delete result")
     }
 
     private fun requireRemote(): IRearWallpaperApiService {
         return remote ?: error("RearWallpaper API service is not connected")
+    }
+
+    private fun operationFailureBundle(message: String): Bundle {
+        return Bundle().apply {
+            putBoolean(RearWallpaperApiContract.BundleKeys.SUCCESS, false)
+            putString(RearWallpaperApiContract.BundleKeys.ERROR, message)
+        }
     }
 
     private fun requestHookServiceBootstrap(

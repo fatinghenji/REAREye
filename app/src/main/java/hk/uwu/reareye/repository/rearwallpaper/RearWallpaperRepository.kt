@@ -81,7 +81,7 @@ object RearWallpaperRepository {
                     options = options.toBundle(),
                 )
             }
-            parseOperationResult(result)
+            parseOperationResult(result, "wallpaper import failed without an error message")
         }
     }
 
@@ -100,7 +100,10 @@ object RearWallpaperRepository {
                     options = options.toBundle(),
                 )
             }
-            parseOperationResult(result)
+            parseOperationResult(
+                result,
+                "wallpaper metadata update failed without an error message"
+            )
         }
     }
 
@@ -112,7 +115,10 @@ object RearWallpaperRepository {
             val result = withRemote(context) { client ->
                 client.generateWallpaperPreview(wallpaperId)
             }
-            parseOperationResult(result)
+            parseOperationResult(
+                result,
+                "wallpaper preview generation failed without an error message"
+            )
         }
     }
 
@@ -124,7 +130,7 @@ object RearWallpaperRepository {
             val result = withRemote(context) { client ->
                 client.deleteWallpaper(wallpaperId)
             }
-            parseOperationResult(result)
+            parseOperationResult(result, "wallpaper delete failed without an error message")
         }
     }
 
@@ -361,11 +367,19 @@ object RearWallpaperRepository {
         }
     }
 
-    private fun parseOperationResult(bundle: Bundle): RearWallpaperOperationResult {
+    private fun parseOperationResult(
+        bundle: Bundle,
+        fallbackError: String,
+    ): RearWallpaperOperationResult {
+        val success = bundle.getBoolean(RearWallpaperApiContract.BundleKeys.SUCCESS, false)
+        val error = bundle.getString(RearWallpaperApiContract.BundleKeys.ERROR)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: fallbackError.takeIf { !success }
         return RearWallpaperOperationResult(
-            success = bundle.getBoolean(RearWallpaperApiContract.BundleKeys.SUCCESS, false),
+            success = success,
             wallpaperId = bundle.readNullableInt(RearWallpaperApiContract.BundleKeys.WALLPAPER_ID),
-            error = bundle.getString(RearWallpaperApiContract.BundleKeys.ERROR),
+            error = error,
         )
     }
 

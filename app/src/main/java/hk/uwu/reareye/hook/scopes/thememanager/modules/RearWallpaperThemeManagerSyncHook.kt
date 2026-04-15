@@ -21,7 +21,6 @@ class RearWallpaperThemeManagerSyncHook : YukiBaseHooker() {
         private const val REAR_LIST_FILTER_METHOD_CACHE_KEY = "REAR_LIST_FILTER_METHOD"
         private const val REAR_LIST_ITEM_BEAN_CLASS_CACHE_KEY = "REAR_LIST_ITEM_BEAN_CLASS"
         private const val FALLBACK_MANAGER_CLASS = "com.rearScreen.manager.RearListDataManager"
-        private const val FALLBACK_FILTER_METHOD = "f7l8"
         private const val FALLBACK_ITEM_BEAN_CLASS = "com.rearScreen.bean.RearScreenListItemBean"
     }
 
@@ -113,7 +112,7 @@ class RearWallpaperThemeManagerSyncHook : YukiBaseHooker() {
                     usingStrings("getRearListFromDB invalidMtzList")
                 }
             }.singleOrNull()?.name
-        } ?: FALLBACK_FILTER_METHOD
+        } ?: error("DexKit failed to resolve rear list filter method")
     }
 
     private fun resolveRearListItemBeanClass(
