@@ -210,7 +210,7 @@ class LyriconHook : YukiBaseHooker() {
                 parameters(Long::class.java)
             }.hook().replaceUnit {
                 if (!isManagedFullLyric(instance)) {
-                    invokeOriginal()
+                    invokeOriginal(*args)
                     return@replaceUnit
                 }
                 updateLyricVarsDiff(instance, args(0).cast<Long>() ?: 0L)
