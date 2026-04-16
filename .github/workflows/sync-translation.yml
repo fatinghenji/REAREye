@@ -1,0 +1,34 @@
+name: Push Chinese translations to Transifex
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'app/src/main/res/values-zh-rCN/strings.xml'
+
+jobs:
+  push-translations:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: Install Transifex CLI
+        run: |
+          pip install transifex-client
+
+      - name: Configure Transifex
+        run: |
+          echo "[https://www.transifex.com]
+          hostname = https://www.transifex.com
+          token = ${{ secrets.TRANSIFEX_TOKEN }}" > ~/.transifexrc
+
+      - name: Push Chinese translations
+        run: |
+          tx push -t --language zh_CN

@@ -1,16 +1,19 @@
+import com.android.build.api.artifact.SingleArtifact
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.ksp)
     alias(libs.plugins.compose.compiler)
 }
 
 val gitCommitCount: Int by lazy { runGitCommand("rev-list", "--count", "HEAD")?.toIntOrNull() ?: 0 }
 val gitVersionCode: Int by lazy { 5 + gitCommitCount }
+val baseVersionName = gropify.project.app.versionName.replace("\"", "")
+val buildSuffix = project.findProperty("buildSuffix") as? String ?: "dev"
+val finalVersionName = "$baseVersionName-$buildSuffix"
 
 fun runGitCommand(vararg args: String): String? = runCatching {
     ProcessBuilder(listOf("git") + args)
@@ -32,11 +35,6 @@ android {
             }
     }
 
-    val baseVersionName = gropify.project.app.versionName.replace("\"", "")
-    val buildSuffix = project.findProperty("buildSuffix") as? String ?: "dev"
-
-    val finalVersionName = "$baseVersionName-$buildSuffix"
-
     defaultConfig {
         applicationId = gropify.project.app.packageName
         minSdk = gropify.project.android.minSdk
@@ -44,13 +42,6 @@ android {
         versionName = gropify.project.app.versionName
         versionCode = gitVersionCode
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    }
-
-    applicationVariants.all {
-        outputs.all {
-            val output = this as com.android.build.gradle.internal.api.ApkVariantOutputImpl
-            output.outputFileName = "REAREye-v${finalVersionName}.apk"
-        }
     }
 
     signingConfigs {
@@ -101,6 +92,22 @@ android {
         compose = true
     }
     lint { checkReleaseBuilds = false }
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        val variantName = variant.name.replaceFirstChar { it.uppercase() }
+        val exportApk = tasks.register<Sync>("export${variantName}Apk") {
+            from(variant.artifacts.get(SingleArtifact.APK))
+            include("*.apk")
+            rename { "REAREye-v${finalVersionName}.apk" }
+            into(layout.buildDirectory.dir("outputs/renamed-apk/${variant.name}"))
+        }
+
+        tasks.matching { it.name == "assemble${variantName}" }.configureEach {
+            finalizedBy(exportApk)
+        }
+    }
 }
 
 tasks.withType<KotlinJvmCompile>().configureEach {
