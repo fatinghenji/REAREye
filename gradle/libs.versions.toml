@@ -1,5 +1,5 @@
 [versions]
-agp = "9.1.0"
+agp = "9.1.1"
 kotlin = "2.3.20"
 ksp = "2.3.6"
 rovo89-xposed-api = "82"
@@ -24,6 +24,7 @@ superlyric = "3.3"
 gson = "2.13.2"
 dexkit = "2.1.0"
 foundation-layout = "1.10.6"
+mmkv = "2.4.0"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -68,3 +69,4 @@ superlyric = { group = "com.github.HChenX", name = "SuperLyricApi", version.ref 
 gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
 dexkit = { group = "org.luckypray", name = "dexkit", version.ref = "dexkit" }
 androidx-compose-foundation-layout = { group = "androidx.compose.foundation", name = "foundation-layout", version.ref = "foundation-layout" }
+mmkv = { group = "com.tencent", name = "mmkv-static", version.ref = "mmkv" }

@@ -173,6 +173,7 @@ class RearWidgetHook : YukiBaseHooker() {
                 packageName = appInfo.packageName,
                 packageVersionCode = versionCode,
                 sourceDir = appInfo.sourceDir,
+                dataDir = appInfo.dataDir,
             )
 
             val appRef = "com.xiaomi.subscreencenter.SubScreenCenterApp".toClass().resolve()

@@ -24,6 +24,7 @@ class UnmuteVideoWallpaperHook : YukiBaseHooker() {
                 packageName = appInfo.packageName,
                 packageVersionCode = versionCode,
                 sourceDir = appInfo.sourceDir,
+                dataDir = appInfo.dataDir,
             )
             val durationCropMatchResult = resolveDemuxerClassName(bridge)
             val ref =

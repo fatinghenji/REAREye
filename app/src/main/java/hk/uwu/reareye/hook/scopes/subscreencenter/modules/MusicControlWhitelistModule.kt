@@ -33,6 +33,7 @@ class MusicControlWhitelistModule : YukiBaseHooker() {
                 packageName = appInfo.packageName,
                 packageVersionCode = versionCode,
                 sourceDir = appInfo.sourceDir,
+                dataDir = appInfo.dataDir,
             )
             val configClassName = resolveSmartAssistantConfigClassName(bridge)
             val primaryMapFieldName = resolveSmartAssistantConfigPrimaryMapFieldName(

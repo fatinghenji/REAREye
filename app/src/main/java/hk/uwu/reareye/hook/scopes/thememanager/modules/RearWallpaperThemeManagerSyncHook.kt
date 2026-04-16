@@ -47,6 +47,7 @@ class RearWallpaperThemeManagerSyncHook : YukiBaseHooker() {
                     packageName = appInfo.packageName,
                     packageVersionCode = versionCode,
                     sourceDir = appInfo.sourceDir,
+                    dataDir = appInfo.dataDir,
                 )
 
                 val managerClassName = resolveRearListManagerClass(bridge)

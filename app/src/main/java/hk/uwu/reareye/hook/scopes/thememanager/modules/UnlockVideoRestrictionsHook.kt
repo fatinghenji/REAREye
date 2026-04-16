@@ -106,6 +106,7 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                 packageName = appInfo.packageName,
                 packageVersionCode = versionCode,
                 sourceDir = appInfo.sourceDir,
+                dataDir = appInfo.dataDir,
             )
             val durationCropCacheKey = "DURATION_CROP_CLZ"
             val historyHelperCacheKey = "HISTORY_HELPER_CLZ"

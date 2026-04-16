@@ -30,6 +30,7 @@ class ExtraTimeTipHook : YukiBaseHooker() {
                 packageName = appInfo.packageName,
                 packageVersionCode = versionCode,
                 sourceDir = appInfo.sourceDir,
+                dataDir = appInfo.dataDir,
             )
             val clz = resolveWidgetSpecClass(bridge).toClass().resolve()
             clz.constructor().build().hookAll().before {

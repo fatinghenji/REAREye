@@ -24,10 +24,12 @@ internal fun createDexKitCacheBridge(
     packageName: String,
     packageVersionCode: Long,
     sourceDir: String,
+    dataDir: String,
 ): DexKitCacheBridge.RecyclableBridge {
+    val appTag = buildDexKitAppTag(packageName, packageVersionCode)
     val create = {
         DexKitCacheBridge.create(
-            appTag = buildDexKitAppTag(packageName, packageVersionCode),
+            appTag = appTag,
             path = sourceDir,
         )
     }
@@ -35,8 +37,22 @@ internal fun createDexKitCacheBridge(
         create()
     } catch (_: Exception) {
         YLog.info("Init DexKit cache")
-        DexKitCacheBridge.init(MemoryCache)
+        val cache = createDexKitCache(dataDir)
+        DexKitCacheBridge.init(cache)
+        if (cache === MMKVCache) {
+            MMKVCache.syncHostVersion(packageName, packageVersionCode)
+        }
         create()
+    }
+}
+
+private fun createDexKitCache(dataDir: String): DexKitCacheBridge.Cache {
+    return runCatching {
+        MMKVCache.ensureInitialized(dataDir)
+        MMKVCache
+    }.getOrElse {
+        YLog.warn(it)
+        MemoryCache
     }
 }
 
@@ -83,6 +99,6 @@ internal inline fun resolveDexKitFieldValue(
     }?.let(selector)
 }
 
-private fun buildDexKitAppTag(packageName: String, packageVersionCode: Long): String {
+internal fun buildDexKitAppTag(packageName: String, packageVersionCode: Long): String {
     return "$packageName$DEX_KIT_APP_TAG_SEPARATOR$packageVersionCode"
 }

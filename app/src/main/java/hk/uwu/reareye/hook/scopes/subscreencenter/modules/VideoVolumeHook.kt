@@ -27,6 +27,7 @@ class VideoVolumeHook : YukiBaseHooker() {
                 packageName = appInfo.packageName,
                 packageVersionCode = versionCode,
                 sourceDir = appInfo.sourceDir,
+                dataDir = appInfo.dataDir,
             )
             val point = resolveVideoElementLoadMethod(bridge)
             val clz = point.className.toClass().resolve()

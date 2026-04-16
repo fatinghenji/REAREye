@@ -26,6 +26,7 @@ class UnlockTemplateMaximumLimitHook : YukiBaseHooker() {
                 packageName = appInfo.packageName,
                 packageVersionCode = versionCode,
                 sourceDir = appInfo.sourceDir,
+                dataDir = appInfo.dataDir,
             )
             val rsDetailClz = resolveRearDetailViewModelClass(bridge).toClass().resolve()
             rsDetailClz.firstConstructor().hook().after {

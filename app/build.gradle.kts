@@ -127,6 +127,7 @@ dependencies {
     implementation(libs.kavaref.extension)
 
     implementation(libs.dexkit)
+    implementation(libs.mmkv)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)

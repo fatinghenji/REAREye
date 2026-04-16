@@ -26,6 +26,7 @@ class VideoLoopModule : YukiBaseHooker() {
                 packageName = appInfo.packageName,
                 packageVersionCode = versionCode,
                 sourceDir = appInfo.sourceDir,
+                dataDir = appInfo.dataDir,
             )
             val point = resolveVideoElementGetLoopingMethod(bridge)
             val videoElRef = point.className.toClass().resolve()
