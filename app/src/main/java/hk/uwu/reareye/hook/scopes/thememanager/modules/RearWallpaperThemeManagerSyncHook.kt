@@ -5,13 +5,17 @@ import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
-import hk.uwu.reareye.hook.utils.resolveDexKitInjectionPoint
+import hk.uwu.reareye.hook.utils.createDexKitCacheBridge
+import hk.uwu.reareye.hook.utils.resolveDexKitClassValue
+import hk.uwu.reareye.hook.utils.resolveDexKitMethodValue
 import hk.uwu.reareye.hook.utils.resolveHookPackageVersionCode
 import org.json.JSONArray
 import org.json.JSONObject
-import org.luckypray.dexkit.DexKitBridge
+import org.luckypray.dexkit.DexKitCacheBridge
+import org.luckypray.dexkit.annotations.DexKitExperimentalApi
 import java.io.File
 
+@OptIn(DexKitExperimentalApi::class)
 class RearWallpaperThemeManagerSyncHook : YukiBaseHooker() {
 
     companion object {
@@ -33,51 +37,45 @@ class RearWallpaperThemeManagerSyncHook : YukiBaseHooker() {
 
     override fun onHook() {
         loadApp("com.android.thememanager") {
-            val bridge = DexKitBridge.create(this.appInfo.sourceDir)
+            runCatching {
+                val versionCode = resolveHookPackageVersionCode(
+                    context = systemContext,
+                    packageName = appInfo.packageName,
+                    sourceDir = appInfo.sourceDir,
+                )
+                val bridge = createDexKitCacheBridge(
+                    packageName = appInfo.packageName,
+                    packageVersionCode = versionCode,
+                    sourceDir = appInfo.sourceDir,
+                )
 
-            onAppLifecycle {
-                onCreate {
-                    runCatching {
-                        val versionCode = resolveHookPackageVersionCode(
-                            context = systemContext,
-                            packageName = appInfo.packageName,
-                            sourceDir = appInfo.sourceDir,
-                        )
+                val managerClassName = resolveRearListManagerClass(bridge)
+                val filterMethodName = resolveRearListFilterMethod(bridge)
+                val itemBeanClassName = resolveRearListItemBeanClass(bridge)
 
-                        val managerClassName = resolveRearListManagerClass(bridge, versionCode)
-                        val filterMethodName = resolveRearListFilterMethod(bridge, versionCode)
-                        val itemBeanClassName = resolveRearListItemBeanClass(bridge, versionCode)
-
-                        // RearListDataManager.f7l8(List<RearScreenListItemBean>)
-                        managerClassName.toClass().resolve().firstMethod {
-                            name = filterMethodName
-                            parameterCount = 1
-                            returnType = List::class.java
-                        }.hook().after {
-                            val original = result as? List<*> ?: return@after
-                            result = mergeImportedWallpapers(original, itemBeanClassName)
-                        }
-
-                        YLog.debug(
-                            "[$TAG] hook manager=$managerClassName method=$filterMethodName bean=$itemBeanClassName"
-                        )
-                    }.onFailure(YLog::error)
+                // RearListDataManager.f7l8(List<RearScreenListItemBean>)
+                managerClassName.toClass().resolve().firstMethod {
+                    name = filterMethodName
+                    parameterCount = 1
+                    returnType = List::class.java
+                }.hook().after {
+                    val original = result as? List<*> ?: return@after
+                    result = mergeImportedWallpapers(original, itemBeanClassName)
                 }
-            }
+
+                YLog.debug(
+                    "[$TAG] hook manager=$managerClassName method=$filterMethodName bean=$itemBeanClassName"
+                )
+            }.onFailure(YLog::error)
         }
     }
 
     private fun resolveRearListManagerClass(
-        bridge: DexKitBridge,
-        packageVersionCode: Long,
+        bridge: DexKitCacheBridge.RecyclableBridge,
     ): String {
-        val nativePrefs = prefs.native()
-        return resolveDexKitInjectionPoint(
+        return resolveDexKitClassValue(
             bridge = bridge,
             cacheKey = REAR_LIST_MANAGER_CLASS_CACHE_KEY,
-            packageVersionCode = packageVersionCode,
-            readCache = nativePrefs::getString,
-            writeCache = { key, value -> nativePrefs.edit().putString(key, value).apply() },
         ) {
             // DexKit class anchor in the current decompiled source:
             // .tmp-ref/thememanager-jadx/sources/com/rearScreen/manager/RearListDataManager.java:47
@@ -87,21 +85,16 @@ class RearWallpaperThemeManagerSyncHook : YukiBaseHooker() {
                 matcher {
                     usingStrings("rear:RearListDataManager")
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         } ?: FALLBACK_MANAGER_CLASS
     }
 
     private fun resolveRearListFilterMethod(
-        bridge: DexKitBridge,
-        packageVersionCode: Long,
+        bridge: DexKitCacheBridge.RecyclableBridge,
     ): String {
-        val nativePrefs = prefs.native()
-        return resolveDexKitInjectionPoint(
+        return resolveDexKitMethodValue(
             bridge = bridge,
             cacheKey = REAR_LIST_FILTER_METHOD_CACHE_KEY,
-            packageVersionCode = packageVersionCode,
-            readCache = nativePrefs::getString,
-            writeCache = { key, value -> nativePrefs.edit().putString(key, value).apply() },
         ) {
             // RearListDataManager.f7l8(List<RearScreenListItemBean>)
             findMethod {
@@ -111,21 +104,16 @@ class RearWallpaperThemeManagerSyncHook : YukiBaseHooker() {
                     returnType = "java.util.List"
                     usingStrings("getRearListFromDB invalidMtzList")
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         } ?: error("DexKit failed to resolve rear list filter method")
     }
 
     private fun resolveRearListItemBeanClass(
-        bridge: DexKitBridge,
-        packageVersionCode: Long,
+        bridge: DexKitCacheBridge.RecyclableBridge,
     ): String {
-        val nativePrefs = prefs.native()
-        return resolveDexKitInjectionPoint(
+        return resolveDexKitClassValue(
             bridge = bridge,
             cacheKey = REAR_LIST_ITEM_BEAN_CLASS_CACHE_KEY,
-            packageVersionCode = packageVersionCode,
-            readCache = nativePrefs::getString,
-            writeCache = { key, value -> nativePrefs.edit().putString(key, value).apply() },
         ) {
             // RearScreenListItemBean.convertToResource()
             findClass {
@@ -138,7 +126,7 @@ class RearWallpaperThemeManagerSyncHook : YukiBaseHooker() {
                         }
                     }
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         } ?: FALLBACK_ITEM_BEAN_CLASS
     }
 

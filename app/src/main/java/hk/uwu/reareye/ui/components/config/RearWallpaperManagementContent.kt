@@ -49,6 +49,7 @@ import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperInfo
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperMetadataOptions
 import hk.uwu.reareye.ui.components.card.ModuleStyleDeleteAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleIconAction
+import hk.uwu.reareye.ui.components.card.ModuleStyleTextAction
 import hk.uwu.reareye.ui.components.card.SuperCard
 import hk.uwu.reareye.ui.components.rememberRearWallpaperPreviewBitmap
 import hk.uwu.reareye.ui.theme.rearAcrylicSource
@@ -66,6 +67,7 @@ import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.Check
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -548,20 +550,18 @@ private fun WallpaperManageCard(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        ModuleStyleTextAction(
+                            icon = MiuixIcons.Basic.Check,
+                            text = stringResource(R.string.rear_wallpaper_set_now),
+                            enabled = !isCurrent,
+                            onClick = onSetCurrent,
+                        )
                         if (wallpaper.canEditMetadata) {
+                            Spacer(Modifier.width(8.dp))
                             ModuleStyleIconAction(
                                 icon = Icons.Rounded.EditNote,
                                 onClick = onEditMetadata,
                             )
-                            Spacer(Modifier.width(8.dp))
-                        }
-                        Button(
-                            onClick = onSetCurrent,
-                            enabled = !isCurrent,
-                            colors = ButtonDefaults.buttonColorsPrimary(),
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text(stringResource(R.string.rear_wallpaper_set_now))
                         }
                         if (wallpaper.canDelete) {
                             Spacer(Modifier.width(8.dp))

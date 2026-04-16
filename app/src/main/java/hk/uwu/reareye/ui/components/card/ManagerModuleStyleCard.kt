@@ -153,20 +153,21 @@ fun ModuleStyleIconAction(
 }
 
 @Composable
-fun ModuleStyleDeleteAction(
+fun ModuleStyleTextAction(
     icon: ImageVector,
     text: String,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     val secondaryContainer = MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f)
     val actionIconAlpha = if (secondaryContainer.luminance() < 0.5f) 0.7f else 0.9f
     val actionIconTint =
-        MiuixTheme.colorScheme.onSurface.copy(alpha = actionIconAlpha)
+        MiuixTheme.colorScheme.onSurface.copy(alpha = actionIconAlpha * if (enabled) 1f else 0.45f)
     IconButton(
         minHeight = 35.dp,
         minWidth = 35.dp,
-        onClick = onClick,
-        backgroundColor = secondaryContainer,
+        onClick = if (enabled) onClick else ({}),
+        backgroundColor = secondaryContainer.copy(alpha = if (enabled) 0.8f else 0.45f),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp),
@@ -187,4 +188,19 @@ fun ModuleStyleDeleteAction(
             )
         }
     }
+}
+
+@Composable
+fun ModuleStyleDeleteAction(
+    icon: ImageVector,
+    text: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    ModuleStyleTextAction(
+        icon = icon,
+        text = text,
+        enabled = enabled,
+        onClick = onClick,
+    )
 }

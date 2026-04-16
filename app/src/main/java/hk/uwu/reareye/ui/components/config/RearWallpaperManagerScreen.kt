@@ -5,6 +5,7 @@ package hk.uwu.reareye.ui.components.config
 import android.annotation.SuppressLint
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -447,6 +448,10 @@ fun RearWallpaperManagerScreen(
             ),
         ),
     )
+
+    BackHandler(enabled = activePage == RearWallpaperPage.MANAGEMENT) {
+        activePage = RearWallpaperPage.ROTATION
+    }
 
     Scaffold(
         topBar = {

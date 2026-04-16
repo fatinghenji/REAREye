@@ -122,7 +122,7 @@
     <string name="rear_wallpaper_catalog_empty">No available wallpapers found</string>
     <string name="rear_wallpaper_refresh_success">Wallpaper list refreshed</string>
     <string name="rear_wallpaper_refresh_failed">Failed to refresh wallpaper list: %1$s</string>
-    <string name="rear_wallpaper_set_now">Set Current</string>
+    <string name="rear_wallpaper_set_now">Apply</string>
     <string name="rear_wallpaper_add_to_schedule">Add to Schedule</string>
     <string name="rear_wallpaper_add_sheet_trigger">Add Wallpaper</string>
     <string name="rear_wallpaper_added">Added to rotation</string>

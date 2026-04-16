@@ -1,82 +1,88 @@
+@file:OptIn(DexKitExperimentalApi::class)
+
 package hk.uwu.reareye.hook.utils
 
 import com.highcapable.yukihookapi.hook.log.YLog
 import org.luckypray.dexkit.DexKitBridge
+import org.luckypray.dexkit.DexKitCacheBridge
+import org.luckypray.dexkit.annotations.DexKitExperimentalApi
+import org.luckypray.dexkit.result.ClassData
+import org.luckypray.dexkit.result.FieldData
+import org.luckypray.dexkit.result.MethodData
+import org.luckypray.dexkit.wrap.DexClass
+import org.luckypray.dexkit.wrap.DexField
+import org.luckypray.dexkit.wrap.DexMethod
 
-private const val DEX_KIT_CACHE_SEPARATOR = ";;"
-private const val DEX_KIT_MEMBER_SEPARATOR = "::"
+private const val DEX_KIT_APP_TAG_SEPARATOR = "@"
 
 internal data class DexKitMethodInjectionPoint(
     val className: String,
     val methodName: String,
 )
 
-internal inline fun resolveDexKitInjectionPoint(
-    bridge: DexKitBridge,
-    cacheKey: String,
+internal fun createDexKitCacheBridge(
+    packageName: String,
     packageVersionCode: Long,
-    readCache: (String) -> String?,
-    writeCache: (String, String) -> Unit,
-    finder: DexKitBridge.() -> String?,
-): String? {
-    val cached = decodeDexKitInjectionCache(
-        raw = readCache(cacheKey),
-        expectedVersionCode = packageVersionCode,
-    )
-    if (cached != null) return cached
-
-    val resolved = bridge.finder()?.trim().takeUnless { it.isNullOrEmpty() } ?: return null
-    writeCache(cacheKey, encodeDexKitInjectionCache(packageVersionCode, resolved))
-    YLog.debug("Save $cacheKey hook point $resolved")
-    return resolved
+    sourceDir: String,
+): DexKitCacheBridge.RecyclableBridge {
+    val create = {
+        DexKitCacheBridge.create(
+            appTag = buildDexKitAppTag(packageName, packageVersionCode),
+            path = sourceDir,
+        )
+    }
+    return try {
+        create()
+    } catch (_: Exception) {
+        YLog.info("Init DexKit cache")
+        DexKitCacheBridge.init(MemoryCache)
+        create()
+    }
 }
 
 internal inline fun resolveDexKitMethodInjectionPoint(
-    bridge: DexKitBridge,
+    bridge: DexKitCacheBridge.RecyclableBridge,
     cacheKey: String,
-    packageVersionCode: Long,
-    readCache: (String) -> String?,
-    writeCache: (String, String) -> Unit,
-    finder: DexKitBridge.() -> DexKitMethodInjectionPoint?,
+    crossinline finder: DexKitBridge.() -> MethodData?,
 ): DexKitMethodInjectionPoint? {
-    return resolveDexKitInjectionPoint(
-        bridge = bridge,
-        cacheKey = cacheKey,
-        packageVersionCode = packageVersionCode,
-        readCache = readCache,
-        writeCache = writeCache,
-    ) {
-        finder()?.encode()
-    }?.decodeDexKitMethodInjectionPoint()
+    return bridge.getMethodDirectOrNull(cacheKey) {
+        finder()
+    }?.let { DexKitMethodInjectionPoint(it.className, it.name) }
 }
 
-private fun decodeDexKitInjectionCache(raw: String?, expectedVersionCode: Long): String? {
-    val normalized = raw?.trim().orEmpty()
-    if (normalized.isEmpty()) return null
-
-    val separatorIndex = normalized.indexOf(DEX_KIT_CACHE_SEPARATOR)
-    if (separatorIndex <= 0) return null
-
-    val versionCode = normalized.substring(0, separatorIndex).toLongOrNull() ?: return null
-    if (versionCode != expectedVersionCode) return null
-
-    val point = normalized.substring(separatorIndex + DEX_KIT_CACHE_SEPARATOR.length).trim()
-    return point.takeIf { it.isNotEmpty() }
+internal inline fun resolveDexKitMethodValue(
+    bridge: DexKitCacheBridge.RecyclableBridge,
+    cacheKey: String,
+    noinline selector: (DexMethod) -> String = { it.name },
+    crossinline finder: DexKitBridge.() -> MethodData?,
+): String? {
+    return bridge.getMethodDirectOrNull(cacheKey) {
+        finder()
+    }?.let(selector)
 }
 
-private fun encodeDexKitInjectionCache(versionCode: Long, point: String): String {
-    return "$versionCode$DEX_KIT_CACHE_SEPARATOR$point"
+internal inline fun resolveDexKitClassValue(
+    bridge: DexKitCacheBridge.RecyclableBridge,
+    cacheKey: String,
+    noinline selector: (DexClass) -> String = { it.className },
+    crossinline finder: DexKitBridge.() -> ClassData?,
+): String? {
+    return bridge.getClassDirectOrNull(cacheKey) {
+        finder()
+    }?.let(selector)
 }
 
-private fun DexKitMethodInjectionPoint.encode(): String {
-    return "$className$DEX_KIT_MEMBER_SEPARATOR$methodName"
+internal inline fun resolveDexKitFieldValue(
+    bridge: DexKitCacheBridge.RecyclableBridge,
+    cacheKey: String,
+    noinline selector: (DexField) -> String = { it.name },
+    crossinline finder: DexKitBridge.() -> FieldData?,
+): String? {
+    return bridge.getFieldDirectOrNull(cacheKey) {
+        finder()
+    }?.let(selector)
 }
 
-private fun String.decodeDexKitMethodInjectionPoint(): DexKitMethodInjectionPoint? {
-    val separatorIndex = indexOf(DEX_KIT_MEMBER_SEPARATOR)
-    if (separatorIndex <= 0) return null
-    val className = substring(0, separatorIndex).trim()
-    val methodName = substring(separatorIndex + DEX_KIT_MEMBER_SEPARATOR.length).trim()
-    if (className.isEmpty() || methodName.isEmpty()) return null
-    return DexKitMethodInjectionPoint(className, methodName)
+private fun buildDexKitAppTag(packageName: String, packageVersionCode: Long): String {
+    return "$packageName$DEX_KIT_APP_TAG_SEPARATOR$packageVersionCode"
 }

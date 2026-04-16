@@ -24,7 +24,9 @@ import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
 import hk.uwu.reareye.hook.utils.DexKitMethodInjectionPoint
-import hk.uwu.reareye.hook.utils.resolveDexKitInjectionPoint
+import hk.uwu.reareye.hook.utils.createDexKitCacheBridge
+import hk.uwu.reareye.hook.utils.resolveDexKitClassValue
+import hk.uwu.reareye.hook.utils.resolveDexKitFieldValue
 import hk.uwu.reareye.hook.utils.resolveDexKitMethodInjectionPoint
 import hk.uwu.reareye.hook.utils.resolveHookPackageVersionCode
 import hk.uwu.reareye.repository.rearwidget.REAR_WIDGET_CARD_ONE_CONFIG_JSON_KEY
@@ -42,6 +44,11 @@ import hk.uwu.reareye.widgetapi.RearWidgetNoticeTicket
 import hk.uwu.reareye.widgetapi.RearWidgetTemplateConfigState
 import hk.uwu.reareye.widgetapi.RearWidgetTemplateImagePreview
 import org.luckypray.dexkit.DexKitBridge
+import org.luckypray.dexkit.DexKitCacheBridge
+import org.luckypray.dexkit.annotations.DexKitExperimentalApi
+import org.luckypray.dexkit.result.ClassData
+import org.luckypray.dexkit.result.FieldData
+import org.luckypray.dexkit.result.MethodData
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.lang.reflect.Modifier
@@ -51,6 +58,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.ZipFile
 
+@OptIn(DexKitExperimentalApi::class)
 class RearWidgetHook : YukiBaseHooker() {
 
     private data class OperationOutcome(
@@ -147,10 +155,7 @@ class RearWidgetHook : YukiBaseHooker() {
     private var manager: Any? = null
     private var mainHandler: Handler? = null
     private var hostContext: Context? = null
-    private var dexKitBridge: DexKitBridge? = null
-    private var dexKitVersionCode: Long = 0L
-    private var dexKitReadCache: ((String) -> String?)? = null
-    private var dexKitWriteCache: ((String, String) -> Unit)? = null
+    private var dexKitBridge: DexKitCacheBridge.RecyclableBridge? = null
     private val postRunnableSnapshots = WeakHashMap<Any, PostRunnableSnapshot>()
 
     override fun onHook() {
@@ -159,11 +164,14 @@ class RearWidgetHook : YukiBaseHooker() {
             RearWidgetRuntimeStore.install(packageName)
             debugLog("onHook start")
 
-            val bridge = DexKitBridge.create(this.appInfo.sourceDir)
-            dexKitBridge = bridge
-            dexKitVersionCode = resolveHookPackageVersionCode(
+            val versionCode = resolveHookPackageVersionCode(
                 context = systemContext,
                 packageName = appInfo.packageName,
+                sourceDir = appInfo.sourceDir,
+            )
+            dexKitBridge = createDexKitCacheBridge(
+                packageName = appInfo.packageName,
+                packageVersionCode = versionCode,
                 sourceDir = appInfo.sourceDir,
             )
 
@@ -180,12 +188,6 @@ class RearWidgetHook : YukiBaseHooker() {
                 debugLog("attachBaseContext applied runtime maps and waiting for preset release")
             }
 
-            onAppLifecycle {
-                onCreate {
-                    val nativePrefs = prefs.native()
-                    dexKitReadCache = { key -> nativePrefs.getString(key) }
-                    dexKitWriteCache =
-                        { key, value -> nativePrefs.edit().putString(key, value).apply() }
                     val managerInitPoint = resolveSmartAssistantManagerInitMethod()
                     val managerRefreshPoint = resolveSmartAssistantManagerRefreshMethod()
                     val parseWidgetPoint = resolveSmartAssistantParseWidgetMethod()
@@ -327,36 +329,20 @@ class RearWidgetHook : YukiBaseHooker() {
                             key?.let { RearWidgetRuntimeStore.getNotice(it) } ?: return@after
                         out.putAll(RearWidgetRuntimeStore.buildDecoratedExtras(notice.ticket))
                     }
-                }
-            }
         }
     }
 
     private inline fun resolveCachedMethodPoint(
         cacheKey: String,
-        fallbackClass: String,
-        fallbackMethod: String,
-        crossinline finder: DexKitBridge.() -> DexKitMethodInjectionPoint?,
+        crossinline finder: DexKitBridge.() -> MethodData?,
     ): DexKitMethodInjectionPoint {
         val bridge = dexKitBridge ?: error("DexKit bridge is not ready for method cache=$cacheKey")
-        val readCache = dexKitReadCache
-            ?: {
-                YLog.warn("DexKit cache must be initialized in onCreate before resolving methods")
-                null
-            }
-        val writeCache = dexKitWriteCache
-            ?: { _, _ ->
-                YLog.warn("DexKit cache must be initialized in onCreate before resolving methods")
-            }
         val point = resolveDexKitMethodInjectionPoint(
             bridge = bridge,
             cacheKey = cacheKey,
-            packageVersionCode = dexKitVersionCode,
-            readCache = readCache,
-            writeCache = writeCache,
         ) {
             finder()
-        } ?: DexKitMethodInjectionPoint(fallbackClass, fallbackMethod)
+        } ?: DexKitMethodInjectionPoint("", "")
         require(point.className.isNotBlank() && point.methodName.isNotBlank()) {
             "DexKit failed to resolve method cache=$cacheKey"
         }
@@ -366,19 +352,12 @@ class RearWidgetHook : YukiBaseHooker() {
     private inline fun resolveCachedClassName(
         cacheKey: String,
         fallbackClass: String,
-        crossinline finder: DexKitBridge.() -> String?,
+        crossinline finder: DexKitBridge.() -> ClassData?,
     ): String {
         val bridge = dexKitBridge ?: error("DexKit bridge is not ready for class cache=$cacheKey")
-        val readCache = dexKitReadCache
-            ?: error("DexKit cache must be initialized in onCreate before resolving classes")
-        val writeCache = dexKitWriteCache
-            ?: error("DexKit cache must be initialized in onCreate before resolving classes")
-        val className = resolveDexKitInjectionPoint(
+        val className = resolveDexKitClassValue(
             bridge = bridge,
             cacheKey = cacheKey,
-            packageVersionCode = dexKitVersionCode,
-            readCache = readCache,
-            writeCache = writeCache,
         ) {
             finder()
         } ?: fallbackClass
@@ -391,19 +370,12 @@ class RearWidgetHook : YukiBaseHooker() {
     private inline fun resolveCachedFieldName(
         cacheKey: String,
         fallbackField: String,
-        crossinline finder: DexKitBridge.() -> String?,
+        crossinline finder: DexKitBridge.() -> FieldData?,
     ): String {
         val bridge = dexKitBridge ?: error("DexKit bridge is not ready for field cache=$cacheKey")
-        val readCache = dexKitReadCache
-            ?: error("DexKit cache must be initialized in onCreate before resolving fields")
-        val writeCache = dexKitWriteCache
-            ?: error("DexKit cache must be initialized in onCreate before resolving fields")
-        val fieldName = resolveDexKitInjectionPoint(
+        val fieldName = resolveDexKitFieldValue(
             bridge = bridge,
             cacheKey = cacheKey,
-            packageVersionCode = dexKitVersionCode,
-            readCache = readCache,
-            writeCache = writeCache,
         ) {
             finder()
         } ?: fallbackField
@@ -429,7 +401,7 @@ class RearWidgetHook : YukiBaseHooker() {
                         "Save notification widgets to ",
                     )
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         }
     }
 
@@ -449,7 +421,7 @@ class RearWidgetHook : YukiBaseHooker() {
                         "Triggered upside-down check for business: %s, key: %s",
                     )
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         }
     }
 
@@ -478,7 +450,7 @@ class RearWidgetHook : YukiBaseHooker() {
                     modifiers = Modifier.PUBLIC or Modifier.STATIC or Modifier.FINAL
                     type = "android.os.Handler"
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         }
     }
 
@@ -504,7 +476,7 @@ class RearWidgetHook : YukiBaseHooker() {
                         }
                     }
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         }
     }
 
@@ -530,7 +502,7 @@ class RearWidgetHook : YukiBaseHooker() {
                         }
                     }
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         }
     }
 
@@ -547,7 +519,7 @@ class RearWidgetHook : YukiBaseHooker() {
                     declaredClass = specClass
                     type(Any::class.java)
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         }
     }
 
@@ -565,8 +537,6 @@ class RearWidgetHook : YukiBaseHooker() {
     private fun resolveSmartAssistantManagerInitMethod(): DexKitMethodInjectionPoint {
         return resolveCachedMethodPoint(
             cacheKey = SMART_ASSISTANT_MANAGER_INIT_METHOD_CACHE_KEY,
-            fallbackClass = "",
-            fallbackMethod = "",
         ) {
             // Decompiled source anchor:
             // .tmp-ref/decompiled-vineflower/Z1/D0.java:1342
@@ -580,15 +550,13 @@ class RearWidgetHook : YukiBaseHooker() {
                         "SmartAssistant not supported, skip manager initialization",
                     )
                 }
-            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+            }.singleOrNull()
         }
     }
 
     private fun resolveSmartAssistantManagerRefreshMethod(): DexKitMethodInjectionPoint {
         return resolveCachedMethodPoint(
             cacheKey = SMART_ASSISTANT_MANAGER_REFRESH_METHOD_CACHE_KEY,
-            fallbackClass = "",
-            fallbackMethod = "",
         ) {
             // Decompiled source anchor:
             // .tmp-ref/decompiled-vineflower/Z1/D0.java:1513
@@ -600,15 +568,13 @@ class RearWidgetHook : YukiBaseHooker() {
                     returnType = "java.util.HashSet"
                     usingStrings("Converted travel key: %s -> %s = %s")
                 }
-            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+            }.singleOrNull()
         }
     }
 
     private fun resolveSmartAssistantManagerRemoveNotificationMethod(): DexKitMethodInjectionPoint {
         return resolveCachedMethodPoint(
             cacheKey = SMART_ASSISTANT_MANAGER_REMOVE_NOTIFICATION_METHOD_CACHE_KEY,
-            fallbackClass = "",
-            fallbackMethod = "",
         ) {
             // Decompiled source anchor:
             // .tmp-ref/decompiled-vineflower/Z1/D0.java:1730
@@ -620,15 +586,13 @@ class RearWidgetHook : YukiBaseHooker() {
                     returnType = "void"
                     usingStrings("Widget not found for multi-business app: %s, ID: %d")
                 }
-            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+            }.singleOrNull()
         }
     }
 
     private fun resolveSmartAssistantManagerRemoveBusinessMethod(): DexKitMethodInjectionPoint {
         return resolveCachedMethodPoint(
             cacheKey = SMART_ASSISTANT_MANAGER_REMOVE_BUSINESS_METHOD_CACHE_KEY,
-            fallbackClass = "",
-            fallbackMethod = "",
         ) {
             // Decompiled source anchor:
             // .tmp-ref/decompiled-vineflower/Z1/D0.java:2007
@@ -640,15 +604,13 @@ class RearWidgetHook : YukiBaseHooker() {
                     returnType = "void"
                     usingStrings("Removing widgets for %s:%s")
                 }
-            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+            }.singleOrNull()
         }
     }
 
     private fun resolveSmartAssistantParseWidgetMethod(): DexKitMethodInjectionPoint {
         return resolveCachedMethodPoint(
             cacheKey = SMART_ASSISTANT_PARSE_WIDGET_METHOD_CACHE_KEY,
-            fallbackClass = "",
-            fallbackMethod = "",
         ) {
             // Decompiled source anchor:
             // .tmp-ref/decompiled-jadx/sources/P2/c.java:391
@@ -661,15 +623,13 @@ class RearWidgetHook : YukiBaseHooker() {
                         "No business found for %s and not in config",
                     )
                 }
-            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+            }.singleOrNull()
         }
     }
 
     private fun resolveSmartAssistantResolvePathMethod(): DexKitMethodInjectionPoint {
         return resolveCachedMethodPoint(
             cacheKey = SMART_ASSISTANT_RESOLVE_PATH_METHOD_CACHE_KEY,
-            fallbackClass = "",
-            fallbackMethod = "",
         ) {
             // Decompiled source anchor:
             // .tmp-ref/decompiled-jadx/sources/P2/c.java:224
@@ -681,15 +641,13 @@ class RearWidgetHook : YukiBaseHooker() {
                     returnType = "java.lang.String"
                     usingStrings("unified.music", "music")
                 }
-            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+            }.singleOrNull()
         }
     }
 
     private fun resolveSmartAssistantAllowAppMethod(): DexKitMethodInjectionPoint {
         return resolveCachedMethodPoint(
             cacheKey = SMART_ASSISTANT_ALLOW_APP_METHOD_CACHE_KEY,
-            fallbackClass = "",
-            fallbackMethod = "",
         ) {
             // Decompiled source anchor:
             // .tmp-ref/decompiled-jadx/sources/P2/c.java:286
@@ -704,15 +662,13 @@ class RearWidgetHook : YukiBaseHooker() {
                         "Multi-business app %s allowed: false (no business enabled)",
                     )
                 }
-            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+            }.singleOrNull()
         }
     }
 
     private fun resolveSmartAssistantDecorateExtrasMethod(): DexKitMethodInjectionPoint {
         return resolveCachedMethodPoint(
             cacheKey = SMART_ASSISTANT_DECORATE_EXTRAS_METHOD_CACHE_KEY,
-            fallbackClass = "",
-            fallbackMethod = "",
         ) {
             // Decompiled source anchor:
             // .tmp-ref/decompiled-jadx/sources/P2/c.java:492
@@ -724,15 +680,13 @@ class RearWidgetHook : YukiBaseHooker() {
                     returnType = "android.os.Bundle"
                     usingStrings("composite_key", "disable_popup", "is_remote_view")
                 }
-            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+            }.singleOrNull()
         }
     }
 
     private fun resolveSmartAssistantParseParamsMethod(): DexKitMethodInjectionPoint {
         return resolveCachedMethodPoint(
             cacheKey = SMART_ASSISTANT_PARSE_PARAMS_METHOD_CACHE_KEY,
-            fallbackClass = "",
-            fallbackMethod = "",
         ) {
             // Decompiled source anchor:
             // .tmp-ref/decompiled-jadx/sources/L1/a.java:967
@@ -746,15 +700,13 @@ class RearWidgetHook : YukiBaseHooker() {
                         "miui.focus.param"
                     )
                 }
-            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+            }.singleOrNull()
         }
     }
 
     private fun resolveSmartAssistantBuiltinSupportMethod(): DexKitMethodInjectionPoint {
         return resolveCachedMethodPoint(
             cacheKey = SMART_ASSISTANT_BUILTIN_SUPPORT_METHOD_CACHE_KEY,
-            fallbackClass = "",
-            fallbackMethod = "",
         ) {
             // Decompiled source anchor:
             // .tmp-ref/decompiled-jadx/sources/P2/a.java:106
@@ -774,15 +726,13 @@ class RearWidgetHook : YukiBaseHooker() {
                     paramTypes(String::class.java, String::class.java)
                     returnType = "boolean"
                 }
-            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+            }.singleOrNull()
         }
     }
 
     private fun resolveNotificationWidgetApplyMethod(): DexKitMethodInjectionPoint {
         return resolveCachedMethodPoint(
             cacheKey = NOTIFICATION_WIDGET_APPLY_METHOD_CACHE_KEY,
-            fallbackClass = "",
-            fallbackMethod = "",
         ) {
             // Decompiled source anchor:
             // .tmp-ref/decompiled-jadx/sources/T2/j.java:110
@@ -792,7 +742,7 @@ class RearWidgetHook : YukiBaseHooker() {
                     returnType = "void"
                     usingStrings("notification_received", "params_transferred")
                 }
-            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+            }.singleOrNull()
         }
     }
 

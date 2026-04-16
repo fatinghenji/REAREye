@@ -4,13 +4,16 @@ import android.os.Bundle
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
-import hk.uwu.reareye.hook.utils.resolveDexKitInjectionPoint
+import hk.uwu.reareye.hook.utils.createDexKitCacheBridge
+import hk.uwu.reareye.hook.utils.resolveDexKitMethodValue
 import hk.uwu.reareye.hook.utils.resolveHookPackageVersionCode
 import hk.uwu.reareye.repository.rearwidget.RearBusinessExtraConfigRepository.getShowTimeTipForBusiness
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
-import org.luckypray.dexkit.DexKitBridge
+import org.luckypray.dexkit.DexKitCacheBridge
+import org.luckypray.dexkit.annotations.DexKitExperimentalApi
 
+@OptIn(DexKitExperimentalApi::class)
 class ExtraTimeTipHook : YukiBaseHooker() {
     companion object {
         private const val WIDGET_SPEC_CLASS_CACHE_KEY = "SSC_WIDGET_SPEC_CLASS"
@@ -18,67 +21,62 @@ class ExtraTimeTipHook : YukiBaseHooker() {
 
     override fun onHook() {
         loadApp("com.xiaomi.subscreencenter") {
-            val bridge = DexKitBridge.create(this.appInfo.sourceDir)
-            onAppLifecycle {
-                onCreate {
-                    val versionCode = resolveHookPackageVersionCode(
-                        systemContext,
-                        appInfo.packageName,
-                        appInfo.sourceDir
-                    )
-                    val clz = resolveWidgetSpecClass(bridge, versionCode).toClass().resolve()
-                    clz.constructor().build().hookAll().before {
-                        val moreDebug = prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)
-                        val bundle = args.getOrNull(3) as? Bundle
-                        if (bundle == null) {
-                            if (moreDebug) {
-                                YLog.debug("bundle is null ${args.joinToString { it.toString() }}")
-                            }
-                            return@before
-                        }
-                        val pm = prefs.getPrefsManager()
-                        val business = bundle.getString("business")
-                        if (business != null) {
-                            if (moreDebug) {
-                                YLog.debug("time tip process biz: $business")
-                            }
-                            val showTimeTip = pm.getShowTimeTipForBusiness(business)
-                            if (args.size > 11) {
-                                args[11] = showTimeTip
-                            }
-                            if (moreDebug) {
-                                YLog.debug("time tip state biz=$business showTimeTip=$showTimeTip")
-                            }
-                        } else {
-                            if (moreDebug) {
-                                YLog.debug(
-                                    "business is null ${
-                                        bundle.keySet()
-                                            ?.joinToString(separator = "\n") { key ->
-                                                @Suppress("DEPRECATION")
-                                                "$key=${bundle.get(key)}"
-                                            }
-                                    }"
-                                )
-                            }
-                        }
+            val versionCode = resolveHookPackageVersionCode(
+                systemContext,
+                appInfo.packageName,
+                appInfo.sourceDir,
+            )
+            val bridge = createDexKitCacheBridge(
+                packageName = appInfo.packageName,
+                packageVersionCode = versionCode,
+                sourceDir = appInfo.sourceDir,
+            )
+            val clz = resolveWidgetSpecClass(bridge).toClass().resolve()
+            clz.constructor().build().hookAll().before {
+                val moreDebug = prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)
+                val bundle = args.getOrNull(3) as? Bundle
+                if (bundle == null) {
+                    if (moreDebug) {
+                        YLog.debug("bundle is null ${args.joinToString { it.toString() }}")
                     }
+                    return@before
+                }
+
+                val pm = prefs.getPrefsManager()
+                val business = bundle.getString("business")
+                if (business != null) {
+                    if (moreDebug) {
+                        YLog.debug("time tip process biz: $business")
+                    }
+                    val showTimeTip = pm.getShowTimeTipForBusiness(business)
+                    if (args.size > 11) {
+                        args[11] = showTimeTip
+                    }
+                    if (moreDebug) {
+                        YLog.debug("time tip state biz=$business showTimeTip=$showTimeTip")
+                    }
+                } else if (moreDebug) {
+                    YLog.debug(
+                        "business is null ${
+                            bundle.keySet()
+                                ?.joinToString(separator = "\n") { key ->
+                                    @Suppress("DEPRECATION")
+                                    "$key=${bundle.get(key)}"
+                                }
+                        }"
+                    )
                 }
             }
         }
     }
 
     private fun resolveWidgetSpecClass(
-        bridge: DexKitBridge,
-        packageVersionCode: Long,
+        bridge: DexKitCacheBridge.RecyclableBridge,
     ): String {
-        val nativePrefs = prefs.native()
-        return resolveDexKitInjectionPoint(
+        return resolveDexKitMethodValue(
             bridge = bridge,
             cacheKey = WIDGET_SPEC_CLASS_CACHE_KEY,
-            packageVersionCode = packageVersionCode,
-            readCache = nativePrefs::getString,
-            writeCache = { key, value -> nativePrefs.edit().putString(key, value).apply() },
+            selector = { it.className },
         ) {
             // DexKit source anchor:
             // .tmp-ref/decompiled-jadx/sources/com/bumptech/glide/d.java:138
@@ -92,10 +90,9 @@ class ExtraTimeTipHook : YukiBaseHooker() {
                         "/system/media/rearscreen/template/default/rearScreen.json",
                     )
                 }
-            }.singleOrNull()
-                ?.invokes
-                ?.singleOrNull { method -> method.isConstructor && method.paramCount >= 10 }
-                ?.className
+            }.singleOrNull()?.invokes?.singleOrNull { method ->
+                method.isConstructor && method.paramCount >= 10
+            }
         } ?: error("DexKit failed to resolve widget spec class")
     }
 }

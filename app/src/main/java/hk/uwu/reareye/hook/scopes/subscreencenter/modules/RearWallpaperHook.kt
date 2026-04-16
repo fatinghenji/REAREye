@@ -30,7 +30,9 @@ import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
 import hk.uwu.reareye.hook.utils.DexKitMethodInjectionPoint
-import hk.uwu.reareye.hook.utils.resolveDexKitInjectionPoint
+import hk.uwu.reareye.hook.utils.createDexKitCacheBridge
+import hk.uwu.reareye.hook.utils.resolveDexKitClassValue
+import hk.uwu.reareye.hook.utils.resolveDexKitFieldValue
 import hk.uwu.reareye.hook.utils.resolveDexKitMethodInjectionPoint
 import hk.uwu.reareye.hook.utils.resolveHookPackageVersionCode
 import hk.uwu.reareye.ui.config.ConfigKeys
@@ -41,8 +43,11 @@ import hk.uwu.reareye.widgetapi.RearWallpaperScheduleCodec
 import org.json.JSONArray
 import org.json.JSONObject
 import org.luckypray.dexkit.DexKitBridge
+import org.luckypray.dexkit.DexKitCacheBridge
+import org.luckypray.dexkit.annotations.DexKitExperimentalApi
 import org.luckypray.dexkit.query.enums.MatchType
 import org.luckypray.dexkit.query.matchers.base.AccessFlagsMatcher
+import org.luckypray.dexkit.result.FieldData
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.lang.reflect.Modifier
@@ -56,6 +61,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import javax.xml.parsers.DocumentBuilderFactory
 
+@OptIn(DexKitExperimentalApi::class)
 class RearWallpaperHook : YukiBaseHooker() {
 
     companion object {
@@ -191,51 +197,38 @@ class RearWallpaperHook : YukiBaseHooker() {
     private var hostContext: Context? = null
     private var mainPanel: Any? = null
     private var mainHandler: Handler? = null
-    private var dexKitBridge: DexKitBridge? = null
-    private var dexKitVersionCode: Long = 0L
-    private var dexKitReadCache: ((String) -> String?)? = null
-    private var dexKitWriteCache: ((String, String) -> Unit)? = null
+    private var dexKitBridge: DexKitCacheBridge.RecyclableBridge? = null
     private var schedulerTask: Runnable? = null
     private val runtimeLock = Any()
 
-    private fun readDexKitCache(key: String): String {
-        return dexKitReadCache?.invoke(key)
-            ?: error("DexKit cache must be initialized in onCreate before resolving cache key=$key")
-    }
-
-    private fun writeDexKitCache(key: String, value: String) {
-        dexKitWriteCache?.invoke(key, value)
-            ?: error("DexKit cache must be initialized in onCreate before writing cache key=$key")
-    }
-
     private inline fun resolveCachedFieldName(
         cacheKey: String,
-        fallbackField: String,
-        crossinline finder: DexKitBridge.() -> String?,
+        crossinline finder: DexKitBridge.() -> FieldData?,
     ): String {
         val bridge = dexKitBridge ?: error("DexKit bridge is not ready for field cache=$cacheKey")
-        val fieldName = resolveDexKitInjectionPoint(
+        val fieldName = resolveDexKitFieldValue(
             bridge = bridge,
             cacheKey = cacheKey,
-            packageVersionCode = dexKitVersionCode,
-            readCache = ::readDexKitCache,
-            writeCache = ::writeDexKitCache,
         ) {
             finder()
-        } ?: fallbackField
+        } ?: ""
         require(fieldName.isNotBlank()) { "DexKit failed to resolve field cache=$cacheKey" }
         return fieldName
     }
 
     override fun onHook() {
         loadApp("com.xiaomi.subscreencenter") {
-            val bridge = DexKitBridge.create(this.appInfo.sourceDir)
-            dexKitBridge = bridge
-            dexKitVersionCode = resolveHookPackageVersionCode(
+            val versionCode = resolveHookPackageVersionCode(
                 context = systemContext,
                 packageName = appInfo.packageName,
                 sourceDir = appInfo.sourceDir,
             )
+            val bridge = createDexKitCacheBridge(
+                packageName = appInfo.packageName,
+                packageVersionCode = versionCode,
+                sourceDir = appInfo.sourceDir,
+            )
+            dexKitBridge = bridge
             val appRef = "com.xiaomi.subscreencenter.SubScreenCenterApp".toClass().resolve()
             val launcherRef = "com.xiaomi.subscreencenter.SubScreenLauncher".toClass().resolve()
 
@@ -258,14 +251,8 @@ class RearWallpaperHook : YukiBaseHooker() {
                     YLog.warn(it)
                 }
             }
-            onAppLifecycle {
-                onCreate {
-                    val nativePrefs = prefs.native()
-                    dexKitReadCache = { key -> nativePrefs.getString(key) }
-                    dexKitWriteCache =
-                        { key, value -> nativePrefs.edit().putString(key, value).apply() }
                     val saveSelectionPoint =
-                        resolveMainPanelSaveSelectionMethod(bridge, dexKitVersionCode)
+                        resolveMainPanelSaveSelectionMethod(bridge)
                     resolveLauncherMainPanelFieldName()
                     resolveLauncherMainHandlerFieldName()
                     resolveMainPanelSelectMethod()
@@ -336,8 +323,6 @@ class RearWallpaperHook : YukiBaseHooker() {
                     }.hook().after {
                         updateSelectedWallpaperIdFromPanel(instance)
                     }
-                }
-            }
         }
     }
 
@@ -405,15 +390,11 @@ class RearWallpaperHook : YukiBaseHooker() {
     }
 
     private fun resolveMainPanelSaveSelectionMethod(
-        bridge: DexKitBridge,
-        packageVersionCode: Long,
+        bridge: DexKitCacheBridge.RecyclableBridge,
     ): DexKitMethodInjectionPoint {
         return resolveDexKitMethodInjectionPoint(
             bridge = bridge,
             cacheKey = MAIN_PANEL_SAVE_SELECTION_METHOD_CACHE_KEY,
-            packageVersionCode = packageVersionCode,
-            readCache = ::readDexKitCache,
-            writeCache = ::writeDexKitCache,
         ) {
             // DexKit source anchor:
             // .tmp-ref/decompiled-jadx/sources/com/xiaomi/subscreencenter/MainPanel.java:331
@@ -425,7 +406,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                     returnType = "void"
                     usingStrings("Save user select, new index = ", "user_select")
                 }
-            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+            }.singleOrNull()
         } ?: DexKitMethodInjectionPoint(FALLBACK_MAIN_PANEL_CLASS, "")
             .also { require(it.methodName.isNotBlank()) { "DexKit failed to resolve save selection method" } }
     }
@@ -790,9 +771,6 @@ class RearWallpaperHook : YukiBaseHooker() {
         val point = resolveDexKitMethodInjectionPoint(
             bridge = bridge,
             cacheKey = SUBSCREEN_WIDGET_FACTORY_METHOD_CACHE_KEY,
-            packageVersionCode = dexKitVersionCode,
-            readCache = ::readDexKitCache,
-            writeCache = ::writeDexKitCache,
         ) {
             // DexKit source anchor:
             // .tmp-ref/decompiled-jadx/sources/t2/r.java:44
@@ -801,9 +779,9 @@ class RearWallpaperHook : YukiBaseHooker() {
                 matcher {
                     modifiers = Modifier.PUBLIC or Modifier.STATIC
                     paramCount(1)
-                    usingStrings("snapshotPath_", "snapshotPath")
+                    usingStrings("snapshotPath_", "snapshotPath", "__PIN_CONTENT_TEXT__")
                 }
-            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+            }.singleOrNull()
         } ?: DexKitMethodInjectionPoint("", "")
         require(point.className.isNotBlank() && point.methodName.isNotBlank()) {
             "DexKit failed to resolve widget factory method"
@@ -829,7 +807,6 @@ class RearWallpaperHook : YukiBaseHooker() {
     private fun resolveWallpaperSpecIdFieldName(): String {
         return resolveCachedFieldName(
             cacheKey = WALLPAPER_SPEC_ID_FIELD_CACHE_KEY,
-            fallbackField = "",
         ) {
             findField {
                 searchPackages(resolveWallpaperSpecClassName().substringBeforeLast('.'))
@@ -847,14 +824,13 @@ class RearWallpaperHook : YukiBaseHooker() {
                         }
                     }
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         }
     }
 
     private fun resolveWallpaperSpecExtrasFieldName(): String {
         return resolveCachedFieldName(
             cacheKey = WALLPAPER_SPEC_EXTRAS_FIELD_CACHE_KEY,
-            fallbackField = "",
         ) {
             findField {
                 searchPackages(resolveWallpaperSpecClassName().substringBeforeLast('.'))
@@ -870,7 +846,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                         }
                     }
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         }
     }
 
@@ -881,7 +857,6 @@ class RearWallpaperHook : YukiBaseHooker() {
     private fun resolveLauncherMainPanelFieldName(): String {
         return resolveCachedFieldName(
             cacheKey = LAUNCHER_MAIN_PANEL_FIELD_CACHE_KEY,
-            fallbackField = "",
         ) {
             findField {
                 searchPackages("com.xiaomi.subscreencenter")
@@ -889,14 +864,13 @@ class RearWallpaperHook : YukiBaseHooker() {
                     declaredClass = "com.xiaomi.subscreencenter.SubScreenLauncher"
                     type = resolveMainPanelClassName()
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         }
     }
 
     private fun resolveLauncherMainHandlerFieldName(): String {
         return resolveCachedFieldName(
             cacheKey = LAUNCHER_MAIN_HANDLER_FIELD_CACHE_KEY,
-            fallbackField = "",
         ) {
             findField {
                 searchPackages("com.xiaomi.subscreencenter")
@@ -904,7 +878,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                     declaredClass = "com.xiaomi.subscreencenter.SubScreenLauncher"
                     type = "android.os.Handler"
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         }
     }
 
@@ -912,7 +886,6 @@ class RearWallpaperHook : YukiBaseHooker() {
         val mainPanelClass = resolveMainPanelClassName()
         return resolveCachedFieldName(
             cacheKey = MAIN_PANEL_EDIT_MODE_FIELD_CACHE_KEY,
-            fallbackField = "",
         ) {
             findField {
                 searchPackages("com.xiaomi.subscreencenter")
@@ -933,7 +906,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                         }
                     }
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         }
     }
 
@@ -941,7 +914,6 @@ class RearWallpaperHook : YukiBaseHooker() {
         val mainPanelClass = resolveMainPanelClassName()
         return resolveCachedFieldName(
             cacheKey = MAIN_PANEL_RESUMED_FIELD_CACHE_KEY,
-            fallbackField = "",
         ) {
             findField {
                 searchPackages(mainPanelClass.substringBeforeLast('.'))
@@ -962,7 +934,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                         }
                     }
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         }
     }
 
@@ -970,7 +942,6 @@ class RearWallpaperHook : YukiBaseHooker() {
         val mainPanelClass = resolveMainPanelClassName()
         return resolveCachedFieldName(
             cacheKey = MAIN_PANEL_AOD_FIELD_CACHE_KEY,
-            fallbackField = "",
         ) {
             findField {
                 searchPackages(mainPanelClass.substringBeforeLast('.'))
@@ -985,7 +956,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                         }
                     }
                 }
-            }.filterNot { it.fieldName == resolveMainPanelResumedFieldName() }.singleOrNull()?.name
+            }.filterNot { it.fieldName == resolveMainPanelResumedFieldName() }.singleOrNull()
         }
     }
 
@@ -993,7 +964,6 @@ class RearWallpaperHook : YukiBaseHooker() {
         val mainPanelClass = resolveMainPanelClassName()
         return resolveCachedFieldName(
             cacheKey = MAIN_PANEL_SELECTED_INDEX_FIELD_CACHE_KEY,
-            fallbackField = "",
         ) {
             findField {
                 searchPackages("com.xiaomi.subscreencenter")
@@ -1009,14 +979,13 @@ class RearWallpaperHook : YukiBaseHooker() {
                         }
                     }
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         }
     }
 
     private fun resolveMainPanelWidgetListFieldName(): String {
         return resolveCachedFieldName(
             cacheKey = MAIN_PANEL_WIDGET_LIST_FIELD_CACHE_KEY,
-            fallbackField = "",
         ) {
             findField {
                 searchPackages("com.xiaomi.subscreencenter")
@@ -1024,14 +993,13 @@ class RearWallpaperHook : YukiBaseHooker() {
                     declaredClass = resolveMainPanelClassName()
                     type = "java.util.List"
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         }
     }
 
     private fun resolveWidgetIdFieldName(): String {
         return resolveCachedFieldName(
             cacheKey = SUBSCREEN_WIDGET_ID_FIELD_CACHE_KEY,
-            fallbackField = "",
         ) {
             findField {
                 searchPackages(resolveWidgetClassName().substringBeforeLast('.'))
@@ -1040,14 +1008,13 @@ class RearWallpaperHook : YukiBaseHooker() {
                     modifiers = Modifier.FINAL
                     type = "int"
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         }
     }
 
     private fun resolveWidgetSpecFieldName(): String {
         return resolveCachedFieldName(
             cacheKey = SUBSCREEN_WIDGET_SPEC_FIELD_CACHE_KEY,
-            fallbackField = "",
         ) {
             findField {
                 searchPackages(resolveWidgetClassName().substringBeforeLast('.'))
@@ -1055,14 +1022,13 @@ class RearWallpaperHook : YukiBaseHooker() {
                     declaredClass = resolveWidgetClassName()
                     type = resolveWallpaperSpecClassName()
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         }
     }
 
     private fun resolveWidgetExtrasFieldName(): String {
         return resolveCachedFieldName(
             cacheKey = SUBSCREEN_WIDGET_EXTRAS_FIELD_CACHE_KEY,
-            fallbackField = "",
         ) {
             findField {
                 searchPackages(resolveWidgetClassName().substringBeforeLast('.'))
@@ -1070,14 +1036,13 @@ class RearWallpaperHook : YukiBaseHooker() {
                     declaredClass = resolveWidgetClassName()
                     type = "android.os.Bundle"
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         }
     }
 
     private fun resolveWidgetHostFieldName(): String {
         return resolveCachedFieldName(
             cacheKey = SUBSCREEN_WIDGET_HOST_FIELD_CACHE_KEY,
-            fallbackField = "",
         ) {
             findField {
                 searchPackages(resolveWidgetClassName().substringBeforeLast('.'))
@@ -1085,14 +1050,13 @@ class RearWallpaperHook : YukiBaseHooker() {
                     declaredClass = resolveWidgetClassName()
                     type = "android.widget.FrameLayout"
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         }
     }
 
     private fun resolveWidgetPreviewModeFieldName(): String {
         return resolveCachedFieldName(
             cacheKey = SUBSCREEN_WIDGET_PREVIEW_MODE_FIELD_CACHE_KEY,
-            fallbackField = "",
         ) {
             findField {
                 searchPackages(resolveWidgetClassName().substringBeforeLast('.'))
@@ -1108,14 +1072,13 @@ class RearWallpaperHook : YukiBaseHooker() {
                         }
                     }
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         }
     }
 
     private fun resolvePrefStoreInstanceFieldName(): String {
         return resolveCachedFieldName(
             cacheKey = PREF_STORE_INSTANCE_FIELD_CACHE_KEY,
-            fallbackField = "",
         ) {
             findMethod {
                 searchPackages("com.xiaomi.subscreencenter")
@@ -1129,14 +1092,12 @@ class RearWallpaperHook : YukiBaseHooker() {
                 ?.usingFields
                 ?.firstOrNull { it.field.className == resolvePrefStoreClass() }
                 ?.field
-                ?.name
         }
     }
 
     private fun resolveDeviceConfigRenderSizeFieldName(): String {
         return resolveCachedFieldName(
             cacheKey = DEVICE_CONFIG_RENDER_SIZE_FIELD_CACHE_KEY,
-            fallbackField = "",
         ) {
             findField {
                 searchPackages(resolveDeviceConfigClass().substringBeforeLast('.'))
@@ -1145,14 +1106,13 @@ class RearWallpaperHook : YukiBaseHooker() {
                     modifiers = Modifier.STATIC or Modifier.FINAL
                     type = "android.graphics.Point"
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         }
     }
 
     private fun resolveDeviceConfigLocaleSuffixFieldName(): String {
         return resolveCachedFieldName(
             cacheKey = DEVICE_CONFIG_LOCALE_SUFFIX_FIELD_CACHE_KEY,
-            fallbackField = "",
         ) {
             findField {
                 searchPackages(resolveDeviceConfigClass().substringBeforeLast('.'))
@@ -1169,7 +1129,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                         }
                     }
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         }
     }
 
@@ -1181,9 +1141,6 @@ class RearWallpaperHook : YukiBaseHooker() {
         val point = resolveDexKitMethodInjectionPoint(
             bridge = bridge,
             cacheKey = SUBSCREEN_WIDGET_SET_EDIT_MODE_METHOD_CACHE_KEY,
-            packageVersionCode = dexKitVersionCode,
-            readCache = ::readDexKitCache,
-            writeCache = ::writeDexKitCache,
         ) {
             // DexKit source anchor:
             // .tmp-ref/decompiled-jadx/sources/t2/r.java:160
@@ -1201,7 +1158,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                         }
                     }
                 }
-            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+            }.singleOrNull()
         } ?: DexKitMethodInjectionPoint("", "")
         require(point.className.isNotBlank() && point.methodName.isNotBlank()) {
             "DexKit failed to resolve widget edit mode method"
@@ -1215,9 +1172,6 @@ class RearWallpaperHook : YukiBaseHooker() {
         val point = resolveDexKitMethodInjectionPoint(
             bridge = bridge,
             cacheKey = SUBSCREEN_WIDGET_CREATE_VIEW_METHOD_CACHE_KEY,
-            packageVersionCode = dexKitVersionCode,
-            readCache = ::readDexKitCache,
-            writeCache = ::writeDexKitCache,
         ) {
             // DexKit source anchor:
             // .tmp-ref/decompiled-jadx/sources/t2/r.java:462
@@ -1234,7 +1188,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                     paramTypes(Context::class.java)
                     returnType = "android.view.View"
                 }
-            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+            }.singleOrNull()
         } ?: DexKitMethodInjectionPoint("", "")
         require(point.className.isNotBlank() && point.methodName.isNotBlank()) {
             "DexKit failed to resolve widget create view method"
@@ -1248,9 +1202,6 @@ class RearWallpaperHook : YukiBaseHooker() {
         val point = resolveDexKitMethodInjectionPoint(
             bridge = bridge,
             cacheKey = SUBSCREEN_WIDGET_SET_AOD_METHOD_CACHE_KEY,
-            packageVersionCode = dexKitVersionCode,
-            readCache = ::readDexKitCache,
-            writeCache = ::writeDexKitCache,
         ) {
             // DexKit source anchor:
             // .tmp-ref/decompiled-jadx/sources/t2/r.java:437
@@ -1265,7 +1216,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                         "force_non_aod_state",
                     )
                 }
-            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+            }.singleOrNull()
         } ?: DexKitMethodInjectionPoint("", "")
         require(point.className.isNotBlank() && point.methodName.isNotBlank()) {
             "DexKit failed to resolve widget AOD method"
@@ -1280,9 +1231,6 @@ class RearWallpaperHook : YukiBaseHooker() {
         val point = resolveDexKitMethodInjectionPoint(
             bridge = bridge,
             cacheKey = SUBSCREEN_WIDGET_RESUME_METHOD_CACHE_KEY,
-            packageVersionCode = dexKitVersionCode,
-            readCache = ::readDexKitCache,
-            writeCache = ::writeDexKitCache,
         ) {
             // DexKit source anchor:
             // .tmp-ref/decompiled-jadx/sources/t2/r.java:194
@@ -1309,7 +1257,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                         }
                     }
                 }
-            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+            }.singleOrNull()
         } ?: DexKitMethodInjectionPoint("", "")
         require(point.className.isNotBlank() && point.methodName.isNotBlank()) {
             "DexKit failed to resolve widget resume method"
@@ -1325,9 +1273,6 @@ class RearWallpaperHook : YukiBaseHooker() {
         val point = resolveDexKitMethodInjectionPoint(
             bridge = bridge,
             cacheKey = SUBSCREEN_WIDGET_CLEANUP_METHOD_CACHE_KEY,
-            packageVersionCode = dexKitVersionCode,
-            readCache = ::readDexKitCache,
-            writeCache = ::writeDexKitCache,
         ) {
             // DexKit source anchor:
             // .tmp-ref/decompiled-jadx/sources/t2/r.java:133
@@ -1354,7 +1299,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                         }
                     }
                 }
-            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+            }.singleOrNull()
         } ?: DexKitMethodInjectionPoint("", "")
         require(point.className.isNotBlank() && point.methodName.isNotBlank()) {
             "DexKit failed to resolve widget cleanup method"
@@ -1413,9 +1358,6 @@ class RearWallpaperHook : YukiBaseHooker() {
         val point = resolveDexKitMethodInjectionPoint(
             bridge = bridge,
             cacheKey = MAIN_PANEL_SELECT_METHOD_CACHE_KEY,
-            packageVersionCode = dexKitVersionCode,
-            readCache = ::readDexKitCache,
-            writeCache = ::writeDexKitCache,
         ) {
             // DexKit source anchor:
             // .tmp-ref/decompiled-jadx/sources/com/xiaomi/subscreencenter/MainPanel.java:356
@@ -1430,7 +1372,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                         "onSubScreenWidgetChanged, new widgets size = ",
                     )
                 }
-            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+            }.singleOrNull()
         } ?: DexKitMethodInjectionPoint(FALLBACK_MAIN_PANEL_CLASS, "")
         require(point.methodName.isNotBlank()) { "DexKit failed to resolve main panel select method" }
         return point
@@ -1450,9 +1392,6 @@ class RearWallpaperHook : YukiBaseHooker() {
         return resolveDexKitMethodInjectionPoint(
             bridge = bridge,
             cacheKey = PREF_STORE_LOAD_SPECS_METHOD_CACHE_KEY,
-            packageVersionCode = dexKitVersionCode,
-            readCache = ::readDexKitCache,
-            writeCache = ::writeDexKitCache,
         ) {
             // DexKit source anchor:
             // MainPanel / wallpaper runtime load path reads persisted rear-screen widget specs from Z1.S.
@@ -1463,7 +1402,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                     paramTypes("boolean")
                     returnType = "java.util.List"
                 }
-            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+            }.singleOrNull()
         } ?: DexKitMethodInjectionPoint(prefStoreClass, "e")
     }
 
@@ -1473,9 +1412,6 @@ class RearWallpaperHook : YukiBaseHooker() {
         return resolveDexKitMethodInjectionPoint(
             bridge = bridge,
             cacheKey = PREF_STORE_READ_VALUE_METHOD_CACHE_KEY,
-            packageVersionCode = dexKitVersionCode,
-            readCache = ::readDexKitCache,
-            writeCache = ::writeDexKitCache,
         ) {
             // DexKit source anchor:
             // .tmp-ref/decompiled-jadx/sources/Z1/E.java:41
@@ -1490,7 +1426,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                     )
                     returnType = "java.lang.Object"
                 }
-            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+            }.singleOrNull()
         } ?: DexKitMethodInjectionPoint(prefStoreClass, "c")
     }
 
@@ -1500,9 +1436,6 @@ class RearWallpaperHook : YukiBaseHooker() {
         return resolveDexKitMethodInjectionPoint(
             bridge = bridge,
             cacheKey = PREF_STORE_WRITE_VALUE_METHOD_CACHE_KEY,
-            packageVersionCode = dexKitVersionCode,
-            readCache = ::readDexKitCache,
-            writeCache = ::writeDexKitCache,
         ) {
             // DexKit source anchor:
             // .tmp-ref/decompiled-jadx/sources/com/xiaomi/subscreencenter/MainPanel.java:331
@@ -1521,7 +1454,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                         }
                     }
                 }
-            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+            }.singleOrNull()
         } ?: DexKitMethodInjectionPoint(prefStoreClass, "j")
     }
 
@@ -1556,12 +1489,10 @@ class RearWallpaperHook : YukiBaseHooker() {
 
     private fun resolvePrefStoreClass(): String {
         val bridge = dexKitBridge ?: error("DexKit bridge is not ready for pref store class")
-        val className = resolveDexKitInjectionPoint(
+        val className = resolveDexKitFieldValue(
             bridge = bridge,
             cacheKey = PREF_STORE_CLASS_CACHE_KEY,
-            packageVersionCode = dexKitVersionCode,
-            readCache = ::readDexKitCache,
-            writeCache = ::writeDexKitCache,
+            selector = { it.className },
         ) {
             // DexKit source anchor:
             // .tmp-ref/decompiled-jadx/sources/com/xiaomi/subscreencenter/MainPanel.java:331
@@ -1576,7 +1507,6 @@ class RearWallpaperHook : YukiBaseHooker() {
                 ?.usingFields
                 ?.firstOrNull { field -> field.field.typeName.endsWith(".d") || field.field.name == "a" }
                 ?.field
-                ?.className
         } ?: ""
         require(className.isNotBlank()) { "DexKit failed to resolve pref store class" }
         return className
@@ -1588,9 +1518,6 @@ class RearWallpaperHook : YukiBaseHooker() {
         val point = resolveDexKitMethodInjectionPoint(
             bridge = bridge,
             cacheKey = WALLPAPER_RUNTIME_LIST_METHOD_CACHE_KEY,
-            packageVersionCode = dexKitVersionCode,
-            readCache = ::readDexKitCache,
-            writeCache = ::writeDexKitCache,
         ) {
             // DexKit source anchor:
             // .tmp-ref/decompiled-jadx/sources/com/bumptech/glide/d.java:105
@@ -1604,7 +1531,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                         "/system/media/rearscreen/template/default/rearScreen.json",
                     )
                 }
-            }.singleOrNull()?.let { DexKitMethodInjectionPoint(it.className, it.name) }
+            }.singleOrNull()
         } ?: DexKitMethodInjectionPoint("", "")
         require(point.className.isNotBlank() && point.methodName.isNotBlank()) {
             "DexKit failed to resolve wallpaper runtime list method"
@@ -1614,12 +1541,9 @@ class RearWallpaperHook : YukiBaseHooker() {
 
     private fun resolveDeviceConfigClass(): String {
         val bridge = dexKitBridge ?: error("DexKit bridge is not ready for device config class")
-        val className = resolveDexKitInjectionPoint(
+        val className = resolveDexKitClassValue(
             bridge = bridge,
             cacheKey = DEVICE_CONFIG_CLASS_CACHE_KEY,
-            packageVersionCode = dexKitVersionCode,
-            readCache = ::readDexKitCache,
-            writeCache = ::writeDexKitCache,
         ) {
             // DexKit source anchor:
             // .tmp-ref/decompiled-jadx/sources/r2/e.java:20
@@ -1628,7 +1552,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                 matcher {
                     usingStrings("vendor.wallpaper.color.flag")
                 }
-            }.singleOrNull()?.name
+            }.singleOrNull()
         } ?: ""
         require(className.isNotBlank()) { "DexKit failed to resolve device config class" }
         return className
