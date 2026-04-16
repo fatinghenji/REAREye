@@ -14,22 +14,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.13'
-
       - name: Install Transifex CLI
         run: |
-          python -m pip install --upgrade pip 'setuptools<81'
-          python -m pip install transifex-client
+          curl -o- https://raw.githubusercontent.com/transifex/cli/master/install.sh | bash
 
       - name: Configure Transifex
         run: |
           echo "[https://app.transifex.com/nekostash/reareye]
-          hostname = https://app.transifex.com/nekostash/reareye
-          username = api
-          password = ${{ secrets.TRANSIFEX_TOKEN }}" > ~/.transifexrc
+          rest_hostname = https://rest.api.transifex.com
+          token = ${{ secrets.TRANSIFEX_TOKEN }}" > ~/.transifexrc
 
       - name: Push Chinese translations
         run: |
