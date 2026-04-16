@@ -17,11 +17,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.x'
+          python-version: '3.13'
 
       - name: Install Transifex CLI
         run: |
-          pip install transifex-client
+          python -m pip install --upgrade pip setuptools
+          python -m pip install transifex-client
 
       - name: Configure Transifex
         run: |
