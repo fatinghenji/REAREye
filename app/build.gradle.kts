@@ -67,6 +67,15 @@ android {
         }
     }
 
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "x86_64")
+            isUniversalApk = true
+        }
+    }
+
     buildTypes {
         getByName("debug") {
             signingConfig = signingConfigs.getByName("release")
@@ -99,7 +108,7 @@ androidComponents {
         val variantName = variant.name.replaceFirstChar { it.uppercase() }
         val exportApk = tasks.register<Sync>("export${variantName}Apk") {
             from(variant.artifacts.get(SingleArtifact.APK))
-            include("*.apk")
+            include("*arm64-v8a*.apk")
             rename { "REAREye-v${finalVersionName}.apk" }
             into(layout.buildDirectory.dir("outputs/renamed-apk/${variant.name}"))
         }

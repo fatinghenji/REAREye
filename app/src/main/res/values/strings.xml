@@ -153,7 +153,6 @@
     <string name="rear_wallpaper_delete_message">Delete %1$s from the rear screen wallpaper list?</string>
     <string name="rear_wallpaper_delete_success">Wallpaper deleted</string>
     <string name="rear_wallpaper_delete_failed">Failed to delete wallpaper: %1$s</string>
-    <string name="rear_wallpaper_system_item_hint">System wallpapers cannot be edited or deleted here</string>
     <string name="rear_wallpaper_package_file">MRC or ZIP package</string>
     <string name="rear_wallpaper_metadata_file">Metadata file (.mrm, optional)</string>
     <string name="rear_wallpaper_no_file_selected">No file selected</string>
@@ -161,7 +160,6 @@
     <string name="rear_wallpaper_preview_file">Preview screenshot (optional)</string>
     <string name="rear_wallpaper_preview_default_hint">Use the package preview when no screenshot is selected</string>
     <string name="rear_wallpaper_preview_keep_current">Keep current preview</string>
-    <string name="rear_wallpaper_generate_preview">Generate Preview</string>
     <string name="rear_wallpaper_preview_generated">Preview generated</string>
     <string name="rear_wallpaper_preview_generate_failed">Failed to generate preview: %1$s</string>
     <string name="rear_wallpaper_select_file">Select File</string>

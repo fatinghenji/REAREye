@@ -153,7 +153,6 @@
     <string name="rear_wallpaper_delete_message">要从背屏壁纸列表中删除 %1$s 吗？</string>
     <string name="rear_wallpaper_delete_success">壁纸已删除</string>
     <string name="rear_wallpaper_delete_failed">删除壁纸失败：%1$s</string>
-    <string name="rear_wallpaper_system_item_hint">系统壁纸不能在这里编辑或删除</string>
     <string name="rear_wallpaper_package_file">MRC 或 ZIP 包</string>
     <string name="rear_wallpaper_metadata_file">Metadata 文件（.mrm，可选）</string>
     <string name="rear_wallpaper_no_file_selected">未选择文件</string>
@@ -161,7 +160,6 @@
     <string name="rear_wallpaper_preview_file">预览截图（可选）</string>
     <string name="rear_wallpaper_preview_default_hint">未选择截图时使用包内预览图</string>
     <string name="rear_wallpaper_preview_keep_current">保留当前预览图</string>
-    <string name="rear_wallpaper_generate_preview">生成预览图</string>
     <string name="rear_wallpaper_preview_generated">预览图已生成</string>
     <string name="rear_wallpaper_preview_generate_failed">生成预览图失败：%1$s</string>
     <string name="rear_wallpaper_select_file">选择文件</string>

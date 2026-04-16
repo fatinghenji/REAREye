@@ -10,13 +10,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -25,6 +25,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Refresh
@@ -49,6 +51,7 @@ import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperInfo
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperMetadataOptions
 import hk.uwu.reareye.ui.components.card.ModuleStyleDeleteAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleIconAction
+import hk.uwu.reareye.ui.components.card.ModuleStyleManagerCard
 import hk.uwu.reareye.ui.components.card.ModuleStyleTextAction
 import hk.uwu.reareye.ui.components.card.SuperCard
 import hk.uwu.reareye.ui.components.rememberRearWallpaperPreviewBitmap
@@ -58,19 +61,15 @@ import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.basic.Check
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
@@ -515,80 +514,62 @@ private fun WallpaperManageCard(
     onGeneratePreview: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        insideMargin = PaddingValues(8.dp),
-        colors = CardDefaults.defaultColors(
-            color = MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.92f),
-            contentColor = MiuixTheme.colorScheme.onSurface,
-        ),
-    ) {
-        SuperCard(
-            title = wallpaper.name,
-            summary = buildList {
-                add(wallpaper.title)
-                if (wallpaper.description.isNotBlank()) add(wallpaper.description)
-                if (wallpaper.imported) add(stringResource(R.string.rear_wallpaper_imported_badge))
-                if (isCurrent) add(stringResource(R.string.rear_wallpaper_current))
-            }.joinToString(separator = "\n"),
-            startAction = {
-                ManagedWallpaperPreview(
-                    cachePath = wallpaper.cachePath,
-                    modifier = Modifier
-                        .width(104.dp)
-                        .aspectRatio(MANAGE_PREVIEW_RATIO),
-                )
-            },
-            bottomAction = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 2.dp),
-                        thickness = 0.5.dp,
-                        color = MiuixTheme.colorScheme.outline.copy(alpha = 0.5f),
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        ModuleStyleTextAction(
-                            icon = MiuixIcons.Basic.Check,
-                            text = stringResource(R.string.rear_wallpaper_set_now),
-                            enabled = !isCurrent,
-                            onClick = onSetCurrent,
-                        )
-                        if (wallpaper.canEditMetadata) {
-                            Spacer(Modifier.width(8.dp))
-                            ModuleStyleIconAction(
-                                icon = Icons.Rounded.EditNote,
-                                onClick = onEditMetadata,
-                            )
-                        }
-                        if (wallpaper.canDelete) {
-                            Spacer(Modifier.width(8.dp))
-                            ModuleStyleDeleteAction(
-                                icon = MiuixIcons.Delete,
-                                text = stringResource(R.string.rear_widget_action_delete),
-                                onClick = onDelete,
-                            )
-                        }
-                    }
-                    if (wallpaper.canEditMetadata) {
-                        Button(
-                            onClick = onGeneratePreview,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Image,
-                                contentDescription = null,
-                                modifier = Modifier.padding(end = 6.dp),
-                            )
-                            Text(stringResource(R.string.rear_wallpaper_generate_preview))
-                        }
-                    }
-                }
-            },
-        )
+    val summaryLines = buildList {
+        if (wallpaper.title.isNotBlank()) add(wallpaper.title)
+        if (wallpaper.description.isNotBlank()) add(wallpaper.description)
+
+        val badges = buildList {
+            if (wallpaper.imported) add(stringResource(R.string.rear_wallpaper_imported_badge))
+            if (isCurrent) add(stringResource(R.string.rear_wallpaper_current))
+        }
+        if (badges.isNotEmpty()) add(badges.joinToString(separator = " · "))
     }
+
+    ModuleStyleManagerCard(
+        title = wallpaper.name,
+        summaryLines = summaryLines,
+        trailing = {
+            ManagedWallpaperPreview(
+                cachePath = wallpaper.cachePath,
+                modifier = Modifier
+                    .width(104.dp)
+                    .aspectRatio(MANAGE_PREVIEW_RATIO),
+            )
+        },
+        leftAction = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ModuleStyleTextAction(
+                    icon = Icons.Filled.Check,
+                    text = stringResource(R.string.rear_wallpaper_set_now),
+                    enabled = !isCurrent,
+                    onClick = onSetCurrent,
+                )
+                if (wallpaper.canEditMetadata) {
+                    ModuleStyleIconAction(
+                        icon = Icons.Outlined.PhotoCamera,
+                        modifier = Modifier.size(18.dp),
+                        onClick = onGeneratePreview,
+                    )
+                    ModuleStyleIconAction(
+                        icon = Icons.Rounded.EditNote,
+                        onClick = onEditMetadata,
+                    )
+                }
+            }
+        },
+        rightAction = {
+            if (wallpaper.canDelete) {
+                ModuleStyleDeleteAction(
+                    icon = MiuixIcons.Delete,
+                    text = stringResource(R.string.rear_widget_action_delete),
+                    onClick = onDelete,
+                )
+            }
+        },
+    )
 }
 
 @Composable

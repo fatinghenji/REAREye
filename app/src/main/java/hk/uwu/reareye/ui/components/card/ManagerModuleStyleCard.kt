@@ -1,5 +1,6 @@
 package hk.uwu.reareye.ui.components.card
 
+import android.annotation.SuppressLint
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -131,6 +132,8 @@ fun ModuleStyleManagerCard(
 
 @Composable
 fun ModuleStyleIconAction(
+    @SuppressLint("ModifierParameter")
+    modifier: Modifier = Modifier.size(20.dp),
     icon: ImageVector,
     onClick: () -> Unit,
 ) {
@@ -148,6 +151,7 @@ fun ModuleStyleIconAction(
             imageVector = icon,
             tint = actionIconTint,
             contentDescription = null,
+            modifier = modifier,
         )
     }
 }
