@@ -29,4 +29,4 @@ jobs:
 
       - name: Push Chinese translations
         run: |
-          tx push -t --language zh_CN
+          tx push -t -l zh_CN
