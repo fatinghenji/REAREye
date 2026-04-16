@@ -26,9 +26,10 @@ jobs:
 
       - name: Configure Transifex
         run: |
-          echo "[https://www.transifex.com]
-          hostname = https://www.transifex.com
-          token = ${{ secrets.TRANSIFEX_TOKEN }}" > ~/.transifexrc
+          echo "[https://app.transifex.com/nekostash/reareye]
+          hostname = https://app.transifex.com/nekostash/reareye
+          username = api
+          password = ${{ secrets.TRANSIFEX_TOKEN }}" > ~/.transifexrc
 
       - name: Push Chinese translations
         run: |
