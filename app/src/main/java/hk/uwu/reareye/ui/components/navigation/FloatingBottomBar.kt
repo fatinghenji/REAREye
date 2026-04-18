@@ -108,9 +108,9 @@ fun FloatingBottomBar(
     val isInLightTheme = MiuixTheme.colorScheme.surface.luminance() >= 0.5f
     val accentColor = MiuixTheme.colorScheme.primary
     val containerColor = if (isBlurEnabled) {
-        MiuixTheme.colorScheme.surface.copy(alpha = 0.4f)
+        MiuixTheme.colorScheme.surfaceContainer.copy(alpha = 0.4f)
     } else {
-        MiuixTheme.colorScheme.surface
+        MiuixTheme.colorScheme.surfaceContainer
     }
 
     val tabsBackdrop = if (isBlurEnabled) rememberLayerBackdrop() else null

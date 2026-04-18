@@ -414,4 +414,7 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="lyric_take_over_builtin_handling_desc">When enabled, REAREye overrides the system lyric timing and line switching logic for full LRC lyrics</string>
     <string name="rear_store_detail_header">Widget Detail</string>
     <string name="module_store_api_provider_cf">Cloudflare</string>
+    <string name="home_easter_egg_huawei_ultimate_design_working">Explore the ultimate frontier</string>
+    <string name="home_easter_egg_huawei_ultimate_design_activated">Unfold in front of you</string>
+    <string name="home_easter_egg_huawei_ultimate_design">ULTIMATE DESIGN</string>
 </resources>
