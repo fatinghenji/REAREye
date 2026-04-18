@@ -769,10 +769,12 @@ private fun UpdateWarningCard(currentHash: String, latestHash: String, useMonetC
         colors = CardDefaults.defaultColors(color = palette.container),
         insideMargin = PaddingValues(14.dp),
         onClick = {
+            @Suppress("KotlinConstantConditions", "SimplifyBooleanWithConstants")
             context.startActivity(
                 Intent(
                     Intent.ACTION_VIEW,
-                    "https://github.com/killerprojecte/REAREye/actions".toUri()
+                    (if (AppProperties.BUILD_CHANNEL == "canary") "https://updates.uwu.hk" else "https://github.com/killerprojecte/REAREye/releases")
+                        .toUri()
                 )
             )
         },
