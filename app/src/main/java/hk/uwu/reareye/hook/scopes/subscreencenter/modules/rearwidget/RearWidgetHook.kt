@@ -41,8 +41,10 @@ import hk.uwu.reareye.widgetapi.RearWidgetActiveNotice
 import hk.uwu.reareye.widgetapi.RearWidgetApiContract
 import hk.uwu.reareye.widgetapi.RearWidgetNoticeOptions
 import hk.uwu.reareye.widgetapi.RearWidgetNoticeTicket
+import hk.uwu.reareye.widgetapi.RearWidgetSceneRouteSpec
 import hk.uwu.reareye.widgetapi.RearWidgetTemplateConfigState
 import hk.uwu.reareye.widgetapi.RearWidgetTemplateImagePreview
+import org.json.JSONObject
 import org.luckypray.dexkit.DexKitBridge
 import org.luckypray.dexkit.DexKitCacheBridge
 import org.luckypray.dexkit.annotations.DexKitExperimentalApi
@@ -67,8 +69,16 @@ class RearWidgetHook : YukiBaseHooker() {
         val ejectBusiness: Pair<String, String>? = null,
     )
 
+    private data class SceneRouteInjection(
+        val scene: String,
+        val business: String,
+        val staleCompositeKeys: Set<String> = emptySet(),
+    )
+
     private data class PostRunnableSnapshot(
         val owner: Any?,
+        val notificationId: Int,
+        val notificationKey: String?,
         val packageName: String,
         val extras: Bundle,
     )
@@ -95,6 +105,8 @@ class RearWidgetHook : YukiBaseHooker() {
             "SSC_SMART_ASSISTANT_MANAGER_REMOVE_NOTIFICATION_METHOD"
         private const val SMART_ASSISTANT_MANAGER_REMOVE_BUSINESS_METHOD_CACHE_KEY =
             "SSC_SMART_ASSISTANT_MANAGER_REMOVE_BUSINESS_METHOD"
+        private const val SMART_ASSISTANT_MANAGER_REMOVE_COMPOSITE_METHOD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_MANAGER_REMOVE_COMPOSITE_METHOD"
         private const val SMART_ASSISTANT_PARSE_WIDGET_METHOD_CACHE_KEY =
             "SSC_SMART_ASSISTANT_PARSE_WIDGET_METHOD"
         private const val SMART_ASSISTANT_RESOLVE_PATH_METHOD_CACHE_KEY =
@@ -294,16 +306,60 @@ class RearWidgetHook : YukiBaseHooker() {
                         allowSelfDescribedNotificationPackage(instance)
                     }
 
+            postRunnableRef.firstMethod {
+                name = "run"
+                parameterCount = 0
+            }.hook().after {
+                val snapshot = synchronized(postRunnableSnapshots) {
+                    postRunnableSnapshots[instance]
+                } ?: return@after
+                rememberOriginalNotificationRoute(snapshot)
+            }
+
+            resolveSmartAssistantManagerRemoveNotificationMethod().className.toClass()
+                .resolve().firstMethod {
+                    name = resolveSmartAssistantManagerRemoveNotificationMethod().methodName
+                    parameterCount = 3
+                }.hook().after {
+                    val notificationId = args.getOrNull(0) as? Int ?: return@after
+                    val packageName = args.getOrNull(1) as? String ?: return@after
+                    val removeReason = args.getOrNull(2) as? Int ?: 0
+                    handleOriginalNotificationRemoved(
+                        packageName = packageName,
+                        notificationId = notificationId,
+                        notificationKey = null,
+                        removeReason = removeReason,
+                    )
+                }
+
                     postRunnableRef.firstConstructor {
                         parameterCount = 5
                     }.hook().after {
+                        val notificationId = args.getOrNull(1) as? Int ?: return@after
                         val packageName = args.getOrNull(2) as? String ?: return@after
+                        val notificationKey = args.getOrNull(3) as? String
                         val extras = args.getOrNull(4) as? Bundle ?: return@after
+                        val injected = applySceneRouteBusinessToExtras(
+                            packageName = packageName,
+                            notificationId = notificationId,
+                            notificationKey = notificationKey,
+                            extras = extras,
+                        )
                         synchronized(postRunnableSnapshots) {
                             postRunnableSnapshots[instance] = PostRunnableSnapshot(
                                 owner = args.getOrNull(0),
+                                notificationId = notificationId,
+                                notificationKey = notificationKey,
                                 packageName = packageName,
                                 extras = Bundle(extras),
+                            )
+                        }
+                        if (injected != null) {
+                            injected.staleCompositeKeys.forEach { staleKey ->
+                                ejectByCompositeKey(staleKey)
+                            }
+                            debugLog(
+                                "scene route injected pkg=$packageName scene=${injected.scene} business=${injected.business}"
                             )
                         }
                     }
@@ -352,7 +408,6 @@ class RearWidgetHook : YukiBaseHooker() {
 
     private inline fun resolveCachedClassName(
         cacheKey: String,
-        fallbackClass: String,
         crossinline finder: DexKitBridge.() -> ClassData?,
     ): String {
         val bridge = dexKitBridge ?: error("DexKit bridge is not ready for class cache=$cacheKey")
@@ -361,7 +416,7 @@ class RearWidgetHook : YukiBaseHooker() {
             cacheKey = cacheKey,
         ) {
             finder()
-        } ?: fallbackClass
+        } ?: ""
         require(className.isNotBlank()) {
             "DexKit failed to resolve class cache=$cacheKey"
         }
@@ -370,7 +425,6 @@ class RearWidgetHook : YukiBaseHooker() {
 
     private inline fun resolveCachedFieldName(
         cacheKey: String,
-        fallbackField: String,
         crossinline finder: DexKitBridge.() -> FieldData?,
     ): String {
         val bridge = dexKitBridge ?: error("DexKit bridge is not ready for field cache=$cacheKey")
@@ -379,7 +433,7 @@ class RearWidgetHook : YukiBaseHooker() {
             cacheKey = cacheKey,
         ) {
             finder()
-        } ?: fallbackField
+        } ?: ""
         require(fieldName.isNotBlank()) {
             "DexKit failed to resolve field cache=$cacheKey"
         }
@@ -388,8 +442,7 @@ class RearWidgetHook : YukiBaseHooker() {
 
     private fun resolvePersistenceManagerClassName(): String {
         return resolveCachedClassName(
-            cacheKey = PERSISTENCE_MANAGER_CLASS_CACHE_KEY,
-            fallbackClass = "",
+            cacheKey = PERSISTENCE_MANAGER_CLASS_CACHE_KEY
         ) {
             // Decompiled source anchor:
             // .tmp-ref/decompiled-jadx/sources/H/d.java
@@ -408,8 +461,7 @@ class RearWidgetHook : YukiBaseHooker() {
 
     private fun resolveSmartAssistantPostRunnableClassName(): String {
         return resolveCachedClassName(
-            cacheKey = SMART_ASSISTANT_POST_RUNNABLE_CLASS_CACHE_KEY,
-            fallbackClass = "",
+            cacheKey = SMART_ASSISTANT_POST_RUNNABLE_CLASS_CACHE_KEY
         ) {
             // Decompiled source anchor:
             // .tmp-ref/decompiled-jadx/sources/Z1/m.java
@@ -440,8 +492,7 @@ class RearWidgetHook : YukiBaseHooker() {
 
     private fun resolveSmartAssistantManagerHandlerFieldName(): String {
         return resolveCachedFieldName(
-            cacheKey = SMART_ASSISTANT_MANAGER_HANDLER_FIELD_CACHE_KEY,
-            fallbackField = "",
+            cacheKey = SMART_ASSISTANT_MANAGER_HANDLER_FIELD_CACHE_KEY
         ) {
             val managerClass = resolveSmartAssistantManagerClassName()
             findField {
@@ -457,8 +508,7 @@ class RearWidgetHook : YukiBaseHooker() {
 
     private fun resolveSmartAssistantManagerAllowedMapFieldName(): String {
         return resolveCachedFieldName(
-            cacheKey = SMART_ASSISTANT_MANAGER_ALLOWED_MAP_FIELD_CACHE_KEY,
-            fallbackField = "",
+            cacheKey = SMART_ASSISTANT_MANAGER_ALLOWED_MAP_FIELD_CACHE_KEY
         ) {
             val managerClass = resolveSmartAssistantManagerClassName()
             val refreshPoint = resolveSmartAssistantManagerRefreshMethod()
@@ -483,8 +533,7 @@ class RearWidgetHook : YukiBaseHooker() {
 
     private fun resolveSmartAssistantManagerAllowedSetFieldName(): String {
         return resolveCachedFieldName(
-            cacheKey = SMART_ASSISTANT_MANAGER_ALLOWED_SET_FIELD_CACHE_KEY,
-            fallbackField = "",
+            cacheKey = SMART_ASSISTANT_MANAGER_ALLOWED_SET_FIELD_CACHE_KEY
         ) {
             val managerClass = resolveSmartAssistantManagerClassName()
             val refreshPoint = resolveSmartAssistantManagerRefreshMethod()
@@ -492,7 +541,7 @@ class RearWidgetHook : YukiBaseHooker() {
                 searchPackages(managerClass.substringBeforeLast('.'))
                 matcher {
                     declaredClass = managerClass
-                    type = "java.util.concurrent.ConcurrentHashMap\$KeySetView"
+                    type = $$"java.util.concurrent.ConcurrentHashMap$KeySetView"
                     readMethods {
                         add {
                             declaredClass = refreshPoint.className
@@ -509,8 +558,7 @@ class RearWidgetHook : YukiBaseHooker() {
 
     private fun resolveSmartAssistantWidgetSpecBusinessFieldName(): String {
         return resolveCachedFieldName(
-            cacheKey = SMART_ASSISTANT_WIDGET_SPEC_BUSINESS_FIELD_CACHE_KEY,
-            fallbackField = "",
+            cacheKey = SMART_ASSISTANT_WIDGET_SPEC_BUSINESS_FIELD_CACHE_KEY
         ) {
             val specClass = resolveSmartAssistantWidgetSpecClassName()
             YLog.debug(specClass)
@@ -604,6 +652,24 @@ class RearWidgetHook : YukiBaseHooker() {
                     paramTypes(String::class.java, String::class.java)
                     returnType = "void"
                     usingStrings("Removing widgets for %s:%s")
+                }
+            }.singleOrNull()
+        }
+    }
+
+    private fun resolveSmartAssistantManagerRemoveCompositeMethod(): DexKitMethodInjectionPoint {
+        return resolveCachedMethodPoint(
+            cacheKey = SMART_ASSISTANT_MANAGER_REMOVE_COMPOSITE_METHOD_CACHE_KEY,
+        ) {
+            // Decompiled source anchor:
+            // .tmp-ref/decompiled-vineflower/Z1/D0.java:197
+            // Original method in jadx/vineflower: Z1.d0.C(int, String, String)
+            findMethod {
+                matcher {
+                    declaredClass = resolveSmartAssistantManagerClassName()
+                    paramTypes("int", "java.lang.String", "java.lang.String")
+                    returnType = "boolean"
+                    usingStrings("Found widget for compositeKey: %s, removing")
                 }
             }.singleOrNull()
         }
@@ -772,6 +838,19 @@ class RearWidgetHook : YukiBaseHooker() {
         }.invoke(packageName, business)
     }
 
+    private fun invokeSmartAssistantManagerRemoveComposite(
+        target: Any,
+        compositeKey: String,
+        packageName: String,
+        removeReason: Int,
+    ): Boolean {
+        val point = resolveSmartAssistantManagerRemoveCompositeMethod()
+        return target.asResolver().firstMethod {
+            name = point.methodName
+            parameterCount = 3
+        }.invoke<Boolean>(removeReason, compositeKey, packageName) == true
+    }
+
     private fun invokeSmartAssistantParseParams(bundle: Bundle): Any? {
         val point = resolveSmartAssistantParseParamsMethod()
         return point.className.toClass().resolve().firstMethod {
@@ -913,6 +992,40 @@ class RearWidgetHook : YukiBaseHooker() {
                 action = {
                     RearWidgetRuntimeStore.unregisterBusiness(packageName, normalizedBusiness)
                     OperationOutcome(ejectBusiness = packageName to normalizedBusiness)
+                }
+            )
+        }
+
+        override fun registerSceneRoute(targetPackage: String?, scene: String?, business: String?) {
+            enforceCallerPermission()
+            val normalizedBusiness = business?.trim().orEmpty()
+            val normalizedScene = RearWidgetSceneRouteSpec.normalizeScene(scene.orEmpty())
+            if (normalizedBusiness.isBlank() || normalizedScene.isBlank()) return
+            dispatchOperation(
+                op = RearWidgetApiContract.Operation.REGISTER_SCENE_ROUTE,
+                action = {
+                    RearWidgetRuntimeStore.registerSceneRoute(
+                        packageName = normalizeTargetPackage(targetPackage),
+                        scene = normalizedScene,
+                        business = normalizedBusiness,
+                    )
+                    OperationOutcome()
+                }
+            )
+        }
+
+        override fun unregisterSceneRoute(targetPackage: String?, scene: String?) {
+            enforceCallerPermission()
+            val normalizedScene = RearWidgetSceneRouteSpec.normalizeScene(scene.orEmpty())
+            if (normalizedScene.isBlank()) return
+            dispatchOperation(
+                op = RearWidgetApiContract.Operation.UNREGISTER_SCENE_ROUTE,
+                action = {
+                    RearWidgetRuntimeStore.unregisterSceneRoute(
+                        packageName = normalizeTargetPackage(targetPackage),
+                        scene = normalizedScene,
+                    )
+                    OperationOutcome()
                 }
             )
         }
@@ -1129,18 +1242,33 @@ class RearWidgetHook : YukiBaseHooker() {
             ConfigKeys.REAR_WIDGET_BUSINESS_DATA,
             RearWidgetConfigCodec.EMPTY_ARRAY,
         )
+        val sceneRouteRaw = prefs.getString(
+            ConfigKeys.REAR_WIDGET_SCENE_ROUTE_DATA,
+            RearWidgetConfigCodec.EMPTY_ARRAY,
+        )
         val cardRaw = prefs.getString(
             ConfigKeys.REAR_WIDGET_CARD_DATA,
             RearWidgetConfigCodec.EMPTY_ARRAY,
         )
         val businesses = RearWidgetConfigCodec.parseBusinesses(businessRaw)
+        val sceneRoutes = RearWidgetConfigCodec.parseSceneRoutes(sceneRouteRaw)
         val cards = RearWidgetConfigCodec.parseCards(cardRaw).filter { it.enabled }
         val stickyCards = cards.filter { it.sticky }
         val prefsManager = prefs.getPrefsManager()
-        if (!force && businesses.isEmpty() && cards.isEmpty()) {
+        if (!force && businesses.isEmpty() && sceneRoutes.isEmpty() && cards.isEmpty()) {
             debugLog("bootstrap init skipped: no config yet")
             return false
         }
+
+        RearWidgetRuntimeStore.replaceSceneRoutes(
+            sceneRoutes.map { item ->
+                RearWidgetSceneRouteSpec(
+                    packageName = item.packageName,
+                    scene = item.scene,
+                    business = item.business,
+                )
+            }
+        )
 
         val businessPathMap = LinkedHashMap<String, String>()
         businesses.forEach { item ->
@@ -1215,7 +1343,7 @@ class RearWidgetHook : YukiBaseHooker() {
         applyRuntimeMaps(force = true)
         startupBootstrapped.set(true)
         bootstrapRetryCount.set(0)
-        debugLog("bootstrap init replay businesses=${businesses.size} enabledCards=${cards.size} stickyCards=${stickyCards.size} force=$force ok=true")
+        debugLog("bootstrap init replay businesses=${businesses.size} sceneRoutes=${sceneRoutes.size} enabledCards=${cards.size} stickyCards=${stickyCards.size} force=$force ok=true")
         return true
     }
 
@@ -1325,7 +1453,7 @@ class RearWidgetHook : YukiBaseHooker() {
                         target = mgr,
                         notificationId = ticket.notificationId,
                         packageName = ticket.packageName,
-                        removeReason = 0,
+                        removeReason = 1,
                     )
                     debugLog("ejected ticket key=${ticket.compositeKey}")
                 }.onFailure {
@@ -1334,6 +1462,63 @@ class RearWidgetHook : YukiBaseHooker() {
             }
         }.onFailure {
             debugLog("eject schedule failed key=${ticket.compositeKey} err=${it.message}")
+        }
+    }
+
+    private fun ejectByCompositeKey(compositeKey: String) {
+        val ticket = RearWidgetRuntimeStore.getNotice(compositeKey)?.ticket
+        if (ticket != null) {
+            runCatching {
+                RearWidgetRuntimeStore.removeNotice(ticket)
+            }
+            ejectByTicket(ticket)
+            return
+        }
+
+        val parsed = parseCompositeKey(compositeKey) ?: return
+        ejectNativeCompositeKey(
+            compositeKey = compositeKey,
+            packageName = parsed.first,
+            removeReason = 1,
+        )
+    }
+
+    private fun ejectNativeCompositeKey(
+        compositeKey: String,
+        packageName: String,
+        removeReason: Int,
+    ) {
+        val mgr = manager ?: return
+        val handler = mainHandler ?: return
+        runCatching {
+            handler.post {
+                runCatching {
+                    val removed = invokeSmartAssistantManagerRemoveComposite(
+                        target = mgr,
+                        compositeKey = compositeKey,
+                        packageName = packageName,
+                        removeReason = removeReason,
+                    )
+                    if (removed) {
+                        debugLog("ejected native composite key=$compositeKey")
+                    } else {
+                        debugLog("native composite not found key=$compositeKey")
+                    }
+                }.onFailure {
+                    debugLog("native composite eject failed key=$compositeKey err=${it.message}")
+                }
+            }
+        }.onFailure {
+            debugLog("native composite eject schedule failed key=$compositeKey err=${it.message}")
+        }
+    }
+
+    private fun parseCompositeKey(compositeKey: String): Pair<String, String?>? {
+        val parts = compositeKey.split(':')
+        return when (parts.size) {
+            2 -> parts[0] to null
+            3 -> parts[0] to parts[1]
+            else -> null
         }
     }
 
@@ -1381,7 +1566,12 @@ class RearWidgetHook : YukiBaseHooker() {
             bizPath.forEach { (biz, path) -> map[biz] = path }
         }
         replaceStaticMap(utilsClassName, "d") { map ->
-            pkgBiz.keys.forEach { pkg -> map[pkg] = null }
+            pkgBiz.forEach { (pkg, businesses) ->
+                val businessSet = businesses.toMutableSet()
+                if (businessSet.isNotEmpty()) {
+                    map[pkg] = businessSet
+                }
+            }
         }
         replaceStaticList(utilsClassName, "b") { list ->
             bizPath.keys.forEach { biz -> if (!list.contains(biz)) list.add(biz) }
@@ -1441,6 +1631,130 @@ class RearWidgetHook : YukiBaseHooker() {
         }.onFailure {
             debugLog("dynamic allow failed pkg=$packageName biz=$business err=${it.message}")
         }
+    }
+
+    private fun rememberOriginalNotificationRoute(snapshot: PostRunnableSnapshot) {
+        val packageName = snapshot.packageName.trim()
+        if (packageName.isBlank()) return
+        val extras = snapshot.extras
+        val notificationId = snapshot.notificationId
+        if (notificationId == Int.MIN_VALUE) return
+
+        val business = parseBusinessFromParams(packageName, extras)
+            ?: extras.getString("business")?.trim()?.ifBlank { null }
+            ?: return
+        val notificationKey = snapshot.notificationKey?.trim().orEmpty()
+        val stale = RearWidgetRuntimeStore.rememberRoutedNotification(
+            packageName = packageName,
+            notificationId = notificationId,
+            notificationKey = notificationKey,
+            business = business,
+        )
+        stale.forEach { staleKey ->
+            if (staleKey != extras.getString("composite_key")) {
+                ejectByCompositeKey(staleKey)
+            }
+        }
+    }
+
+    private fun handleOriginalNotificationRemoved(
+        packageName: String,
+        notificationId: Int,
+        notificationKey: String?,
+        removeReason: Int,
+    ) {
+        val composites = RearWidgetRuntimeStore.removeRoutedNotification(
+            packageName = packageName,
+            notificationId = notificationId,
+            notificationKey = notificationKey,
+        )
+        if (composites.isEmpty()) return
+
+        composites.forEach { compositeKey ->
+            ejectNativeCompositeKey(
+                compositeKey = compositeKey,
+                packageName = packageName,
+                removeReason = removeReason.takeIf { it != 0 } ?: 1,
+            )
+            debugLog(
+                "synced original remove pkg=$packageName id=$notificationId reason=$removeReason composite=$compositeKey"
+            )
+        }
+    }
+
+    private fun applySceneRouteBusinessToExtras(
+        packageName: String,
+        notificationId: Int,
+        notificationKey: String?,
+        extras: Bundle,
+    ): SceneRouteInjection? {
+        val focusParam = extras.getString("miui.focus.param")?.trim().orEmpty()
+        if (focusParam.isBlank()) return null
+        val focusJson = runCatching { JSONObject(focusParam) }.getOrNull() ?: return null
+
+        if (focusJson.has("param_v2")) {
+            val paramV2 = focusJson.optJSONObject("param_v2") ?: return null
+            if (paramV2.optString("business").trim().isNotBlank()) return null
+            val scene = extractSceneCandidate(
+                paramV2,
+                paramV2.optJSONObject("baseInfo"),
+                paramV2.optJSONObject("hintInfo"),
+            ) ?: return null
+            val business = RearWidgetRuntimeStore.resolveBusinessForScene(packageName, scene)
+                ?: return null
+            paramV2.put("business", business)
+            extras.putString("miui.focus.param", focusJson.toString())
+            return SceneRouteInjection(
+                scene = scene,
+                business = business,
+                staleCompositeKeys = staleCompositeKeys(
+                    packageName = packageName,
+                    notificationId = notificationId,
+                    notificationKey = notificationKey,
+                    business = business,
+                ),
+            )
+        }
+
+        if (focusJson.optString("business").trim().isNotBlank()) return null
+        val scene = extractSceneCandidate(focusJson) ?: return null
+        val business = RearWidgetRuntimeStore.resolveBusinessForScene(packageName, scene)
+            ?: return null
+        focusJson.put("business", business)
+        extras.putString("miui.focus.param", focusJson.toString())
+        return SceneRouteInjection(
+            scene = scene,
+            business = business,
+            staleCompositeKeys = staleCompositeKeys(
+                packageName = packageName,
+                notificationId = notificationId,
+                notificationKey = notificationKey,
+                business = business,
+            ),
+        )
+    }
+
+    private fun extractSceneCandidate(vararg sources: JSONObject?): String? {
+        sources.forEach { source ->
+            val scene = source?.optString(RearWidgetApiContract.BundleKeys.SCENE)?.trim().orEmpty()
+            if (scene.isNotBlank()) return scene
+        }
+        return null
+    }
+
+    private fun staleCompositeKeys(
+        packageName: String,
+        notificationId: Int,
+        notificationKey: String?,
+        business: String,
+    ): Set<String> {
+        if (notificationId == Int.MIN_VALUE) return emptySet()
+        return RearWidgetRuntimeStore.rememberRoutedNotification(
+            packageName = packageName,
+            notificationId = notificationId,
+            notificationKey = notificationKey,
+            business = business,
+        )
     }
 
     private fun parseBusinessFromParams(packageName: String, extras: Bundle): String? {

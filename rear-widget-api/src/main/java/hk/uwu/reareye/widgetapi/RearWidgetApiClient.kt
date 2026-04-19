@@ -95,6 +95,18 @@ class RearWidgetApiClient(
         requireRemote().unregisterBusiness(targetPackage, business)
     }
 
+    fun registerSceneRoute(
+        targetPackage: String,
+        scene: String,
+        business: String,
+    ) {
+        requireRemote().registerSceneRoute(targetPackage, scene, business)
+    }
+
+    fun unregisterSceneRoute(targetPackage: String, scene: String) {
+        requireRemote().unregisterSceneRoute(targetPackage, scene)
+    }
+
     fun disableBusinessDisplay(targetPackage: String, business: String) {
         requireRemote().disableBusinessDisplay(targetPackage, business)
     }

@@ -10,6 +10,24 @@ data class RearWidgetBusinessSpec(
     val defaultPriority: Int = 500,
 )
 
+data class RearWidgetSceneRouteSpec(
+    val packageName: String,
+    val scene: String,
+    val business: String,
+) {
+    companion object {
+        fun normalizeScene(raw: String): String {
+            return when (raw.trim()) {
+                "food_delivery", "food_Delivery", "foodDelivery" -> "foodDelivery"
+                "taxi", "carHailing" -> "carHailing"
+                "phone", "incall" -> "incall"
+                "timer", "countdown" -> "countdown"
+                else -> raw.trim()
+            }
+        }
+    }
+}
+
 data class RearWidgetNoticeOptions(
     val sticky: Boolean = false,
     val disablePopup: Boolean = true,

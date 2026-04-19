@@ -5,6 +5,7 @@ import hk.uwu.reareye.widgetapi.RearWidgetActiveNotice
 import hk.uwu.reareye.widgetapi.RearWidgetBusinessSpec
 import hk.uwu.reareye.widgetapi.RearWidgetNoticeOptions
 import hk.uwu.reareye.widgetapi.RearWidgetNoticeTicket
+import hk.uwu.reareye.widgetapi.RearWidgetSceneRouteSpec
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -19,6 +20,9 @@ object RearWidgetRuntimeStore {
 
     private val businessFiles = ConcurrentHashMap<String, String>()
     private val routes = ConcurrentHashMap<String, MutableMap<String, RearWidgetBusinessSpec>>()
+    private val sceneRoutes =
+        ConcurrentHashMap<String, MutableMap<String, RearWidgetSceneRouteSpec>>()
+    private val routedNoticeByIdentity = ConcurrentHashMap<String, String>()
     private val notices = ConcurrentHashMap<String, RearWidgetActiveNotice>()
     private val cardNoticeIdIndex = ConcurrentHashMap<String, Int>()
     private val cardNoticeCompositeIndex = ConcurrentHashMap<String, String>()
@@ -78,6 +82,88 @@ object RearWidgetRuntimeStore {
     fun unregisterBusiness(packageName: String = defaultPackageName, business: String) {
         routes[packageName]?.remove(business)
         mapsDirty.set(true)
+    }
+
+    fun replaceSceneRoutes(specs: List<RearWidgetSceneRouteSpec>) {
+        sceneRoutes.clear()
+        specs.forEach { spec ->
+            registerSceneRoute(spec.packageName, spec.scene, spec.business)
+        }
+        mapsDirty.set(true)
+    }
+
+    fun registerSceneRoute(
+        packageName: String = defaultPackageName,
+        scene: String,
+        business: String,
+    ) {
+        val normalizedScene = RearWidgetSceneRouteSpec.normalizeScene(scene)
+        if (normalizedScene.isBlank() || business.isBlank()) return
+        val spec = RearWidgetSceneRouteSpec(packageName, normalizedScene, business)
+        sceneRoutes.computeIfAbsent(packageName) { linkedMapOf() }[normalizedScene] = spec
+        mapsDirty.set(true)
+    }
+
+    fun unregisterSceneRoute(
+        packageName: String = defaultPackageName,
+        scene: String,
+    ) {
+        val normalizedScene = RearWidgetSceneRouteSpec.normalizeScene(scene)
+        if (normalizedScene.isBlank()) return
+        sceneRoutes[packageName]?.remove(normalizedScene)
+        mapsDirty.set(true)
+    }
+
+    fun resolveBusinessForScene(packageName: String, scene: String): String? {
+        val normalizedScene = RearWidgetSceneRouteSpec.normalizeScene(scene)
+        if (normalizedScene.isBlank()) return null
+        return sceneRoutes[packageName]?.get(normalizedScene)?.business
+    }
+
+    fun rememberRoutedNotification(
+        packageName: String,
+        notificationId: Int,
+        notificationKey: String?,
+        business: String,
+    ): Set<String> {
+        val compositeKey = "$packageName:$business:$notificationId"
+        val stale = LinkedHashSet<String>()
+
+        val byIdKey = routedNoticeIdentity(packageName, notificationId, null)
+        routedNoticeByIdentity.put(byIdKey, compositeKey)
+            ?.takeIf { it != compositeKey }
+            ?.let(stale::add)
+
+        val byNotificationKey = notificationKey
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { routedNoticeIdentity(packageName, notificationId, it) }
+        if (byNotificationKey != null) {
+            routedNoticeByIdentity.put(byNotificationKey, compositeKey)
+                ?.takeIf { it != compositeKey }
+                ?.let(stale::add)
+        }
+
+        return stale
+    }
+
+    fun removeRoutedNotification(
+        packageName: String,
+        notificationId: Int,
+        notificationKey: String?,
+    ): Set<String> {
+        val removed = LinkedHashSet<String>()
+        routedNoticeByIdentity.remove(routedNoticeIdentity(packageName, notificationId, null))
+            ?.let(removed::add)
+
+        notificationKey
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { routedNoticeIdentity(packageName, notificationId, it) }
+            ?.let { routedNoticeByIdentity.remove(it) }
+            ?.let(removed::add)
+
+        return removed
     }
 
     fun postNotice(
@@ -195,10 +281,21 @@ object RearWidgetRuntimeStore {
         }
     }
 
-    fun allPkgBusinesses(): Map<String, Set<String>> = routes.mapValues { it.value.keys.toSet() }
+    fun allPkgBusinesses(): Map<String, Set<String>> {
+        val out = LinkedHashMap<String, Set<String>>()
+        val packages = LinkedHashSet<String>().apply {
+            addAll(routes.keys)
+            addAll(sceneRoutes.keys)
+        }
+        packages.forEach { pkg ->
+            val businesses = collectBusinesses(pkg)
+            if (businesses.isNotEmpty()) out[pkg] = businesses
+        }
+        return out
+    }
 
     fun primaryBusinessByPkg(): Map<String, String> =
-        routes.mapValues { (_, bizMap) -> bizMap.keys.firstOrNull().orEmpty() }
+        allPkgBusinesses().mapValues { (_, businesses) -> businesses.firstOrNull().orEmpty() }
 
     fun allBusinessPath(): Map<String, String> {
         val out = HashMap<String, String>()
@@ -211,7 +308,28 @@ object RearWidgetRuntimeStore {
         val latest = notices.values.asSequence()
             .filter { it.ticket.packageName == packageName }
             .maxByOrNull { it.createdAt }
-        return latest?.ticket?.business ?: routes[packageName]?.keys?.firstOrNull()
+        if (latest != null) return latest.ticket.business
+        return collectBusinesses(packageName).singleOrNull()
+    }
+
+    private fun collectBusinesses(packageName: String): LinkedHashSet<String> {
+        return LinkedHashSet<String>().apply {
+            routes[packageName]?.keys?.forEach(::add)
+            sceneRoutes[packageName]?.values?.forEach { add(it.business) }
+        }
+    }
+
+    private fun routedNoticeIdentity(
+        packageName: String,
+        notificationId: Int,
+        notificationKey: String?,
+    ): String {
+        val key = notificationKey?.trim().orEmpty()
+        return if (key.isBlank()) {
+            "$packageName:$notificationId"
+        } else {
+            "$packageName:$notificationId:$key"
+        }
     }
 
     private fun buildRearParamJson(business: String, options: RearWidgetNoticeOptions): String {

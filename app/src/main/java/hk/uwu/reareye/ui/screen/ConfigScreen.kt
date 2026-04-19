@@ -50,6 +50,7 @@ import hk.uwu.reareye.ui.components.config.BusinessManagerScreen
 import hk.uwu.reareye.ui.components.config.CardManagerScreen
 import hk.uwu.reareye.ui.components.config.ConfigNodeRow
 import hk.uwu.reareye.ui.components.config.RearWallpaperManagerScreen
+import hk.uwu.reareye.ui.components.config.SceneRouteManagerScreen
 import hk.uwu.reareye.ui.config.ConfigCategory
 import hk.uwu.reareye.ui.config.ConfigGroup
 import hk.uwu.reareye.ui.config.ConfigItem
@@ -94,6 +95,7 @@ private sealed interface ConfigRoute {
     data class AppList(val item: ConfigItem) : ConfigRoute
     data object RearWallpaperManager : ConfigRoute
     data object BusinessManager : ConfigRoute
+    data object SceneRouteManager : ConfigRoute
     data object CardManager : ConfigRoute
     data object BusinessExtraManager : ConfigRoute
 }
@@ -120,6 +122,7 @@ private fun ConfigRoute.isOverlayRoute(): Boolean {
     return this is ConfigRoute.AppList ||
             this is ConfigRoute.RearWallpaperManager ||
             this is ConfigRoute.BusinessManager ||
+            this is ConfigRoute.SceneRouteManager ||
             this is ConfigRoute.CardManager ||
             this is ConfigRoute.BusinessExtraManager
 }
@@ -331,6 +334,10 @@ fun ConfigScreen(
                                 openOverlayRoute(ConfigRoute.BusinessManager)
                             }
 
+                            ConfigType.ManagerType.SCENE_ROUTE -> {
+                                openOverlayRoute(ConfigRoute.SceneRouteManager)
+                            }
+
                             ConfigType.ManagerType.CARD -> {
                                 openOverlayRoute(ConfigRoute.CardManager)
                             }
@@ -382,6 +389,10 @@ fun ConfigScreen(
                                 openOverlayRoute(ConfigRoute.BusinessManager)
                             }
 
+                            ConfigType.ManagerType.SCENE_ROUTE -> {
+                                openOverlayRoute(ConfigRoute.SceneRouteManager)
+                            }
+
                             ConfigType.ManagerType.CARD -> {
                                 openOverlayRoute(ConfigRoute.CardManager)
                             }
@@ -428,6 +439,10 @@ fun ConfigScreen(
                                 openOverlayRoute(ConfigRoute.BusinessManager)
                             }
 
+                            ConfigType.ManagerType.SCENE_ROUTE -> {
+                                openOverlayRoute(ConfigRoute.SceneRouteManager)
+                            }
+
                             ConfigType.ManagerType.CARD -> {
                                 openOverlayRoute(ConfigRoute.CardManager)
                             }
@@ -463,6 +478,11 @@ fun ConfigScreen(
                 )
 
                 ConfigRoute.BusinessManager -> BusinessManagerScreen(
+                    prefsManager = prefsManager,
+                    onBack = { closeOverlayRoute() },
+                )
+
+                ConfigRoute.SceneRouteManager -> SceneRouteManagerScreen(
                     prefsManager = prefsManager,
                     onBack = { closeOverlayRoute() },
                 )
