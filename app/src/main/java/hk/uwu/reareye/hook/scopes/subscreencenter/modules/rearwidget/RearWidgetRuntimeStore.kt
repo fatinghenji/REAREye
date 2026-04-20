@@ -79,6 +79,16 @@ object RearWidgetRuntimeStore {
         return true
     }
 
+    fun ensureBusinessRegistered(
+        packageName: String = defaultPackageName,
+        business: String,
+        defaultIndex: Int = 0,
+        defaultPriority: Int = 500,
+    ): Boolean {
+        if (routes[packageName]?.containsKey(business) == true) return true
+        return registerBusinessWithoutFile(packageName, business, defaultIndex, defaultPriority)
+    }
+
     fun unregisterBusiness(packageName: String = defaultPackageName, business: String) {
         routes[packageName]?.remove(business)
         mapsDirty.set(true)
@@ -118,6 +128,16 @@ object RearWidgetRuntimeStore {
         val normalizedScene = RearWidgetSceneRouteSpec.normalizeScene(scene)
         if (normalizedScene.isBlank()) return null
         return sceneRoutes[packageName]?.get(normalizedScene)?.business
+    }
+
+    fun hasSceneRoutePrefix(packageName: String, prefix: String): Boolean {
+        if (prefix.isBlank()) return false
+        return sceneRoutes[packageName]?.keys?.any { it.startsWith(prefix) } == true
+    }
+
+    fun hasAnySceneRoutePrefix(prefix: String): Boolean {
+        if (prefix.isBlank()) return false
+        return sceneRoutes.values.any { routes -> routes.keys.any { it.startsWith(prefix) } }
     }
 
     fun rememberRoutedNotification(

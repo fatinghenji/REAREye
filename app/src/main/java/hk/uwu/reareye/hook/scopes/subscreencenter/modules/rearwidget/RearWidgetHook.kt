@@ -3,6 +3,7 @@
 package hk.uwu.reareye.hook.scopes.subscreencenter.modules.rearwidget
 
 import android.annotation.SuppressLint
+import android.app.Notification
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -83,24 +84,61 @@ class RearWidgetHook : YukiBaseHooker() {
         val extras: Bundle,
     )
 
+    private data class ChannelRouteSeed(
+        val channelId: String,
+        val title: String?,
+        val text: String?,
+        val bigText: String?,
+        val subText: String?,
+        val shortCriticalText: String?,
+        val notificationKey: String? = null,
+    )
+
+    private data class ActiveNotificationSnapshot(
+        val notificationId: Int,
+        val packageName: String,
+        val notificationKey: String?,
+        val postTime: Long,
+        val channelId: String,
+        val title: String?,
+        val text: String?,
+        val bigText: String?,
+        val subText: String?,
+        val shortCriticalText: String?
+    )
+
     companion object {
         private const val TAG = "REAREye-RearWidget"
         private const val PERSISTENCE_MANAGER_CLASS_CACHE_KEY =
             "SSC_PERSISTENCE_MANAGER_CLASS"
+        private const val SMART_ASSISTANT_RESTORE_WIDGETS_METHOD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_RESTORE_WIDGETS_METHOD"
         private const val SMART_ASSISTANT_POST_RUNNABLE_CLASS_CACHE_KEY =
             "SSC_SMART_ASSISTANT_POST_RUNNABLE_CLASS"
         private const val SMART_ASSISTANT_MANAGER_HANDLER_FIELD_CACHE_KEY =
             "SSC_SMART_ASSISTANT_MANAGER_HANDLER_FIELD"
+        private const val SMART_ASSISTANT_MANAGER_WIDGET_LIST_FIELD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_MANAGER_WIDGET_LIST_FIELD"
+        private const val SMART_ASSISTANT_MANAGER_CURRENT_INDEX_FIELD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_MANAGER_CURRENT_INDEX_FIELD"
+        private const val SMART_ASSISTANT_MANAGER_BEFORE_INACTIVE_INDEX_FIELD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_MANAGER_BEFORE_INACTIVE_INDEX_FIELD"
         private const val SMART_ASSISTANT_MANAGER_ALLOWED_MAP_FIELD_CACHE_KEY =
             "SSC_SMART_ASSISTANT_MANAGER_ALLOWED_MAP_FIELD"
         private const val SMART_ASSISTANT_MANAGER_ALLOWED_SET_FIELD_CACHE_KEY =
             "SSC_SMART_ASSISTANT_MANAGER_ALLOWED_SET_FIELD"
         private const val SMART_ASSISTANT_WIDGET_SPEC_BUSINESS_FIELD_CACHE_KEY =
             "SSC_SMART_ASSISTANT_WIDGET_SPEC_BUSINESS_FIELD"
+        private const val SMART_ASSISTANT_WIDGET_RECORD_EXTRAS_FIELD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_WIDGET_RECORD_EXTRAS_FIELD"
+        private const val SMART_ASSISTANT_WIDGET_RECORD_PRIORITY_FIELD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_WIDGET_RECORD_PRIORITY_FIELD"
         private const val SMART_ASSISTANT_MANAGER_INIT_METHOD_CACHE_KEY =
             "SSC_SMART_ASSISTANT_MANAGER_INIT_METHOD"
         private const val SMART_ASSISTANT_MANAGER_REFRESH_METHOD_CACHE_KEY =
             "SSC_SMART_ASSISTANT_MANAGER_REFRESH_METHOD"
+        private const val SMART_ASSISTANT_MANAGER_INSERT_WIDGET_METHOD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_MANAGER_INSERT_WIDGET_METHOD"
         private const val SMART_ASSISTANT_MANAGER_REMOVE_NOTIFICATION_METHOD_CACHE_KEY =
             "SSC_SMART_ASSISTANT_MANAGER_REMOVE_NOTIFICATION_METHOD"
         private const val SMART_ASSISTANT_MANAGER_REMOVE_BUSINESS_METHOD_CACHE_KEY =
@@ -121,6 +159,20 @@ class RearWidgetHook : YukiBaseHooker() {
             "SSC_SMART_ASSISTANT_BUILTIN_SUPPORT_METHOD"
         private const val NOTIFICATION_WIDGET_APPLY_METHOD_CACHE_KEY =
             "SSC_NOTIFICATION_WIDGET_APPLY_METHOD"
+        private const val NOTIFICATION_WIDGET_TEMPLATE_PATH_FIELD_CACHE_KEY =
+            "SSC_NOTIFICATION_WIDGET_TEMPLATE_PATH_FIELD"
+        private const val NOTIFICATION_WIDGET_EXTRAS_FIELD_CACHE_KEY =
+            "SSC_NOTIFICATION_WIDGET_EXTRAS_FIELD"
+        private const val ORDINARY_NOTIFICATION_MANAGER_LOAD_METHOD_CACHE_KEY =
+            "SSC_ORDINARY_NOTIFICATION_MANAGER_LOAD_METHOD"
+        private const val ORDINARY_NOTIFICATION_MANAGER_OBSERVER_METHOD_CACHE_KEY =
+            "SSC_ORDINARY_NOTIFICATION_MANAGER_OBSERVER_METHOD"
+        private const val ORDINARY_NOTIFICATION_MANAGER_POST_METHOD_CACHE_KEY =
+            "SSC_ORDINARY_NOTIFICATION_MANAGER_POST_METHOD"
+        private const val CHANNEL_SCENE_PREFIX = "CH:"
+        private const val ORDINARY_CHANNEL_CARD_ID_PREFIX = "__ordinary_channel__"
+        private const val ORDINARY_CHANNEL_SCAN_INTERVAL_MS = 5000L
+        private const val ORDINARY_CHANNEL_STALE_GRACE_MS = 10000L
         private const val TEMPLATE_BASE =
             "/data/system/theme_magic/users/%s/subscreencenter/smart_assistant"
         private const val CARD_CONFIG_BASE =
@@ -169,6 +221,9 @@ class RearWidgetHook : YukiBaseHooker() {
     private var hostContext: Context? = null
     private var dexKitBridge: DexKitCacheBridge.RecyclableBridge? = null
     private val postRunnableSnapshots = WeakHashMap<Any, PostRunnableSnapshot>()
+    private val ordinaryChannelNoticeIndex = ConcurrentHashMap<String, String>()
+    private val ordinaryChannelNoticeSeenAt = ConcurrentHashMap<String, Long>()
+    private val ordinaryChannelScannerEpoch = AtomicInteger(-1)
 
     override fun onHook() {
         loadApp("com.xiaomi.subscreencenter") {
@@ -203,19 +258,32 @@ class RearWidgetHook : YukiBaseHooker() {
 
                     val managerInitPoint = resolveSmartAssistantManagerInitMethod()
                     val managerRefreshPoint = resolveSmartAssistantManagerRefreshMethod()
+            val managerInsertPoint = resolveSmartAssistantManagerInsertWidgetMethod()
+            val restoreWidgetsPoint = resolveSmartAssistantRestoreWidgetsMethod()
                     val parseWidgetPoint = resolveSmartAssistantParseWidgetMethod()
                     val resolvePathPoint = resolveSmartAssistantResolvePathMethod()
                     val allowAppPoint = resolveSmartAssistantAllowAppMethod()
                     val decorateExtrasPoint = resolveSmartAssistantDecorateExtrasMethod()
                     val widgetApplyPoint = resolveNotificationWidgetApplyMethod()
+            val ordinaryLoadPoint = resolveOrdinaryNotificationManagerLoadMethod()
+            val ordinaryObserverPoint = resolveOrdinaryNotificationManagerObserverMethod()
+            val ordinaryPostPoint = resolveOrdinaryNotificationManagerPostMethod()
                     resolveSmartAssistantManagerHandlerFieldName()
+            resolveSmartAssistantManagerWidgetListFieldName()
+            resolveSmartAssistantManagerCurrentIndexFieldName()
+            resolveSmartAssistantManagerBeforeInactiveIndexFieldName()
                     resolveSmartAssistantManagerAllowedMapFieldName()
                     resolveSmartAssistantManagerAllowedSetFieldName()
                     resolveSmartAssistantWidgetSpecBusinessFieldName()
+            resolveSmartAssistantWidgetRecordExtrasFieldName()
+            resolveSmartAssistantWidgetRecordPriorityFieldName()
+            resolveNotificationWidgetTemplatePathFieldName()
+            resolveNotificationWidgetExtrasFieldName()
                     val managerRef = managerInitPoint.className.toClass().resolve()
                     val persistenceRef = resolvePersistenceManagerClassName().toClass().resolve()
                     val postRunnableRef =
                         resolveSmartAssistantPostRunnableClassName().toClass().resolve()
+            val ordinaryNotificationManagerRef = ordinaryLoadPoint.className.toClass().resolve()
 
                     persistenceRef.firstConstructor {
                         parameterCount = 0
@@ -240,12 +308,17 @@ class RearWidgetHook : YukiBaseHooker() {
                             managerEpoch.incrementAndGet()
                             injectedCardSignatureCache.clear()
                             injectedCompositeAt.clear()
+                            ordinaryChannelNoticeIndex.clear()
+                            ordinaryChannelNoticeSeenAt.clear()
+                            ordinaryChannelScannerEpoch.set(-1)
                         }
 
                         if (!managerChanged && startupBootstrapped.get()) {
                             applyRuntimeMaps(force = true)
                             patchManagerAppGates(manager)
                             scheduleInjectAllActiveNotices()
+                            scheduleOrdinaryChannelRouteScanner()
+                            syncActiveNotificationChannelRoutes("manager_unchanged")
                             debugLog("captured manager unchanged, skip bootstrap and reinject active notices")
                             return@after
                         }
@@ -255,6 +328,8 @@ class RearWidgetHook : YukiBaseHooker() {
                         applyRuntimeMaps(force = true)
                         patchManagerAppGates(manager)
                         scheduleInjectAllActiveNotices()
+                        scheduleOrdinaryChannelRouteScanner()
+                        syncActiveNotificationChannelRoutes("manager_captured")
                         debugLog("captured manager=${manager != null}, handler=${mainHandler != null}")
                     }
 
@@ -263,6 +338,44 @@ class RearWidgetHook : YukiBaseHooker() {
                         parameterCount = 1
                     }.hook().after {
                         patchManagerAppGates(instance)
+                        syncActiveNotificationChannelRoutes("manager_refresh")
+                    }
+
+            restoreWidgetsPoint.className.toClass().resolve().firstMethod {
+                name = restoreWidgetsPoint.methodName
+            }.hook().after {
+                normalizeRestoredManagerWidgetPriority(manager)
+            }
+
+            managerRef.firstMethod {
+                name = managerInsertPoint.methodName
+                parameterCount = 1
+            }.hook().after {
+                normalizeInitialManagerWidgetPriority(instance, args.getOrNull(0))
+            }
+
+            ordinaryNotificationManagerRef.firstMethod {
+                name = ordinaryLoadPoint.methodName
+                parameterCount = 0
+            }.hook().after {
+                syncActiveNotificationChannelRoutes("x0_load")
+            }
+
+            ordinaryNotificationManagerRef.firstMethod {
+                name = ordinaryObserverPoint.methodName
+                parameterCount = 1
+            }.hook().after {
+                val enabled = args.getOrNull(0) as? Boolean ?: return@after
+                if (enabled) {
+                    syncActiveNotificationChannelRoutes("x0_observer_enabled")
+                }
+            }
+
+            ordinaryNotificationManagerRef.firstMethod {
+                name = ordinaryPostPoint.methodName
+                parameterCount = 1
+            }.hook().after {
+                syncActiveNotificationChannelRoutes("x0_post")
                     }
 
                     parseWidgetPoint.className.toClass().resolve().firstMethod {
@@ -339,6 +452,25 @@ class RearWidgetHook : YukiBaseHooker() {
                         val packageName = args.getOrNull(2) as? String ?: return@after
                         val notificationKey = args.getOrNull(3) as? String
                         val extras = args.getOrNull(4) as? Bundle ?: return@after
+                        val hasChRoute = RearWidgetRuntimeStore.hasSceneRoutePrefix(
+                            packageName,
+                            CHANNEL_SCENE_PREFIX,
+                        )
+                        debugLog(
+                            "ordinary notice postRunnable pkg=$packageName id=$notificationId key=${notificationKey.orEmpty()} " +
+                                    "hasChRoute=$hasChRoute hasFocus=${
+                                        !extras.getString("miui.focus.param").isNullOrBlank()
+                                    } " +
+                                    "hasRear=${
+                                        !extras.getString("miui.rear.param").isNullOrBlank()
+                                    }"
+                        )
+                        ensureChannelSceneFocusParam(
+                            packageName = packageName,
+                            notificationId = notificationId,
+                            notificationKey = notificationKey,
+                            extras = extras,
+                        )
                         val injected = applySceneRouteBusinessToExtras(
                             packageName = packageName,
                             notificationId = notificationId,
@@ -444,8 +576,6 @@ class RearWidgetHook : YukiBaseHooker() {
         return resolveCachedClassName(
             cacheKey = PERSISTENCE_MANAGER_CLASS_CACHE_KEY
         ) {
-            // Decompiled source anchor:
-            // .tmp-ref/decompiled-jadx/sources/H/d.java
             // Original class in jadx: H.d (PersistenceManager)
             findClass {
                 matcher {
@@ -459,12 +589,26 @@ class RearWidgetHook : YukiBaseHooker() {
         }
     }
 
+    private fun resolveSmartAssistantRestoreWidgetsMethod(): DexKitMethodInjectionPoint {
+        return resolveCachedMethodPoint(
+            cacheKey = SMART_ASSISTANT_RESTORE_WIDGETS_METHOD_CACHE_KEY,
+        ) {
+            findMethod {
+                matcher {
+                    usingStrings(
+                        "Widget already exists, skipping: %s",
+                        "Restored widget: %s with priority=%d",
+                        "All widgets initialized: display=%d, beforeInactive=%d",
+                    )
+                }
+            }.singleOrNull()
+        }
+    }
+
     private fun resolveSmartAssistantPostRunnableClassName(): String {
         return resolveCachedClassName(
             cacheKey = SMART_ASSISTANT_POST_RUNNABLE_CLASS_CACHE_KEY
         ) {
-            // Decompiled source anchor:
-            // .tmp-ref/decompiled-jadx/sources/Z1/m.java
             // Original class in jadx: Z1.m (notification post runnable)
             findClass {
                 matcher {
@@ -480,6 +624,29 @@ class RearWidgetHook : YukiBaseHooker() {
 
     private fun resolveSmartAssistantManagerClassName(): String {
         return resolveSmartAssistantManagerInitMethod().className
+    }
+
+    private fun resolveSmartAssistantWidgetRecordClassName(): String {
+        val point = resolveSmartAssistantManagerInsertWidgetMethod()
+        return runCatching {
+            point.className.toClass().resolve().firstMethod {
+                name = point.methodName
+                parameterCount = 1
+            }.self.parameterTypes.first().name
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+            ?: error("DexKit failed to resolve smart assistant widget record class")
+    }
+
+    private fun resolveNotificationWidgetHostClassName(): String {
+        return resolveNotificationWidgetApplyMethod().className.toClass().superclass?.name
+            ?.takeIf { it.isNotBlank() }
+            ?: error("DexKit failed to resolve notification widget host class")
+    }
+
+    private fun resolveNotificationWidgetBaseClassName(): String {
+        return resolveNotificationWidgetHostClassName().toClass().superclass?.name
+            ?.takeIf { it.isNotBlank() }
+            ?: error("DexKit failed to resolve notification widget base class")
     }
 
     private fun resolveSmartAssistantUtilsClassName(): String {
@@ -501,6 +668,99 @@ class RearWidgetHook : YukiBaseHooker() {
                     declaredClass = managerClass
                     modifiers = Modifier.PUBLIC or Modifier.STATIC or Modifier.FINAL
                     type = "android.os.Handler"
+                }
+            }.singleOrNull()
+        }
+    }
+
+    private fun resolveSmartAssistantManagerWidgetListFieldName(): String {
+        return resolveCachedFieldName(
+            cacheKey = SMART_ASSISTANT_MANAGER_WIDGET_LIST_FIELD_CACHE_KEY,
+        ) {
+            val managerClass = resolveSmartAssistantManagerClassName()
+            val insertPoint = resolveSmartAssistantManagerInsertWidgetMethod()
+            findField {
+                searchPackages(managerClass.substringBeforeLast('.'))
+                matcher {
+                    declaredClass = managerClass
+                    type = "java.util.ArrayList"
+                    readMethods {
+                        add {
+                            declaredClass = insertPoint.className
+                            name = insertPoint.methodName
+                            paramCount(1)
+                            returnType = "void"
+                            usingStrings(
+                                "Inserted widget at position %d, type=%s, new display index=%d",
+                            )
+                        }
+                    }
+                }
+            }.singleOrNull()
+        }
+    }
+
+    private fun resolveSmartAssistantManagerCurrentIndexFieldName(): String {
+        return resolveCachedFieldName(
+            cacheKey = SMART_ASSISTANT_MANAGER_CURRENT_INDEX_FIELD_CACHE_KEY,
+        ) {
+            val managerClass = resolveSmartAssistantManagerClassName()
+            val insertPoint = resolveSmartAssistantManagerInsertWidgetMethod()
+            findField {
+                searchPackages(managerClass.substringBeforeLast('.'))
+                matcher {
+                    declaredClass = managerClass
+                    type = "int"
+                    readMethods {
+                        add {
+                            declaredClass = insertPoint.className
+                            name = insertPoint.methodName
+                            paramCount(1)
+                            returnType = "void"
+                            usingStrings(
+                                "Inserted widget at position %d, type=%s, new display index=%d",
+                            )
+                        }
+                    }
+                }
+            }.singleOrNull()
+        }
+    }
+
+    private fun resolveSmartAssistantManagerBeforeInactiveIndexFieldName(): String {
+        return resolveCachedFieldName(
+            cacheKey = SMART_ASSISTANT_MANAGER_BEFORE_INACTIVE_INDEX_FIELD_CACHE_KEY,
+        ) {
+            val managerClass = resolveSmartAssistantManagerClassName()
+            findField {
+                searchPackages(managerClass.substringBeforeLast('.'))
+                matcher {
+                    declaredClass = managerClass
+                    type = "int"
+                    readMethods {
+                        add {
+                            declaredClass = managerClass
+                            paramCount(0)
+                            returnType = "int"
+                            usingStrings(
+                                "Pin restored first update, using mIndexBeforeInactive: %d",
+                                "Using previous index while inactive: %d",
+                            )
+                        }
+                        add {
+                            declaredClass = "com.xiaomi.subscreencenter.SubScreenCenterApp"
+                            usingStrings("All widgets initialized: display=%d, beforeInactive=%d")
+                        }
+                        add {
+                            declaredClass = "com.xiaomi.subscreencenter.SmartAssistantPanel"
+                            usingStrings("Keeping mIndexBeforeInactive at %d")
+                        }
+                    }
+                    writeMethods {
+                        add {
+                            usingStrings("new-content-alpha")
+                        }
+                    }
                 }
             }.singleOrNull()
         }
@@ -572,6 +832,48 @@ class RearWidgetHook : YukiBaseHooker() {
         }
     }
 
+    private fun resolveSmartAssistantWidgetRecordExtrasFieldName(): String {
+        return resolveCachedFieldName(
+            cacheKey = SMART_ASSISTANT_WIDGET_RECORD_EXTRAS_FIELD_CACHE_KEY,
+        ) {
+            val widgetRecordClass = resolveSmartAssistantWidgetRecordClassName()
+            findField {
+                searchPackages(widgetRecordClass.substringBeforeLast('.'))
+                matcher {
+                    declaredClass = widgetRecordClass
+                    type = "android.os.Bundle"
+                }
+            }.singleOrNull()
+        }
+    }
+
+    private fun resolveSmartAssistantWidgetRecordPriorityFieldName(): String {
+        return resolveCachedFieldName(
+            cacheKey = SMART_ASSISTANT_WIDGET_RECORD_PRIORITY_FIELD_CACHE_KEY,
+        ) {
+            val widgetRecordClass = resolveSmartAssistantWidgetRecordClassName()
+            val insertPoint = resolveSmartAssistantManagerInsertWidgetMethod()
+            findField {
+                searchPackages(widgetRecordClass.substringBeforeLast('.'))
+                matcher {
+                    declaredClass = widgetRecordClass
+                    type = "int"
+                    readMethods {
+                        add {
+                            declaredClass = insertPoint.className
+                            name = insertPoint.methodName
+                            paramCount(1)
+                            returnType = "void"
+                            usingStrings(
+                                "Active: insert after index %d (priority %d < %d)",
+                            )
+                        }
+                    }
+                }
+            }.singleOrNull()
+        }
+    }
+
     private fun resolveSmartAssistantWidgetSpecClassName(): String {
         val point = resolveSmartAssistantParseWidgetMethod()
         return runCatching {
@@ -587,8 +889,6 @@ class RearWidgetHook : YukiBaseHooker() {
         return resolveCachedMethodPoint(
             cacheKey = SMART_ASSISTANT_MANAGER_INIT_METHOD_CACHE_KEY,
         ) {
-            // Decompiled source anchor:
-            // .tmp-ref/decompiled-vineflower/Z1/D0.java:1342
             // Original method in jadx/vineflower: Z1.d0.l(Context)
             findMethod {
                 matcher {
@@ -607,8 +907,6 @@ class RearWidgetHook : YukiBaseHooker() {
         return resolveCachedMethodPoint(
             cacheKey = SMART_ASSISTANT_MANAGER_REFRESH_METHOD_CACHE_KEY,
         ) {
-            // Decompiled source anchor:
-            // .tmp-ref/decompiled-vineflower/Z1/D0.java:1513
             // Original method in jadx/vineflower: Z1.d0.o(boolean)
             findMethod {
                 matcher {
@@ -621,12 +919,29 @@ class RearWidgetHook : YukiBaseHooker() {
         }
     }
 
+    private fun resolveSmartAssistantManagerInsertWidgetMethod(): DexKitMethodInjectionPoint {
+        return resolveCachedMethodPoint(
+            cacheKey = SMART_ASSISTANT_MANAGER_INSERT_WIDGET_METHOD_CACHE_KEY,
+        ) {
+            // Original method in jadx/vineflower: Z1.d0.n(c0)
+            findMethod {
+                matcher {
+                    declaredClass = resolveSmartAssistantManagerClassName()
+                    paramCount(1)
+                    returnType = "void"
+                    usingStrings(
+                        "Active: insert after index %d (priority %d < %d)",
+                        "Inserted widget at position %d, type=%s, new display index=%d",
+                    )
+                }
+            }.singleOrNull()
+        }
+    }
+
     private fun resolveSmartAssistantManagerRemoveNotificationMethod(): DexKitMethodInjectionPoint {
         return resolveCachedMethodPoint(
             cacheKey = SMART_ASSISTANT_MANAGER_REMOVE_NOTIFICATION_METHOD_CACHE_KEY,
         ) {
-            // Decompiled source anchor:
-            // .tmp-ref/decompiled-vineflower/Z1/D0.java:1730
             // Original method in jadx/vineflower: Z1.d0.p(int, String, int)
             findMethod {
                 matcher {
@@ -643,8 +958,6 @@ class RearWidgetHook : YukiBaseHooker() {
         return resolveCachedMethodPoint(
             cacheKey = SMART_ASSISTANT_MANAGER_REMOVE_BUSINESS_METHOD_CACHE_KEY,
         ) {
-            // Decompiled source anchor:
-            // .tmp-ref/decompiled-vineflower/Z1/D0.java:2007
             // Original method in jadx/vineflower: Z1.d0.v(String, String)
             findMethod {
                 matcher {
@@ -661,8 +974,6 @@ class RearWidgetHook : YukiBaseHooker() {
         return resolveCachedMethodPoint(
             cacheKey = SMART_ASSISTANT_MANAGER_REMOVE_COMPOSITE_METHOD_CACHE_KEY,
         ) {
-            // Decompiled source anchor:
-            // .tmp-ref/decompiled-vineflower/Z1/D0.java:197
             // Original method in jadx/vineflower: Z1.d0.C(int, String, String)
             findMethod {
                 matcher {
@@ -679,8 +990,6 @@ class RearWidgetHook : YukiBaseHooker() {
         return resolveCachedMethodPoint(
             cacheKey = SMART_ASSISTANT_PARSE_WIDGET_METHOD_CACHE_KEY,
         ) {
-            // Decompiled source anchor:
-            // .tmp-ref/decompiled-jadx/sources/P2/c.java:391
             // Original method in jadx: p2.c.r(String, j2.a)
             findMethod {
                 matcher {
@@ -698,8 +1007,6 @@ class RearWidgetHook : YukiBaseHooker() {
         return resolveCachedMethodPoint(
             cacheKey = SMART_ASSISTANT_RESOLVE_PATH_METHOD_CACHE_KEY,
         ) {
-            // Decompiled source anchor:
-            // .tmp-ref/decompiled-jadx/sources/P2/c.java:224
             // Original method in jadx: p2.c.i(String, String)
             findMethod {
                 matcher {
@@ -716,8 +1023,6 @@ class RearWidgetHook : YukiBaseHooker() {
         return resolveCachedMethodPoint(
             cacheKey = SMART_ASSISTANT_ALLOW_APP_METHOD_CACHE_KEY,
         ) {
-            // Decompiled source anchor:
-            // .tmp-ref/decompiled-jadx/sources/P2/c.java:286
             // Original method in jadx: p2.c.k(String, Set, Map)
             findMethod {
                 matcher {
@@ -737,8 +1042,6 @@ class RearWidgetHook : YukiBaseHooker() {
         return resolveCachedMethodPoint(
             cacheKey = SMART_ASSISTANT_DECORATE_EXTRAS_METHOD_CACHE_KEY,
         ) {
-            // Decompiled source anchor:
-            // .tmp-ref/decompiled-jadx/sources/P2/c.java:492
             // Original method in jadx: p2.c.s(Bundle, ... , j2.a)
             findMethod {
                 matcher {
@@ -755,8 +1058,6 @@ class RearWidgetHook : YukiBaseHooker() {
         return resolveCachedMethodPoint(
             cacheKey = SMART_ASSISTANT_PARSE_PARAMS_METHOD_CACHE_KEY,
         ) {
-            // Decompiled source anchor:
-            // .tmp-ref/decompiled-jadx/sources/L1/a.java:967
             // Original method in jadx: L1.a.y(Bundle)
             findMethod {
                 matcher {
@@ -775,8 +1076,6 @@ class RearWidgetHook : YukiBaseHooker() {
         return resolveCachedMethodPoint(
             cacheKey = SMART_ASSISTANT_BUILTIN_SUPPORT_METHOD_CACHE_KEY,
         ) {
-            // Decompiled source anchor:
-            // .tmp-ref/decompiled-jadx/sources/P2/a.java:106
             // Original method in jadx: p2.a.d(String, String)
             findMethod {
                 matcher {
@@ -801,13 +1100,121 @@ class RearWidgetHook : YukiBaseHooker() {
         return resolveCachedMethodPoint(
             cacheKey = NOTIFICATION_WIDGET_APPLY_METHOD_CACHE_KEY,
         ) {
-            // Decompiled source anchor:
-            // .tmp-ref/decompiled-jadx/sources/T2/j.java:110
             // Original method in jadx: t2.j.J(t2.f)
             findMethod {
                 matcher {
                     returnType = "void"
                     usingStrings("notification_received", "params_transferred")
+                }
+            }.singleOrNull()
+        }
+    }
+
+    private fun resolveNotificationWidgetTemplatePathFieldName(): String {
+        return resolveCachedFieldName(
+            cacheKey = NOTIFICATION_WIDGET_TEMPLATE_PATH_FIELD_CACHE_KEY,
+        ) {
+            val hostClass = resolveNotificationWidgetHostClassName()
+            findField {
+                searchPackages(hostClass.substringBeforeLast('.'))
+                matcher {
+                    declaredClass = hostClass
+                    type = "java.lang.String"
+                    readMethods {
+                        add {
+                            declaredClass = hostClass
+                            paramTypes(Context::class.java)
+                            returnType = "android.view.View"
+                            usingStrings("onCreate path =")
+                        }
+                    }
+                }
+            }.singleOrNull()
+        }
+    }
+
+    private fun resolveNotificationWidgetExtrasFieldName(): String {
+        return resolveCachedFieldName(
+            cacheKey = NOTIFICATION_WIDGET_EXTRAS_FIELD_CACHE_KEY,
+        ) {
+            val baseClass = resolveNotificationWidgetBaseClassName()
+            val widgetApplyPoint = resolveNotificationWidgetApplyMethod()
+            findField {
+                searchPackages(baseClass.substringBeforeLast('.'))
+                matcher {
+                    declaredClass = baseClass
+                    type = "android.os.Bundle"
+                    readMethods {
+                        add {
+                            declaredClass = widgetApplyPoint.className
+                            name = widgetApplyPoint.methodName
+                            paramCount(1)
+                            returnType = "void"
+                            usingStrings("notification_received", "params_transferred")
+                        }
+                    }
+                }
+            }.singleOrNull()
+        }
+    }
+
+    private fun resolveOrdinaryNotificationManagerClassName(): String {
+        return resolveOrdinaryNotificationManagerLoadMethod().className
+    }
+
+    private fun resolveOrdinaryNotificationManagerLoadMethod(): DexKitMethodInjectionPoint {
+        return resolveCachedMethodPoint(
+            cacheKey = ORDINARY_NOTIFICATION_MANAGER_LOAD_METHOD_CACHE_KEY,
+        ) {
+            // Original method: Z1.X0.b() load ordinary/keyguard notifications
+            findMethod {
+                matcher {
+                    paramCount(0)
+                    returnType = "void"
+                    usingStrings(
+                        "intercept keyguard notifications because pause",
+                        "load keyguard notifications cursor is null",
+                        "load keyguard notifications error icon is null",
+                    )
+                }
+            }.singleOrNull()
+        }
+    }
+
+    private fun resolveOrdinaryNotificationManagerObserverMethod(): DexKitMethodInjectionPoint {
+        return resolveCachedMethodPoint(
+            cacheKey = ORDINARY_NOTIFICATION_MANAGER_OBSERVER_METHOD_CACHE_KEY,
+        ) {
+            // Original method: Z1.X0.c(boolean) toggle notification observer
+            findMethod {
+                matcher {
+                    declaredClass = resolveOrdinaryNotificationManagerClassName()
+                    paramTypes("boolean")
+                    returnType = "void"
+                    usingStrings(
+                        "notification observer has already register",
+                        "fail register content observer:",
+                        "fail unregister content observer:",
+                    )
+                }
+            }.singleOrNull()
+        }
+    }
+
+    private fun resolveOrdinaryNotificationManagerPostMethod(): DexKitMethodInjectionPoint {
+        return resolveCachedMethodPoint(
+            cacheKey = ORDINARY_NOTIFICATION_MANAGER_POST_METHOD_CACHE_KEY,
+        ) {
+            // Original method: Z1.X0.d(k2.b) post ordinary notification to panel
+            findMethod {
+                matcher {
+                    declaredClass = resolveOrdinaryNotificationManagerClassName()
+                    paramCount(1)
+                    returnType = "void"
+                    usingStrings(
+                        "post notification:",
+                        "get application name error",
+                    )
                 }
             }.singleOrNull()
         }
@@ -1734,12 +2141,733 @@ class RearWidgetHook : YukiBaseHooker() {
         )
     }
 
+    private fun ensureChannelSceneFocusParam(
+        packageName: String,
+        notificationId: Int,
+        notificationKey: String?,
+        extras: Bundle,
+    ): String? {
+        if (!RearWidgetRuntimeStore.hasSceneRoutePrefix(packageName, CHANNEL_SCENE_PREFIX)) {
+            return null
+        }
+        if (!extras.getString("miui.focus.param").isNullOrBlank()) {
+            debugLog(
+                "ordinary notice skip existing focus pkg=$packageName id=$notificationId key=${notificationKey.orEmpty()}"
+            )
+            return null
+        }
+        if (!extras.getString("miui.rear.param").isNullOrBlank()) {
+            debugLog(
+                "ordinary notice skip existing rear pkg=$packageName id=$notificationId key=${notificationKey.orEmpty()}"
+            )
+            return null
+        }
+
+        val seed = queryActiveNotificationSeed(
+            packageName = packageName,
+            notificationId = notificationId,
+            notificationKey = notificationKey,
+        ) ?: run {
+            debugLog(
+                "ordinary notice seed miss pkg=$packageName id=$notificationId key=${notificationKey.orEmpty()}"
+            )
+            return null
+        }
+        val scene = buildChannelScene(seed.channelId)
+        val business = RearWidgetRuntimeStore.resolveBusinessForScene(packageName, scene) ?: run {
+            debugLog(
+                "ordinary notice route miss pkg=$packageName id=$notificationId key=${notificationKey.orEmpty()} scene=$scene"
+            )
+            return null
+        }
+
+        extras.putString(
+            "miui.focus.param",
+            buildSyntheticChannelFocusParamJson(
+                packageName = packageName,
+                notificationId = notificationId,
+                notificationKey = notificationKey,
+                scene = scene,
+                seed = seed,
+            )
+        )
+        debugLog(
+            "channel route synthesized pkg=$packageName channel=${seed.channelId} scene=$scene business=$business"
+        )
+        return scene
+    }
+
+    private fun normalizeInitialManagerWidgetPriority(target: Any?, widget: Any?) {
+        val managerTarget = target ?: return
+        val insertedWidget = widget ?: return
+        val listFieldName = resolveSmartAssistantManagerWidgetListFieldName()
+        val currentIndexFieldName = resolveSmartAssistantManagerCurrentIndexFieldName()
+        val list = runCatching {
+            @Suppress("UNCHECKED_CAST")
+            managerTarget.asResolver().firstField { name = listFieldName }.get() as ArrayList<Any>
+        }.getOrNull() ?: return
+        val currentIndex = runCatching {
+            managerTarget.asResolver().firstField { name = currentIndexFieldName }.get<Int>()
+        }.getOrNull() ?: return
+        if (currentIndex != -1) return
+        if (!isPriorityManagedWidget(insertedWidget)) return
+
+        synchronized(list) {
+            if (!list.contains(insertedWidget)) return
+            val original = ArrayList(list)
+            val normalWidgets = original.filter(::isPriorityManagedWidget)
+            if (normalWidgets.size <= 1) return
+
+            val sortedNormalWidgets = normalWidgets.sortedWith(
+                compareByDescending<Any> { managerWidgetPriority(it) }
+                    .thenByDescending { managerWidgetCreatedAt(it) }
+            )
+            if (sortedNormalWidgets == normalWidgets) return
+
+            val iterator = sortedNormalWidgets.iterator()
+            for (index in original.indices) {
+                if (!isPriorityManagedWidget(original[index])) continue
+                if (!iterator.hasNext()) break
+                list[index] = iterator.next()
+            }
+            debugLog(
+                "manager init priority reorder size=${list.size}"
+            )
+        }
+    }
+
+    private fun normalizeRestoredManagerWidgetPriority(target: Any?) {
+        val managerTarget = target ?: return
+        val listFieldName = resolveSmartAssistantManagerWidgetListFieldName()
+        val beforeInactiveFieldName = resolveSmartAssistantManagerBeforeInactiveIndexFieldName()
+        val list = runCatching {
+            @Suppress("UNCHECKED_CAST")
+            managerTarget.asResolver().firstField { name = listFieldName }.get() as ArrayList<Any>
+        }.getOrNull() ?: return
+
+        synchronized(list) {
+            if (list.size <= 1) return
+
+            val original = ArrayList(list)
+            val normalWidgets = original.filter(::isPriorityManagedWidget)
+            if (normalWidgets.isEmpty()) return
+            val sortedNormalWidgets = normalWidgets.sortedWith(
+                compareByDescending<Any> { managerWidgetPriority(it) }
+                    .thenByDescending { managerWidgetCreatedAt(it) }
+            )
+            val sorted = ArrayList(original)
+            val iterator = sortedNormalWidgets.iterator()
+            for (index in sorted.indices) {
+                if (!isPriorityManagedWidget(sorted[index])) continue
+                if (!iterator.hasNext()) break
+                sorted[index] = iterator.next()
+            }
+            val orderChanged = sorted != original
+            if (orderChanged) {
+                list.clear()
+                list.addAll(sorted)
+            }
+
+            val currentBeforeInactive = runCatching {
+                managerTarget.asResolver().firstField { name = beforeInactiveFieldName }.get<Int>()
+            }.getOrNull() ?: -1
+            val preferredIndex = list.indexOfFirst(::isPriorityManagedWidget)
+                .takeIf { it >= 0 }
+                ?: 0
+            val indexChanged = currentBeforeInactive != preferredIndex
+            if (!orderChanged && !indexChanged) return
+
+            runCatching {
+                managerTarget.asResolver().firstField { name = beforeInactiveFieldName }
+                    .set(preferredIndex)
+            }
+
+            debugLog(
+                "manager restore priority normalize size=${list.size} orderChanged=$orderChanged beforeInactive=$currentBeforeInactive->$preferredIndex"
+            )
+        }
+    }
+
+    private fun isPriorityManagedWidget(widget: Any): Boolean {
+        val bundle = managerWidgetBundle(widget) ?: return false
+        return !bundle.getBoolean("force_popup", false) &&
+                !bundle.getBoolean("enableFloat", false) &&
+                !bundle.getBoolean("is_pin", false)
+    }
+
+    private fun managerWidgetBundle(widget: Any): Bundle? {
+        val extrasFieldName = resolveSmartAssistantWidgetRecordExtrasFieldName()
+        return runCatching {
+            widget.asResolver().firstField { name = extrasFieldName }.get<Bundle?>()
+        }.getOrNull()
+    }
+
+    private fun managerWidgetPriority(widget: Any): Int {
+        val priorityFieldName = resolveSmartAssistantWidgetRecordPriorityFieldName()
+        return runCatching {
+            widget.asResolver().firstField { name = priorityFieldName }.get<Int>()
+        }.getOrNull() ?: Int.MIN_VALUE
+    }
+
+    private fun managerWidgetCreatedAt(widget: Any): Long {
+        return managerWidgetBundle(widget)?.getLong("timestamp", Long.MIN_VALUE) ?: Long.MIN_VALUE
+    }
+
+    private fun scheduleOrdinaryChannelRouteScanner() {
+        val handler = mainHandler ?: return
+        val epoch = managerEpoch.get()
+        if (ordinaryChannelScannerEpoch.get() == epoch) return
+        ordinaryChannelScannerEpoch.set(epoch)
+        val task = object : Runnable {
+            override fun run() {
+                if (ordinaryChannelScannerEpoch.get() != epoch || managerEpoch.get() != epoch) return
+                syncActiveNotificationChannelRoutes("scan_loop")
+                handler.postDelayed(this, ORDINARY_CHANNEL_SCAN_INTERVAL_MS)
+            }
+        }
+        handler.post(task)
+    }
+
+    private fun syncActiveNotificationChannelRoutes(reason: String) {
+        if (!RearWidgetRuntimeStore.hasAnySceneRoutePrefix(CHANNEL_SCENE_PREFIX)) {
+            clearAllOrdinaryChannelRouteNotices("$reason:no_ch_route")
+            return
+        }
+
+        val now = System.currentTimeMillis()
+        val snapshots = listActiveNotificationSnapshots()
+        val activeCardIds = LinkedHashSet<String>()
+        snapshots.forEach { snapshot ->
+            if (!RearWidgetRuntimeStore.hasSceneRoutePrefix(
+                    snapshot.packageName,
+                    CHANNEL_SCENE_PREFIX
+                )
+            ) {
+                return@forEach
+            }
+            val scene = buildChannelScene(snapshot.channelId)
+            val business =
+                RearWidgetRuntimeStore.resolveBusinessForScene(snapshot.packageName, scene)
+                    ?: return@forEach
+            if (!RearWidgetRuntimeStore.ensureBusinessRegistered(snapshot.packageName, business)) {
+                debugLog(
+                    "ordinary scan skip unregistered pkg=${snapshot.packageName} channel=${snapshot.channelId} business=$business"
+                )
+                return@forEach
+            }
+            val cardId = buildOrdinaryChannelCardId(snapshot)
+            activeCardIds += cardId
+            ordinaryChannelNoticeSeenAt[cardId] = now
+            val payload = Bundle().apply {
+                putString("__rear_card_id__", cardId)
+                putString("title", snapshot.title.orEmpty())
+                putString("text", snapshot.text.orEmpty())
+                putString("bigText", snapshot.bigText.orEmpty())
+                putString("subText", snapshot.subText.orEmpty())
+                putString("channelId", snapshot.channelId)
+                putString("notificationKey", snapshot.notificationKey.orEmpty())
+                putString(
+                    "miui.focus.param",
+                    buildSyntheticChannelFocusParamJson(
+                        packageName = snapshot.packageName,
+                        notificationId = snapshot.notificationId,
+                        notificationKey = snapshot.notificationKey,
+                        scene = scene,
+                        seed = ChannelRouteSeed(
+                            channelId = snapshot.channelId,
+                            title = snapshot.title,
+                            text = snapshot.text,
+                            bigText = snapshot.bigText,
+                            subText = snapshot.subText,
+                            shortCriticalText = snapshot.shortCriticalText,
+                            notificationKey = snapshot.notificationKey,
+                        ),
+                    )
+                )
+            }
+            val options = RearWidgetNoticeOptions(
+                sticky = false,
+                disablePopup = false,
+                forcePopup = false,
+                enableFloat = false,
+                showTimeTip = true,
+                index = 0,
+                priority = -1,
+            )
+            runCatching {
+                val ticket = RearWidgetRuntimeStore.postNotice(
+                    business = business,
+                    payload = payload,
+                    options = options,
+                    packageName = snapshot.packageName,
+                )
+                ordinaryChannelNoticeIndex[cardId] = ticket.compositeKey
+                injectByCompositeKey(ticket.compositeKey)
+                debugLog(
+                    "ordinary scan inject pkg=${snapshot.packageName} id=${snapshot.notificationId} key=${snapshot.notificationKey.orEmpty()} channel=${snapshot.channelId} scene=$scene business=$business reason=$reason"
+                )
+            }.onFailure {
+                debugLog(
+                    "ordinary scan inject failed pkg=${snapshot.packageName} id=${snapshot.notificationId} channel=${snapshot.channelId} err=${it.message}"
+                )
+            }
+        }
+        cleanupStaleOrdinaryChannelRouteNotices(activeCardIds, reason, now)
+    }
+
+    private fun cleanupStaleOrdinaryChannelRouteNotices(
+        activeCardIds: Set<String>,
+        reason: String,
+        now: Long,
+    ) {
+        ordinaryChannelNoticeIndex.keys.toList()
+            .filterNot { activeCardIds.contains(it) }
+            .forEach { staleId ->
+                val lastSeenAt = ordinaryChannelNoticeSeenAt[staleId] ?: 0L
+                if (lastSeenAt > 0L && now - lastSeenAt < ORDINARY_CHANNEL_STALE_GRACE_MS) {
+                    return@forEach
+                }
+                ordinaryChannelNoticeSeenAt.remove(staleId)
+                val compositeKey = ordinaryChannelNoticeIndex.remove(staleId)
+                if (!compositeKey.isNullOrBlank()) {
+                    ejectByCompositeKey(compositeKey)
+                    debugLog("ordinary scan eject stale card=$staleId composite=$compositeKey reason=$reason")
+                }
+            }
+    }
+
+    private fun clearAllOrdinaryChannelRouteNotices(reason: String) {
+        if (ordinaryChannelNoticeIndex.isEmpty()) {
+            ordinaryChannelNoticeSeenAt.clear()
+            return
+        }
+        ordinaryChannelNoticeIndex.entries.toList().forEach { (_, compositeKey) ->
+            ejectByCompositeKey(compositeKey)
+            debugLog("ordinary scan clear composite=$compositeKey reason=$reason")
+        }
+        ordinaryChannelNoticeIndex.clear()
+        ordinaryChannelNoticeSeenAt.clear()
+    }
+
+    private fun listActiveNotificationSnapshots(): List<ActiveNotificationSnapshot> {
+        val service = runCatching {
+            "android.app.NotificationManager".toClass().resolve()
+                .firstMethod { name = "getService" }
+                .invoke()
+        }.onFailure {
+            debugLog("ordinary scan getService failed err=${it.message}")
+        }.getOrNull() ?: return emptyList()
+
+        val notifications = resolveActiveNotifications(service, null)
+        if (notifications.isEmpty()) {
+            debugLog("ordinary scan active list empty")
+            return emptyList()
+        }
+        val out = ArrayList<ActiveNotificationSnapshot>(notifications.size)
+        notifications.forEach { candidate ->
+            val snapshot = buildActiveNotificationSnapshot(candidate) ?: return@forEach
+            out += snapshot
+        }
+        return out
+    }
+
+    private fun buildActiveNotificationSnapshot(candidate: Any): ActiveNotificationSnapshot? {
+        val packageName = runCatching {
+            candidate.javaClass.getMethod("getPackageName").invoke(candidate) as? String
+        }.getOrNull()?.trim().orEmpty()
+        if (packageName.isBlank()) return null
+
+        val notification = runCatching {
+            candidate.javaClass.getMethod("getNotification").invoke(candidate) as? Notification
+        }.getOrNull() ?: return null
+        val channelId = notification.channelId?.trim()?.ifBlank { null } ?: return null
+        val extras = notification.extras ?: Bundle.EMPTY
+        if (!extras.getString("miui.focus.param").isNullOrBlank()) return null
+        if (!extras.getString("miui.rear.param").isNullOrBlank()) return null
+
+        val notificationId = runCatching {
+            candidate.javaClass.getMethod("getId").invoke(candidate) as? Int
+        }.getOrNull() ?: return null
+        val notificationKey = runCatching {
+            candidate.javaClass.getMethod("getKey").invoke(candidate) as? String
+        }.getOrNull()?.trim()?.ifBlank { null }
+        val postTime = runCatching {
+            candidate.javaClass.getMethod("getPostTime").invoke(candidate) as? Long
+        }.getOrNull() ?: 0L
+
+        return ActiveNotificationSnapshot(
+            notificationId = notificationId,
+            packageName = packageName,
+            notificationKey = notificationKey,
+            postTime = postTime,
+            channelId = channelId,
+            title = extractTextCandidate(
+                extras,
+                Notification.EXTRA_TITLE,
+                Notification.EXTRA_TITLE_BIG
+            ),
+            text = extractTextCandidate(extras, Notification.EXTRA_TEXT),
+            bigText = extractTextCandidate(extras, Notification.EXTRA_BIG_TEXT),
+            subText = extractTextCandidate(
+                extras,
+                Notification.EXTRA_SUB_TEXT,
+                Notification.EXTRA_SUMMARY_TEXT,
+            ),
+            shortCriticalText = extractTextCandidate(
+                extras,
+                "android.shortCriticalText"
+            )
+        )
+    }
+
+    private fun buildOrdinaryChannelCardId(snapshot: ActiveNotificationSnapshot): String {
+        val stableKey = snapshot.notificationKey?.takeIf { it.isNotBlank() }
+            ?: "${snapshot.packageName}:${snapshot.notificationId}:${snapshot.postTime}:${snapshot.channelId}"
+        return "$ORDINARY_CHANNEL_CARD_ID_PREFIX:$stableKey"
+    }
+
     private fun extractSceneCandidate(vararg sources: JSONObject?): String? {
         sources.forEach { source ->
             val scene = source?.optString(RearWidgetApiContract.BundleKeys.SCENE)?.trim().orEmpty()
             if (scene.isNotBlank()) return scene
         }
         return null
+    }
+
+    private fun queryActiveNotificationSeed(
+        packageName: String,
+        notificationId: Int,
+        notificationKey: String?,
+        postTime: Long? = null,
+    ): ChannelRouteSeed? {
+        val service = runCatching {
+            "android.app.NotificationManager".toClass().resolve()
+                .firstMethod { name = "getService" }
+                .invoke()
+        }.onFailure {
+            debugLog(
+                "ordinary notice getService failed pkg=$packageName id=$notificationId key=${notificationKey.orEmpty()} err=${it.message}"
+            )
+        }.getOrNull() ?: return null
+
+        val activeNotifications = resolveActiveNotifications(service, notificationKey)
+        if (activeNotifications.isEmpty()) {
+            debugLog(
+                "ordinary notice active list empty pkg=$packageName id=$notificationId key=${notificationKey.orEmpty()}"
+            )
+            return null
+        }
+
+        activeNotifications.forEach { candidate ->
+            val currentKey = runCatching {
+                candidate.javaClass.getMethod("getKey").invoke(candidate) as? String
+            }.getOrNull()?.trim().orEmpty()
+            if (!matchesActiveNotification(
+                    candidate = candidate,
+                    packageName = packageName,
+                    notificationId = notificationId,
+                    notificationKey = notificationKey,
+                    postTime = postTime,
+                )
+            ) {
+                return@forEach
+            }
+            val notification = runCatching {
+                candidate.javaClass.getMethod("getNotification").invoke(candidate) as? Notification
+            }.getOrNull() ?: run {
+                debugLog(
+                    "ordinary notice candidate has no Notification pkg=$packageName id=$notificationId key=${notificationKey.orEmpty()}"
+                )
+                return@forEach
+            }
+            val channelId = notification.channelId?.trim()?.ifBlank { null } ?: run {
+                debugLog(
+                    "ordinary notice candidate missing channel pkg=$packageName id=$notificationId key=${notificationKey.orEmpty()} notifExtras=${
+                        bundleDebugString(
+                            notification.extras
+                        )
+                    }"
+                )
+                return@forEach
+            }
+            val extras = notification.extras ?: Bundle.EMPTY
+            debugLog(
+                "ordinary notice hook pkg=$packageName id=$notificationId key=${notificationKey.orEmpty()} channel=$channelId " +
+                        "title=${
+                            extractTextCandidate(
+                                extras,
+                                Notification.EXTRA_TITLE,
+                                Notification.EXTRA_TITLE_BIG
+                            ).orEmpty()
+                        } " +
+                        "text=${extractTextCandidate(extras, Notification.EXTRA_TEXT).orEmpty()} " +
+                        "bigText=${
+                            extractTextCandidate(
+                                extras,
+                                Notification.EXTRA_BIG_TEXT
+                            ).orEmpty()
+                        } " +
+                        "subText=${
+                            extractTextCandidate(
+                                extras,
+                                Notification.EXTRA_SUB_TEXT,
+                                Notification.EXTRA_SUMMARY_TEXT
+                            ).orEmpty()
+                        } " +
+                        "extras=${bundleDebugString(extras)}"
+            )
+            return ChannelRouteSeed(
+                channelId = channelId,
+                title = extractTextCandidate(
+                    extras,
+                    Notification.EXTRA_TITLE,
+                    Notification.EXTRA_TITLE_BIG
+                ),
+                text = extractTextCandidate(extras, Notification.EXTRA_TEXT),
+                bigText = extractTextCandidate(extras, Notification.EXTRA_BIG_TEXT),
+                subText = extractTextCandidate(
+                    extras,
+                    Notification.EXTRA_SUB_TEXT,
+                    Notification.EXTRA_SUMMARY_TEXT,
+                ),
+                shortCriticalText = extractTextCandidate(
+                    extras,
+                    "android.shortCriticalText"
+                ),
+                notificationKey = currentKey.ifBlank { null },
+            )
+        }
+
+        debugLog(
+            "ordinary notice no matched active notification pkg=$packageName id=$notificationId key=${notificationKey.orEmpty()} candidates=${activeNotifications.size}"
+        )
+
+        return null
+    }
+
+    private fun resolveActiveNotifications(service: Any, notificationKey: String?): List<Any> {
+        val methods = service.javaClass.methods
+            .filter { method ->
+                method.name == "getAppActiveNotifications" ||
+                        method.name == "getActiveNotifications" ||
+                        method.name == "getActiveNotificationsWithAttribution"
+            }
+            .sortedBy { method ->
+                when (method.name) {
+                    "getAppActiveNotifications" -> 0
+                    "getActiveNotificationsWithAttribution" -> 1
+                    else -> 2
+                }
+            }
+
+        if (methods.isEmpty()) {
+            debugLog("ordinary notice no active notification methods on ${service.javaClass.name}")
+            return emptyList()
+        }
+
+        methods.forEach { method ->
+            val args = buildActiveNotificationMethodArgs(method.parameterTypes, notificationKey)
+                ?: run {
+                    debugLog(
+                        "ordinary notice skip active method=${method.name} params=${method.parameterTypes.joinToString { it.simpleName }}"
+                    )
+                    return@forEach
+                }
+            val result = runCatching { method.invoke(service, *args) }.onFailure {
+                debugLog("ordinary notice invoke ${method.name} failed err=${it.message}")
+            }.getOrNull() ?: return@forEach
+            val notifications = unwrapStatusBarNotifications(result)
+            if (notifications.isNotEmpty()) return notifications
+        }
+        return emptyList()
+    }
+
+    private fun buildActiveNotificationMethodArgs(
+        parameterTypes: Array<Class<*>>,
+        notificationKey: String?,
+    ): Array<Any?>? {
+        val hostPackage = hostContext?.packageName ?: "com.xiaomi.subscreencenter"
+        var stringIndex = 0
+        return arrayOfNulls<Any?>(parameterTypes.size).also { args ->
+            parameterTypes.forEachIndexed { index, type ->
+                args[index] = when {
+                    type == String::class.java -> {
+                        val value = if (stringIndex++ == 0) hostPackage else null
+                        value
+                    }
+
+                    type == Int::class.javaPrimitiveType || type == Int::class.javaObjectType -> {
+                        Process.myUid() / 100000
+                    }
+
+                    type == Boolean::class.javaPrimitiveType || type == Boolean::class.javaObjectType -> {
+                        false
+                    }
+
+                    type == Long::class.javaPrimitiveType || type == Long::class.javaObjectType -> {
+                        0L
+                    }
+
+                    type.isArray && type.componentType == String::class.java -> {
+                        notificationKey
+                            ?.trim()
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let { arrayOf(it) }
+                            ?: emptyArray<String>()
+                    }
+
+                    else -> return null
+                }
+            }
+        }
+    }
+
+    private fun unwrapStatusBarNotifications(value: Any?): List<Any> {
+        if (value == null) return emptyList()
+        if (value is Array<*>) {
+            return value.filterNotNull().filter(::isStatusBarNotification)
+        }
+        if (value is List<*>) {
+            return value.filterNotNull().filter(::isStatusBarNotification)
+        }
+        val sliceList = runCatching {
+            value.javaClass.getMethod("getList").invoke(value) as? List<*>
+        }.getOrNull()
+        return sliceList?.filterNotNull()?.filter(::isStatusBarNotification).orEmpty()
+    }
+
+    private fun isStatusBarNotification(value: Any): Boolean {
+        return value.javaClass.name == "android.service.notification.StatusBarNotification"
+    }
+
+    private fun matchesActiveNotification(
+        candidate: Any,
+        packageName: String,
+        notificationId: Int,
+        notificationKey: String?,
+        postTime: Long? = null,
+    ): Boolean {
+        val currentKey = runCatching {
+            candidate.javaClass.getMethod("getKey").invoke(candidate) as? String
+        }.getOrNull()?.trim().orEmpty()
+        if (notificationKey?.trim()?.isNotBlank() == true && currentKey == notificationKey.trim()) {
+            return true
+        }
+
+        val currentPackage = runCatching {
+            candidate.javaClass.getMethod("getPackageName").invoke(candidate) as? String
+        }.getOrNull()?.trim().orEmpty()
+        val currentId = runCatching {
+            candidate.javaClass.getMethod("getId").invoke(candidate) as? Int
+        }.getOrNull()
+        if (currentPackage != packageName || currentId != notificationId) return false
+
+        val expectedPostTime = postTime?.takeIf { it > 0L } ?: return true
+        val currentPostTime = runCatching {
+            candidate.javaClass.getMethod("getPostTime").invoke(candidate) as? Long
+        }.getOrNull() ?: return true
+        return currentPostTime == expectedPostTime
+    }
+
+    private fun buildChannelScene(channelId: String): String {
+        return CHANNEL_SCENE_PREFIX + channelId.trim()
+    }
+
+    private fun buildSyntheticChannelFocusParamJson(
+        packageName: String,
+        notificationId: Int,
+        notificationKey: String?,
+        scene: String,
+        seed: ChannelRouteSeed,
+    ): String {
+        val baseInfo = JSONObject()
+            .put(RearWidgetApiContract.BundleKeys.SCENE, scene)
+            .put("channelId", seed.channelId)
+            .apply {
+                putIfNotBlank("title", seed.title)
+                putIfNotBlank("text", seed.text)
+                putIfNotBlank("bigText", seed.bigText)
+                putIfNotBlank("subText", seed.subText)
+                putIfNotBlank("shortCriticalText", seed.shortCriticalText)
+            }
+        val hintInfo = JSONObject()
+            .put(RearWidgetApiContract.BundleKeys.SCENE, scene)
+            .apply {
+                putIfNotBlank("title", seed.title)
+                putIfNotBlank("text", seed.text ?: seed.bigText)
+                putIfNotBlank("subText", seed.subText)
+                putIfNotBlank("shortCriticalText", seed.shortCriticalText)
+            }
+        val reareyeInfo = JSONObject()
+            .put("source", "channel_route")
+            .put("packageName", packageName)
+            .put("notificationId", notificationId)
+            .put("channelId", seed.channelId)
+            .apply {
+                putIfNotBlank("notificationKey", notificationKey)
+                putIfNotBlank("title", seed.title)
+                putIfNotBlank("text", seed.text)
+                putIfNotBlank("bigText", seed.bigText)
+                putIfNotBlank("subText", seed.subText)
+                putIfNotBlank("shortCriticalText", seed.shortCriticalText)
+            }
+        val paramV2 = JSONObject()
+            .put("protocol", 1)
+            .put("updatable", true)
+            .put(RearWidgetApiContract.BundleKeys.SCENE, scene)
+            .put("channelId", seed.channelId)
+            .put("disable_popup", false)
+            .put("show_time_tip", true)
+            .put("swipe_out_screen_listener", false)
+            .put("enableFloat", false)
+            .put("baseInfo", baseInfo)
+            .put("hintInfo", hintInfo)
+            .put("reareyeInfo", reareyeInfo)
+        return JSONObject().put("param_v2", paramV2).toString()
+    }
+
+    private fun extractTextCandidate(extras: Bundle, vararg keys: String): String? {
+        keys.forEach { key ->
+            val text = extras.getCharSequence(key)?.toString()?.trim().orEmpty()
+            if (text.isNotBlank()) return text
+        }
+        return null
+    }
+
+    private fun bundleDebugString(bundle: Bundle?): String {
+        if (bundle == null) return "<null>"
+        if (bundle.isEmpty) return "{}"
+        return bundle.keySet()
+            .sorted()
+            .joinToString(prefix = "{", postfix = "}") { key ->
+                "$key=${debugValueString(bundle.get(key))}"
+            }
+    }
+
+    private fun debugValueString(value: Any?): String {
+        return when (value) {
+            null -> "null"
+            is Bundle -> bundleDebugString(value)
+            is Array<*> -> value.joinToString(prefix = "[", postfix = "]") { debugValueString(it) }
+            is BooleanArray -> value.joinToString(prefix = "[", postfix = "]")
+            is ByteArray -> value.joinToString(prefix = "[", postfix = "]")
+            is CharArray -> value.joinToString(prefix = "[", postfix = "]")
+            is DoubleArray -> value.joinToString(prefix = "[", postfix = "]")
+            is FloatArray -> value.joinToString(prefix = "[", postfix = "]")
+            is IntArray -> value.joinToString(prefix = "[", postfix = "]")
+            is LongArray -> value.joinToString(prefix = "[", postfix = "]")
+            is ShortArray -> value.joinToString(prefix = "[", postfix = "]")
+            is Collection<*> -> value.joinToString(prefix = "[", postfix = "]") {
+                debugValueString(it)
+            }
+
+            else -> value.toString()
+        }
+    }
+
+    private fun JSONObject.putIfNotBlank(key: String, value: String?): JSONObject {
+        if (!value.isNullOrBlank()) put(key, value)
+        return this
     }
 
     private fun staleCompositeKeys(
@@ -2037,7 +3165,7 @@ class RearWidgetHook : YukiBaseHooker() {
         debugLog(
             "applyCardOneConfig hook=$hookPoint cardKey=$cardKey hasJson=${json.isNotBlank()} jsonLength=${json.length} owner=${owner.javaClass.name} view=${mamlView.javaClass.name}"
         )
-        val templatePath = extractFieldFromHierarchy(owner, "A") as? String
+        val templatePath = extractNotificationWidgetTemplatePath(owner)
 
         if (json.isBlank()) {
             removeCardOneConfig(cardKey)
@@ -2089,7 +3217,7 @@ class RearWidgetHook : YukiBaseHooker() {
     }
 
     private fun extractCardExtras(owner: Any): Bundle? {
-        extractFieldFromHierarchy(owner, "i")?.let { value ->
+        extractFieldFromHierarchy(owner, resolveNotificationWidgetExtrasFieldName())?.let { value ->
             val bundle = value as? Bundle
             if (bundle != null && bundle.hasCardConfigMarkers()) return bundle
         }
@@ -2108,6 +3236,13 @@ class RearWidgetHook : YukiBaseHooker() {
             current = current.superclass
         }
         return null
+    }
+
+    private fun extractNotificationWidgetTemplatePath(owner: Any): String? {
+        return extractFieldFromHierarchy(
+            owner,
+            resolveNotificationWidgetTemplatePathFieldName()
+        ) as? String
     }
 
     private fun extractFieldFromHierarchy(owner: Any, fieldName: String): Any? {
