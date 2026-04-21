@@ -45,6 +45,12 @@ data class RearWidgetSceneRouteConfig(
     val packageName: String,
     val scene: String,
     val business: String,
+    val downloadedFromStore: Boolean = false,
+    val storeWidgetId: String? = null,
+    val storeWidgetName: String? = null,
+    val storeReleaseTag: String? = null,
+    val storeReleaseAssetName: String? = null,
+    val storeReleasePublishedAt: String? = null,
 )
 
 object RearWidgetConfigCodec {
@@ -57,7 +63,7 @@ object RearWidgetConfigCodec {
         "${packageName.trim()}::${business.trim()}"
 
     fun newSceneRouteId(packageName: String, scene: String): String =
-        "${packageName.trim()}::scene::${RearWidgetSceneRouteSpec.normalizeScene(scene)}"
+        "${packageName.trim()}::scene::${RearWidgetSceneRouteSpec.normalizeScenePattern(scene)}"
 
     fun newCardId(): String = UUID.randomUUID().toString()
 
@@ -156,6 +162,14 @@ object RearWidgetConfigCodec {
                 packageName = packageName,
                 scene = scene,
                 business = business,
+                downloadedFromStore = obj.optBoolean("downloadedFromStore", false),
+                storeWidgetId = obj.optString("storeWidgetId").trim().ifBlank { null },
+                storeWidgetName = obj.optString("storeWidgetName").trim().ifBlank { null },
+                storeReleaseTag = obj.optString("storeReleaseTag").trim().ifBlank { null },
+                storeReleaseAssetName = obj.optString("storeReleaseAssetName").trim()
+                    .ifBlank { null },
+                storeReleasePublishedAt = obj.optString("storeReleasePublishedAt").trim()
+                    .ifBlank { null },
             )
         }
         return out
@@ -217,6 +231,12 @@ object RearWidgetConfigCodec {
                         .put("packageName", item.packageName)
                         .put("scene", item.scene)
                         .put("business", item.business)
+                        .put("downloadedFromStore", item.downloadedFromStore)
+                        .put("storeWidgetId", item.storeWidgetId)
+                        .put("storeWidgetName", item.storeWidgetName)
+                        .put("storeReleaseTag", item.storeReleaseTag)
+                        .put("storeReleaseAssetName", item.storeReleaseAssetName)
+                        .put("storeReleasePublishedAt", item.storeReleasePublishedAt)
                 )
             }
         }.toString()

@@ -784,7 +784,7 @@ object RearWidgetManagerRepository {
         val normalizedById = LinkedHashMap<String, RearWidgetSceneRouteConfig>()
         sceneRoutes.forEach { item ->
             val packageName = item.packageName.trim()
-            val scene = item.scene.trim()
+            val scene = RearWidgetSceneRouteSpec.normalizeScenePattern(item.scene)
             val business = item.business.trim()
             if (packageName.isBlank() || scene.isBlank() || business.isBlank()) return@forEach
             val id = RearWidgetConfigCodec.newSceneRouteId(packageName, scene)
@@ -793,12 +793,18 @@ object RearWidgetManagerRepository {
                 packageName = packageName,
                 scene = scene,
                 business = business,
+                downloadedFromStore = item.downloadedFromStore,
+                storeWidgetId = item.storeWidgetId,
+                storeWidgetName = item.storeWidgetName,
+                storeReleaseTag = item.storeReleaseTag,
+                storeReleaseAssetName = item.storeReleaseAssetName,
+                storeReleasePublishedAt = item.storeReleasePublishedAt,
             )
         }
         return normalizedById.values.sortedWith(
             compareBy(
                 { it.packageName.lowercase() },
-                { RearWidgetSceneRouteSpec.normalizeScene(it.scene).lowercase() },
+                { RearWidgetSceneRouteSpec.normalizeScenePattern(it.scene).lowercase() },
                 { it.business.lowercase() },
             )
         )

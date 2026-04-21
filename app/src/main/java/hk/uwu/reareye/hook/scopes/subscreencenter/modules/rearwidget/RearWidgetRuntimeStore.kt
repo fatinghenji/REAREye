@@ -20,8 +20,15 @@ object RearWidgetRuntimeStore {
 
     private val businessFiles = ConcurrentHashMap<String, String>()
     private val routes = ConcurrentHashMap<String, MutableMap<String, RearWidgetBusinessSpec>>()
-    private val sceneRoutes =
-        ConcurrentHashMap<String, MutableMap<String, RearWidgetSceneRouteSpec>>()
+
+    @Volatile
+    private var sceneRoutes: List<RearWidgetSceneRouteSpec> = emptyList()
+
+    @Volatile
+    private var exactSceneRoutesByPackage: Map<String, Map<String, RearWidgetSceneRouteSpec>> =
+        emptyMap()
+
+    private val sceneRouteLock = Any()
     private val routedNoticeByIdentity = ConcurrentHashMap<String, String>()
     private val notices = ConcurrentHashMap<String, RearWidgetActiveNotice>()
     private val cardNoticeIdIndex = ConcurrentHashMap<String, Int>()
@@ -95,9 +102,12 @@ object RearWidgetRuntimeStore {
     }
 
     fun replaceSceneRoutes(specs: List<RearWidgetSceneRouteSpec>) {
-        sceneRoutes.clear()
-        specs.forEach { spec ->
-            registerSceneRoute(spec.packageName, spec.scene, spec.business)
+        synchronized(sceneRouteLock) {
+            rebuildSceneRoutes(
+                specs.mapNotNull { spec ->
+                    normalizeSceneRouteSpec(spec.packageName, spec.scene, spec.business)
+                }
+            )
         }
         mapsDirty.set(true)
     }
@@ -107,10 +117,19 @@ object RearWidgetRuntimeStore {
         scene: String,
         business: String,
     ) {
-        val normalizedScene = RearWidgetSceneRouteSpec.normalizeScene(scene)
-        if (normalizedScene.isBlank() || business.isBlank()) return
-        val spec = RearWidgetSceneRouteSpec(packageName, normalizedScene, business)
-        sceneRoutes.computeIfAbsent(packageName) { linkedMapOf() }[normalizedScene] = spec
+        val spec = normalizeSceneRouteSpec(packageName, scene, business) ?: return
+        synchronized(sceneRouteLock) {
+            val nextRoutes = sceneRoutes.toMutableList()
+            val replaceIndex = nextRoutes.indexOfFirst {
+                it.packageName == spec.packageName && it.scene == spec.scene
+            }
+            if (replaceIndex >= 0) {
+                nextRoutes[replaceIndex] = spec
+            } else {
+                nextRoutes.add(spec)
+            }
+            rebuildSceneRoutes(nextRoutes)
+        }
         mapsDirty.set(true)
     }
 
@@ -118,26 +137,48 @@ object RearWidgetRuntimeStore {
         packageName: String = defaultPackageName,
         scene: String,
     ) {
-        val normalizedScene = RearWidgetSceneRouteSpec.normalizeScene(scene)
-        if (normalizedScene.isBlank()) return
-        sceneRoutes[packageName]?.remove(normalizedScene)
+        val normalizedPackageName = packageName.trim()
+        val normalizedScene = RearWidgetSceneRouteSpec.normalizeScenePattern(scene)
+        if (normalizedPackageName.isBlank() || normalizedScene.isBlank()) return
+        synchronized(sceneRouteLock) {
+            rebuildSceneRoutes(
+                sceneRoutes.filterNot {
+                    it.packageName == normalizedPackageName && it.scene == normalizedScene
+                }
+            )
+        }
         mapsDirty.set(true)
     }
 
     fun resolveBusinessForScene(packageName: String, scene: String): String? {
+        val normalizedPackageName = packageName.trim()
         val normalizedScene = RearWidgetSceneRouteSpec.normalizeScene(scene)
-        if (normalizedScene.isBlank()) return null
-        return sceneRoutes[packageName]?.get(normalizedScene)?.business
+        if (normalizedPackageName.isBlank() || normalizedScene.isBlank()) return null
+        exactSceneRoutesByPackage[normalizedPackageName]?.get(normalizedScene)?.business?.let {
+            return it
+        }
+        return sceneRoutes.firstOrNull {
+            it.matchesPackage(normalizedPackageName) && it.matchesScene(scene)
+        }?.business
     }
 
     fun hasSceneRoutePrefix(packageName: String, prefix: String): Boolean {
-        if (prefix.isBlank()) return false
-        return sceneRoutes[packageName]?.keys?.any { it.startsWith(prefix) } == true
+        val normalizedPackageName = packageName.trim()
+        if (normalizedPackageName.isBlank() || prefix.isBlank()) return false
+        return sceneRoutes.any {
+            it.matchesPackage(normalizedPackageName) && it.hasScenePrefix(
+                prefix
+            )
+        }
     }
 
     fun hasAnySceneRoutePrefix(prefix: String): Boolean {
         if (prefix.isBlank()) return false
-        return sceneRoutes.values.any { routes -> routes.keys.any { it.startsWith(prefix) } }
+        return sceneRoutes.any { it.hasScenePrefix(prefix) }
+    }
+
+    fun hasAnyBusinessForPackage(packageName: String): Boolean {
+        return collectMatchedBusinesses(packageName).isNotEmpty()
     }
 
     fun rememberRoutedNotification(
@@ -305,10 +346,10 @@ object RearWidgetRuntimeStore {
         val out = LinkedHashMap<String, Set<String>>()
         val packages = LinkedHashSet<String>().apply {
             addAll(routes.keys)
-            addAll(sceneRoutes.keys)
+            sceneRoutes.mapNotNullTo(this) { it.exactPackageNameOrNull() }
         }
         packages.forEach { pkg ->
-            val businesses = collectBusinesses(pkg)
+            val businesses = collectConfiguredBusinesses(pkg)
             if (businesses.isNotEmpty()) out[pkg] = businesses
         }
         return out
@@ -329,14 +370,56 @@ object RearWidgetRuntimeStore {
             .filter { it.ticket.packageName == packageName }
             .maxByOrNull { it.createdAt }
         if (latest != null) return latest.ticket.business
-        return collectBusinesses(packageName).singleOrNull()
+        return collectMatchedBusinesses(packageName).singleOrNull()
     }
 
-    private fun collectBusinesses(packageName: String): LinkedHashSet<String> {
+    private fun collectConfiguredBusinesses(packageName: String): LinkedHashSet<String> {
         return LinkedHashSet<String>().apply {
             routes[packageName]?.keys?.forEach(::add)
-            sceneRoutes[packageName]?.values?.forEach { add(it.business) }
+            sceneRoutes.forEach { spec ->
+                if (spec.exactPackageNameOrNull() == packageName) {
+                    add(spec.business)
+                }
+            }
         }
+    }
+
+    private fun collectMatchedBusinesses(packageName: String): LinkedHashSet<String> {
+        val normalizedPackageName = packageName.trim()
+        if (normalizedPackageName.isBlank()) return linkedSetOf()
+        return LinkedHashSet<String>().apply {
+            routes[normalizedPackageName]?.keys?.forEach(::add)
+            sceneRoutes.forEach { spec ->
+                if (spec.matchesPackage(normalizedPackageName)) {
+                    add(spec.business)
+                }
+            }
+        }
+    }
+
+    private fun normalizeSceneRouteSpec(
+        packageName: String,
+        scene: String,
+        business: String,
+    ): RearWidgetSceneRouteSpec? {
+        val normalizedPackageName = packageName.trim()
+        val normalizedScene = RearWidgetSceneRouteSpec.normalizeScenePattern(scene)
+        val normalizedBusiness = business.trim()
+        if (normalizedPackageName.isBlank() || normalizedScene.isBlank() || normalizedBusiness.isBlank()) {
+            return null
+        }
+        return RearWidgetSceneRouteSpec(normalizedPackageName, normalizedScene, normalizedBusiness)
+    }
+
+    private fun rebuildSceneRoutes(specs: List<RearWidgetSceneRouteSpec>) {
+        sceneRoutes = specs.toList()
+        val indexed = LinkedHashMap<String, LinkedHashMap<String, RearWidgetSceneRouteSpec>>()
+        specs.forEach { spec ->
+            val exactPackageName = spec.exactPackageNameOrNull() ?: return@forEach
+            val exactScene = spec.exactSceneOrNull() ?: return@forEach
+            indexed.getOrPut(exactPackageName) { linkedMapOf() }[exactScene] = spec
+        }
+        exactSceneRoutesByPackage = indexed.mapValues { (_, routes) -> routes.toMap() }
     }
 
     private fun routedNoticeIdentity(

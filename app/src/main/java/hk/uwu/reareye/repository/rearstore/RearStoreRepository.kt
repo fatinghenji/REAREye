@@ -10,8 +10,10 @@ import hk.uwu.reareye.repository.rearwidget.RearBusinessConfig
 import hk.uwu.reareye.repository.rearwidget.RearCardConfig
 import hk.uwu.reareye.repository.rearwidget.RearWidgetConfigCodec
 import hk.uwu.reareye.repository.rearwidget.RearWidgetManagerRepository
+import hk.uwu.reareye.repository.rearwidget.RearWidgetSceneRouteConfig
 import hk.uwu.reareye.ui.config.PrefsManager
 import hk.uwu.reareye.ui.config.resolveRearStoreApiBaseUrl
+import hk.uwu.reareye.widgetapi.RearWidgetSceneRouteSpec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -75,6 +77,69 @@ fun RearStoreWidgetInfo?.resolvedType(): RearStoreWidgetInfoType {
 
 fun RearStoreWidgetMetadata?.resolvedType(): RearStoreWidgetMetadataType {
     return RearStoreWidgetMetadataType.fromRaw(this?.type)
+}
+
+private fun parseMetadataType(rawType: String?): RearStoreWidgetMetadataType {
+    val raw = rawType?.trim().orEmpty()
+    if (raw.contains("壁纸")) return RearStoreWidgetMetadataType.WALLPAPER
+    if (raw.contains("通知")) return RearStoreWidgetMetadataType.NOTIFICATION
+    if (raw.contains("增强")) return RearStoreWidgetMetadataType.ENHANCED
+    if (raw.contains("卡片") || raw.contains("组件")) return RearStoreWidgetMetadataType.CARD
+
+    val normalized = rawType
+        ?.trim()
+        ?.lowercase(Locale.ROOT)
+        ?.replace('-', '_')
+        ?.replace(' ', '_')
+        .orEmpty()
+    if (normalized.isBlank()) return RearStoreWidgetMetadataType.UNKNOWN
+    return when {
+        normalized.contains("wallpaper") -> RearStoreWidgetMetadataType.WALLPAPER
+        normalized.contains("notification") || normalized.contains("notify") -> {
+            RearStoreWidgetMetadataType.NOTIFICATION
+        }
+
+        normalized.contains("enhanced") || normalized.contains("enhance") -> {
+            RearStoreWidgetMetadataType.ENHANCED
+        }
+
+        normalized.contains("card") || normalized.contains("widget") -> {
+            RearStoreWidgetMetadataType.CARD
+        }
+
+        else -> RearStoreWidgetMetadataType.UNKNOWN
+    }
+}
+
+private fun RearStoreWidgetDetail.resolvedMetadataTypeForInstall(): RearStoreWidgetMetadataType {
+    parseMetadataType(type).takeIf {
+        it != RearStoreWidgetMetadataType.UNKNOWN
+    }?.let { return it }
+
+    parseMetadataType(metadata?.type).takeIf {
+        it != RearStoreWidgetMetadataType.UNKNOWN
+    }?.let { return it }
+
+    metadata.resolvedType().takeIf {
+        it != RearStoreWidgetMetadataType.UNKNOWN
+    }?.let { return it }
+
+    parseMetadataType(widgetInfo?.type).takeIf {
+        it != RearStoreWidgetMetadataType.UNKNOWN
+    }?.let { return it }
+
+    return when (widgetInfo.resolvedType()) {
+        RearStoreWidgetInfoType.WALLPAPER -> RearStoreWidgetMetadataType.WALLPAPER
+        RearStoreWidgetInfoType.WIDGET -> RearStoreWidgetMetadataType.CARD
+    }
+}
+
+private fun RearStoreWidgetDetail.notificationSceneSetupOrNull(): RearStoreSceneSetup? {
+    if (resolvedMetadataTypeForInstall() != RearStoreWidgetMetadataType.NOTIFICATION) return null
+    val sceneSetup = widgetInfo?.sceneSetup ?: return null
+    val scene = sceneSetup.scene.normalizedOrNull() ?: return null
+    val packageName = sceneSetup.packageName.normalizedOrNull() ?: return null
+    return sceneSetup.copy(scene = scene, packageName = packageName)
 }
 
 @Keep
@@ -215,6 +280,8 @@ data class RearStoreWidgetInfo(
     val businessSetup: RearStoreBusinessSetup? = null,
     @SerializedName(value = "card_setup", alternate = ["cardSetup"])
     val cardSetup: RearStoreCardSetup? = null,
+    @SerializedName(value = "scene_setup", alternate = ["sceneSetup"])
+    val sceneSetup: RearStoreSceneSetup? = null,
 )
 
 @Keep
@@ -243,6 +310,14 @@ data class RearStoreCardSetup(
     val sticky: Boolean = true,
     @SerializedName("renameable")
     val renameable: Boolean = true,
+)
+
+@Keep
+data class RearStoreSceneSetup(
+    @SerializedName("scene")
+    val scene: String = "",
+    @SerializedName(value = "pkg", alternate = ["package", "packageName"])
+    val packageName: String = "",
 )
 
 private data class RearStoreReadmeResponse(
@@ -609,6 +684,54 @@ object RearStoreRepository {
             allowLockedEdits = true,
         )
 
+        val sceneSetup = detail.notificationSceneSetupOrNull()
+        val sceneRoutes = RearWidgetManagerRepository.loadSceneRoutes(prefsManager)
+        val previousSceneRoute = sceneRoutes.firstOrNull {
+            it.matchesStoreSceneRoute(
+                widgetId = detail.widgetId,
+                packageName = sceneSetup?.packageName,
+                scene = sceneSetup?.scene,
+                businessId = businessId,
+            )
+        }
+        val nextSceneRoutes = sceneRoutes
+            .filterNot {
+                it.matchesStoreSceneRoute(
+                    widgetId = detail.widgetId,
+                    packageName = sceneSetup?.packageName,
+                    scene = sceneSetup?.scene,
+                    businessId = businessId,
+                )
+            }
+            .let { existingRoutes ->
+                sceneSetup?.let { setup ->
+                    existingRoutes + RearWidgetSceneRouteConfig(
+                        id = previousSceneRoute?.id
+                            ?: RearWidgetConfigCodec.newSceneRouteId(
+                                setup.packageName,
+                                setup.scene,
+                            ),
+                        packageName = setup.packageName,
+                        scene = setup.scene,
+                        business = businessId,
+                        downloadedFromStore = true,
+                        storeWidgetId = detail.widgetId,
+                        storeWidgetName = businessName,
+                        storeReleaseTag = selectedAsset.release.tagName.normalizedOrNull(),
+                        storeReleaseAssetName = selectedAsset.asset.name.normalizedOrNull(),
+                        storeReleasePublishedAt = selectedAsset.release.publishedAt.normalizedOrNull()
+                            ?: selectedAsset.release.createdAt.normalizedOrNull(),
+                    )
+                } ?: existingRoutes
+            }
+        if (nextSceneRoutes != sceneRoutes) {
+            RearWidgetManagerRepository.saveSceneRoutes(
+                context = context,
+                prefsManager = prefsManager,
+                sceneRoutes = nextSceneRoutes,
+            )
+        }
+
         var cardInstalled = false
         detail.widgetInfo?.cardSetup?.let { cardSetup ->
             val cardPackage = cardSetup.packageName.normalizedOrNull()
@@ -911,6 +1034,23 @@ object RearStoreRepository {
     ): Boolean {
         return (downloadedFromStore && storeWidgetId.normalizedOrNull() == widgetId) ||
                 (this.packageName == packageName && business == businessId)
+    }
+
+    private fun RearWidgetSceneRouteConfig.matchesStoreSceneRoute(
+        widgetId: String,
+        packageName: String?,
+        scene: String?,
+        businessId: String,
+    ): Boolean {
+        if (downloadedFromStore && storeWidgetId.normalizedOrNull() == widgetId) {
+            return true
+        }
+        val normalizedPackageName = packageName.normalizedOrNull() ?: return false
+        val normalizedScene = scene.normalizedOrNull() ?: return false
+        return this.packageName == normalizedPackageName &&
+                RearWidgetSceneRouteSpec.normalizeScenePattern(this.scene) ==
+                RearWidgetSceneRouteSpec.normalizeScenePattern(normalizedScene) &&
+                business == businessId
     }
 
 }

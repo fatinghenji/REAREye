@@ -256,90 +256,90 @@ class RearWidgetHook : YukiBaseHooker() {
                 debugLog("attachBaseContext applied runtime maps and waiting for preset release")
             }
 
-                    val managerInitPoint = resolveSmartAssistantManagerInitMethod()
-                    val managerRefreshPoint = resolveSmartAssistantManagerRefreshMethod()
+            val managerInitPoint = resolveSmartAssistantManagerInitMethod()
+            val managerRefreshPoint = resolveSmartAssistantManagerRefreshMethod()
             val managerInsertPoint = resolveSmartAssistantManagerInsertWidgetMethod()
             val restoreWidgetsPoint = resolveSmartAssistantRestoreWidgetsMethod()
-                    val parseWidgetPoint = resolveSmartAssistantParseWidgetMethod()
-                    val resolvePathPoint = resolveSmartAssistantResolvePathMethod()
-                    val allowAppPoint = resolveSmartAssistantAllowAppMethod()
-                    val decorateExtrasPoint = resolveSmartAssistantDecorateExtrasMethod()
-                    val widgetApplyPoint = resolveNotificationWidgetApplyMethod()
+            val parseWidgetPoint = resolveSmartAssistantParseWidgetMethod()
+            val resolvePathPoint = resolveSmartAssistantResolvePathMethod()
+            val allowAppPoint = resolveSmartAssistantAllowAppMethod()
+            val decorateExtrasPoint = resolveSmartAssistantDecorateExtrasMethod()
+            val widgetApplyPoint = resolveNotificationWidgetApplyMethod()
             val ordinaryLoadPoint = resolveOrdinaryNotificationManagerLoadMethod()
             val ordinaryObserverPoint = resolveOrdinaryNotificationManagerObserverMethod()
             val ordinaryPostPoint = resolveOrdinaryNotificationManagerPostMethod()
-                    resolveSmartAssistantManagerHandlerFieldName()
+            resolveSmartAssistantManagerHandlerFieldName()
             resolveSmartAssistantManagerWidgetListFieldName()
             resolveSmartAssistantManagerCurrentIndexFieldName()
             resolveSmartAssistantManagerBeforeInactiveIndexFieldName()
-                    resolveSmartAssistantManagerAllowedMapFieldName()
-                    resolveSmartAssistantManagerAllowedSetFieldName()
-                    resolveSmartAssistantWidgetSpecBusinessFieldName()
+            resolveSmartAssistantManagerAllowedMapFieldName()
+            resolveSmartAssistantManagerAllowedSetFieldName()
+            resolveSmartAssistantWidgetSpecBusinessFieldName()
             resolveSmartAssistantWidgetRecordExtrasFieldName()
             resolveSmartAssistantWidgetRecordPriorityFieldName()
             resolveNotificationWidgetTemplatePathFieldName()
             resolveNotificationWidgetExtrasFieldName()
-                    val managerRef = managerInitPoint.className.toClass().resolve()
-                    val persistenceRef = resolvePersistenceManagerClassName().toClass().resolve()
-                    val postRunnableRef =
-                        resolveSmartAssistantPostRunnableClassName().toClass().resolve()
+            val managerRef = managerInitPoint.className.toClass().resolve()
+            val persistenceRef = resolvePersistenceManagerClassName().toClass().resolve()
+            val postRunnableRef =
+                resolveSmartAssistantPostRunnableClassName().toClass().resolve()
             val ordinaryNotificationManagerRef = ordinaryLoadPoint.className.toClass().resolve()
 
-                    persistenceRef.firstConstructor {
-                        parameterCount = 0
-                    }.hook().after {
-                        schedulePostPresetBootstrap()
-                        debugLog("PersistenceManager created, scheduled custom widget restore after preset release")
-                    }
+            persistenceRef.firstConstructor {
+                parameterCount = 0
+            }.hook().after {
+                schedulePostPresetBootstrap()
+                debugLog("PersistenceManager created, scheduled custom widget restore after preset release")
+            }
 
-                    managerRef.firstMethod {
-                        name = managerInitPoint.methodName
-                        parameterCount = 1
-                    }.hook().after {
-                        val oldManager = manager
-                        manager = instance
-                        mainHandler = runCatching {
-                            managerRef.firstField {
-                                name = resolveSmartAssistantManagerHandlerFieldName()
-                            }.get() as? Handler
-                        }.getOrNull()
-                        val managerChanged = oldManager !== manager
-                        if (managerChanged) {
-                            managerEpoch.incrementAndGet()
-                            injectedCardSignatureCache.clear()
-                            injectedCompositeAt.clear()
-                            ordinaryChannelNoticeIndex.clear()
-                            ordinaryChannelNoticeSeenAt.clear()
-                            ordinaryChannelScannerEpoch.set(-1)
-                        }
+            managerRef.firstMethod {
+                name = managerInitPoint.methodName
+                parameterCount = 1
+            }.hook().after {
+                val oldManager = manager
+                manager = instance
+                mainHandler = runCatching {
+                    managerRef.firstField {
+                        name = resolveSmartAssistantManagerHandlerFieldName()
+                    }.get() as? Handler
+                }.getOrNull()
+                val managerChanged = oldManager !== manager
+                if (managerChanged) {
+                    managerEpoch.incrementAndGet()
+                    injectedCardSignatureCache.clear()
+                    injectedCompositeAt.clear()
+                    ordinaryChannelNoticeIndex.clear()
+                    ordinaryChannelNoticeSeenAt.clear()
+                    ordinaryChannelScannerEpoch.set(-1)
+                }
 
-                        if (!managerChanged && startupBootstrapped.get()) {
-                            applyRuntimeMaps(force = true)
-                            patchManagerAppGates(manager)
-                            scheduleInjectAllActiveNotices()
-                            scheduleOrdinaryChannelRouteScanner()
-                            syncActiveNotificationChannelRoutes("manager_unchanged")
-                            debugLog("captured manager unchanged, skip bootstrap and reinject active notices")
-                            return@after
-                        }
+                if (!managerChanged && startupBootstrapped.get()) {
+                    applyRuntimeMaps(force = true)
+                    patchManagerAppGates(manager)
+                    scheduleInjectAllActiveNotices()
+                    scheduleOrdinaryChannelRouteScanner()
+                    syncActiveNotificationChannelRoutes("manager_unchanged")
+                    debugLog("captured manager unchanged, skip bootstrap and reinject active notices")
+                    return@after
+                }
 
-                        val bootOk = bootstrapFromPrefsOnInit(force = false)
-                        if (!bootOk) scheduleBootstrapRetry()
-                        applyRuntimeMaps(force = true)
-                        patchManagerAppGates(manager)
-                        scheduleInjectAllActiveNotices()
-                        scheduleOrdinaryChannelRouteScanner()
-                        syncActiveNotificationChannelRoutes("manager_captured")
-                        debugLog("captured manager=${manager != null}, handler=${mainHandler != null}")
-                    }
+                val bootOk = bootstrapFromPrefsOnInit(force = false)
+                if (!bootOk) scheduleBootstrapRetry()
+                applyRuntimeMaps(force = true)
+                patchManagerAppGates(manager)
+                scheduleInjectAllActiveNotices()
+                scheduleOrdinaryChannelRouteScanner()
+                syncActiveNotificationChannelRoutes("manager_captured")
+                debugLog("captured manager=${manager != null}, handler=${mainHandler != null}")
+            }
 
-                    managerRefreshPoint.className.toClass().resolve().firstMethod {
-                        name = managerRefreshPoint.methodName
-                        parameterCount = 1
-                    }.hook().after {
-                        patchManagerAppGates(instance)
-                        syncActiveNotificationChannelRoutes("manager_refresh")
-                    }
+            managerRefreshPoint.className.toClass().resolve().firstMethod {
+                name = managerRefreshPoint.methodName
+                parameterCount = 1
+            }.hook().after {
+                patchManagerAppGates(instance)
+                syncActiveNotificationChannelRoutes("manager_refresh")
+            }
 
             restoreWidgetsPoint.className.toClass().resolve().firstMethod {
                 name = restoreWidgetsPoint.methodName
@@ -376,48 +376,48 @@ class RearWidgetHook : YukiBaseHooker() {
                 parameterCount = 1
             }.hook().after {
                 syncActiveNotificationChannelRoutes("x0_post")
-                    }
+            }
 
-                    parseWidgetPoint.className.toClass().resolve().firstMethod {
-                        name = parseWidgetPoint.methodName
-                        parameterCount = 2
-                    }.hook().after {
-                        val pkg = args[0] as? String ?: return@after
-                        if (result != null) return@after
-                        val biz = RearWidgetRuntimeStore.fallbackBusiness(pkg) ?: return@after
-                        result = createU0b(biz, 0, 600)
-                        debugLog("smart assistant parse fallback pkg=$pkg -> business=$biz")
-                    }
+            parseWidgetPoint.className.toClass().resolve().firstMethod {
+                name = parseWidgetPoint.methodName
+                parameterCount = 2
+            }.hook().after {
+                val pkg = args[0] as? String ?: return@after
+                if (result != null) return@after
+                val biz = RearWidgetRuntimeStore.fallbackBusiness(pkg) ?: return@after
+                result = createU0b(biz, 0, 600)
+                debugLog("smart assistant parse fallback pkg=$pkg -> business=$biz")
+            }
 
-                    resolvePathPoint.className.toClass().resolve().firstMethod {
-                        name = resolvePathPoint.methodName
-                        parameterCount = 2
-                    }.hook().after {
-                        val pkg = args[0] as? String ?: return@after
-                        val biz = args[1] as? String ?: return@after
-                        // business 文件映射是全局覆盖 只要注册了该 business 文件 就覆盖系统内置路径
-                        val path = RearWidgetRuntimeStore.getBusinessFile(biz) ?: return@after
-                        result = path
-                        debugLog("smart assistant override path pkg=$pkg biz=$biz path=$path")
-                    }
+            resolvePathPoint.className.toClass().resolve().firstMethod {
+                name = resolvePathPoint.methodName
+                parameterCount = 2
+            }.hook().after {
+                val pkg = args[0] as? String ?: return@after
+                val biz = args[1] as? String ?: return@after
+                // business 文件映射是全局覆盖 只要注册了该 business 文件 就覆盖系统内置路径
+                val path = RearWidgetRuntimeStore.getBusinessFile(biz) ?: return@after
+                result = path
+                debugLog("smart assistant override path pkg=$pkg biz=$biz path=$path")
+            }
 
-                    allowAppPoint.className.toClass().resolve().firstMethod {
-                        name = allowAppPoint.methodName
-                        parameterCount = 3
-                    }.hook().before {
-                        val pkg = args[0] as? String ?: return@before
-                        if (RearWidgetRuntimeStore.allPkgBusinesses().containsKey(pkg)) {
-                            result = true
-                            debugLog("smart assistant allow force pass pkg=$pkg")
-                        }
-                    }
+            allowAppPoint.className.toClass().resolve().firstMethod {
+                name = allowAppPoint.methodName
+                parameterCount = 3
+            }.hook().before {
+                val pkg = args[0] as? String ?: return@before
+                if (RearWidgetRuntimeStore.hasAnyBusinessForPackage(pkg)) {
+                    result = true
+                    debugLog("smart assistant allow force pass pkg=$pkg")
+                }
+            }
 
-                    postRunnableRef.firstMethod {
-                        name = "run"
-                        parameterCount = 0
-                    }.hook().before {
-                        allowSelfDescribedNotificationPackage(instance)
-                    }
+            postRunnableRef.firstMethod {
+                name = "run"
+                parameterCount = 0
+            }.hook().before {
+                allowSelfDescribedNotificationPackage(instance)
+            }
 
             postRunnableRef.firstMethod {
                 name = "run"
@@ -445,79 +445,78 @@ class RearWidgetHook : YukiBaseHooker() {
                     )
                 }
 
-                    postRunnableRef.firstConstructor {
-                        parameterCount = 5
-                    }.hook().after {
-                        val notificationId = args.getOrNull(1) as? Int ?: return@after
-                        val packageName = args.getOrNull(2) as? String ?: return@after
-                        val notificationKey = args.getOrNull(3) as? String
-                        val extras = args.getOrNull(4) as? Bundle ?: return@after
-                        val hasChRoute = RearWidgetRuntimeStore.hasSceneRoutePrefix(
-                            packageName,
-                            CHANNEL_SCENE_PREFIX,
-                        )
-                        debugLog(
-                            "ordinary notice postRunnable pkg=$packageName id=$notificationId key=${notificationKey.orEmpty()} " +
-                                    "hasChRoute=$hasChRoute hasFocus=${
-                                        !extras.getString("miui.focus.param").isNullOrBlank()
-                                    } " +
-                                    "hasRear=${
-                                        !extras.getString("miui.rear.param").isNullOrBlank()
-                                    }"
-                        )
-                        ensureChannelSceneFocusParam(
-                            packageName = packageName,
-                            notificationId = notificationId,
-                            notificationKey = notificationKey,
-                            extras = extras,
-                        )
-                        val injected = applySceneRouteBusinessToExtras(
-                            packageName = packageName,
-                            notificationId = notificationId,
-                            notificationKey = notificationKey,
-                            extras = extras,
-                        )
-                        synchronized(postRunnableSnapshots) {
-                            postRunnableSnapshots[instance] = PostRunnableSnapshot(
-                                owner = args.getOrNull(0),
-                                notificationId = notificationId,
-                                notificationKey = notificationKey,
-                                packageName = packageName,
-                                extras = Bundle(extras),
-                            )
-                        }
-                        if (injected != null) {
-                            injected.staleCompositeKeys.forEach { staleKey ->
-                                ejectByCompositeKey(staleKey)
-                            }
-                            debugLog(
-                                "scene route injected pkg=$packageName scene=${injected.scene} business=${injected.business}"
-                            )
-                        }
+            postRunnableRef.firstConstructor {
+                parameterCount = 5
+            }.hook().after {
+                val notificationId = args.getOrNull(1) as? Int ?: return@after
+                val packageName = args.getOrNull(2) as? String ?: return@after
+                val notificationKey = args.getOrNull(3) as? String
+                val extras = args.getOrNull(4) as? Bundle ?: return@after
+                val hasChRoute = RearWidgetRuntimeStore.hasSceneRoutePrefix(
+                    packageName,
+                    CHANNEL_SCENE_PREFIX,
+                )
+                debugLog(
+                    "ordinary notice postRunnable pkg=$packageName id=$notificationId key=${notificationKey.orEmpty()} " +
+                            "hasChRoute=$hasChRoute hasFocus=${
+                                !extras.getString("miui.focus.param").isNullOrBlank()
+                            } " +
+                            "hasRear=${
+                                !extras.getString("miui.rear.param").isNullOrBlank()
+                            }"
+                )
+                ensureChannelSceneFocusParam(
+                    packageName = packageName,
+                    notificationId = notificationId,
+                    notificationKey = notificationKey,
+                    extras = extras,
+                )
+                val injected = applySceneRouteBusinessToExtras(
+                    packageName = packageName,
+                    notificationId = notificationId,
+                    notificationKey = notificationKey,
+                    extras = extras,
+                )
+                synchronized(postRunnableSnapshots) {
+                    postRunnableSnapshots[instance] = PostRunnableSnapshot(
+                        owner = args.getOrNull(0),
+                        notificationId = notificationId,
+                        notificationKey = notificationKey,
+                        packageName = packageName,
+                        extras = Bundle(extras),
+                    )
+                }
+                if (injected != null) {
+                    injected.staleCompositeKeys.forEach { staleKey ->
+                        ejectByCompositeKey(staleKey)
                     }
+                    debugLog(
+                        "scene route injected pkg=$packageName scene=${injected.scene} business=${injected.business}"
+                    )
+                }
+            }
 
-                    widgetApplyPoint.className.toClass().resolve().firstMethod {
-                        name = widgetApplyPoint.methodName
-                        parameterCount = 1
-                    }.hook().after {
-                        applyCardOneConfig(
-                            instance,
-                            args.getOrNull(0),
-                            "notificationWidget.${widgetApplyPoint.methodName}"
-                        )
-                    }
+            widgetApplyPoint.className.toClass().resolve().firstMethod {
+                name = widgetApplyPoint.methodName
+                parameterCount = 1
+            }.hook().after {
+                applyCardOneConfig(
+                    instance,
+                    args.getOrNull(0),
+                    "notificationWidget.${widgetApplyPoint.methodName}"
+                )
+            }
 
-                    decorateExtrasPoint.className.toClass().resolve().firstMethod {
-                        name = decorateExtrasPoint.methodName
-                        parameterCount = 10
-                    }.hook().after {
-                        applyRuntimeMaps(force = false)
-                        val out = result as? Bundle ?: return@after
-                        val key = out.getString("composite_key") ?: (args.getOrNull(1) as? String)
-                        val notice =
-                            key?.let { RearWidgetRuntimeStore.getNotice(it) } ?: return@after
-                        out.putAll(RearWidgetRuntimeStore.buildDecoratedExtras(notice.ticket))
-                    }
+            decorateExtrasPoint.className.toClass().resolve().firstMethod {
+                name = decorateExtrasPoint.methodName
+                parameterCount = 10
+            }.hook().after {
+                applyRuntimeMaps(force = false)
+                val out = result as? Bundle ?: return@after
+                val key = out.getString("composite_key") ?: (args.getOrNull(1) as? String)
+                val notice = key?.let { RearWidgetRuntimeStore.getNotice(it) } ?: return@after
+                out.putAll(RearWidgetRuntimeStore.buildDecoratedExtras(notice.ticket))
+            }
         }
     }
 
@@ -1406,7 +1405,7 @@ class RearWidgetHook : YukiBaseHooker() {
         override fun registerSceneRoute(targetPackage: String?, scene: String?, business: String?) {
             enforceCallerPermission()
             val normalizedBusiness = business?.trim().orEmpty()
-            val normalizedScene = RearWidgetSceneRouteSpec.normalizeScene(scene.orEmpty())
+            val normalizedScene = RearWidgetSceneRouteSpec.normalizeScenePattern(scene.orEmpty())
             if (normalizedBusiness.isBlank() || normalizedScene.isBlank()) return
             dispatchOperation(
                 op = RearWidgetApiContract.Operation.REGISTER_SCENE_ROUTE,
@@ -1423,7 +1422,7 @@ class RearWidgetHook : YukiBaseHooker() {
 
         override fun unregisterSceneRoute(targetPackage: String?, scene: String?) {
             enforceCallerPermission()
-            val normalizedScene = RearWidgetSceneRouteSpec.normalizeScene(scene.orEmpty())
+            val normalizedScene = RearWidgetSceneRouteSpec.normalizeScenePattern(scene.orEmpty())
             if (normalizedScene.isBlank()) return
             dispatchOperation(
                 op = RearWidgetApiContract.Operation.UNREGISTER_SCENE_ROUTE,
