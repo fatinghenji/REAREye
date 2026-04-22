@@ -63,11 +63,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -96,10 +94,14 @@ import hk.uwu.reareye.repository.rearstore.RearStoreWidgetDetail
 import hk.uwu.reareye.repository.rearstore.RearStoreWidgetInfoType
 import hk.uwu.reareye.repository.rearstore.RearStoreWidgetMetadataType
 import hk.uwu.reareye.repository.rearstore.resolvedType
+import hk.uwu.reareye.ui.components.RearBadgeGroup
+import hk.uwu.reareye.ui.components.RearBadgeItem
+import hk.uwu.reareye.ui.components.RearBadgePalette
 import hk.uwu.reareye.ui.components.RearSearchBar
 import hk.uwu.reareye.ui.components.card.SuperCard
 import hk.uwu.reareye.ui.components.motion.ArtRevealItem
 import hk.uwu.reareye.ui.components.motion.ArtStaggeredReveal
+import hk.uwu.reareye.ui.components.rememberRearAccentBadgePalette
 import hk.uwu.reareye.ui.components.webview.ScrollWebView
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
@@ -310,17 +312,6 @@ private data class RearStoreInstallInfo(
     val hasBusinessSetup: Boolean,
     val hasCard: Boolean,
     val cardId: String?,
-)
-
-private data class RearStoreBadgePalette(
-    val background: Color,
-    val text: Color,
-)
-
-private data class RearStoreBadgeItem(
-    val text: String,
-    val emphasized: Boolean,
-    val palette: RearStoreBadgePalette? = null,
 )
 
 private fun defaultInstallInfo(detail: RearStoreWidgetDetail): RearStoreInstallInfo {
@@ -1265,7 +1256,7 @@ private fun RearStoreListCard(
     val badges = buildList {
         statusBadgeText?.let {
             add(
-                RearStoreBadgeItem(
+                RearBadgeItem(
                     text = it,
                     emphasized = updateAvailable,
                 )
@@ -1273,7 +1264,7 @@ private fun RearStoreListCard(
         }
         metadataLabelRes?.let {
             add(
-                RearStoreBadgeItem(
+                RearBadgeItem(
                     text = stringResource(it),
                     emphasized = false,
                     palette = metadataPalette,
@@ -1289,7 +1280,7 @@ private fun RearStoreListCard(
                 stringResource(R.string.rear_store_unknown_author)
             },
             endActions = {
-                RearStoreAdaptiveBadgeGroup(badges = badges)
+                RearBadgeGroup(badges = badges)
             },
             onClick = onClick,
             bottomAction = {
@@ -1377,14 +1368,14 @@ private fun RearStoreDetailHeroCard(
     }
     val heroBadges = buildList {
         add(
-            RearStoreBadgeItem(
+            RearBadgeItem(
                 text = installedVersionBadgeText,
                 emphasized = false,
             )
         )
         updateStateBadgeText?.let {
             add(
-                RearStoreBadgeItem(
+                RearBadgeItem(
                     text = it,
                     emphasized = updateAvailable,
                 )
@@ -1392,7 +1383,7 @@ private fun RearStoreDetailHeroCard(
         }
         metadataLabelRes?.let {
             add(
-                RearStoreBadgeItem(
+                RearBadgeItem(
                     text = stringResource(it),
                     emphasized = false,
                     palette = metadataPalette,
@@ -1413,7 +1404,7 @@ private fun RearStoreDetailHeroCard(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
                 ) {
-                    RearStoreAdaptiveBadgeGroup(badges = heroBadges)
+                    RearBadgeGroup(badges = heroBadges)
                 }
             },
         )
@@ -1421,138 +1412,15 @@ private fun RearStoreDetailHeroCard(
 }
 
 @Composable
-private fun RearStoreStatusPill(
-    text: String,
-    emphasized: Boolean,
-    palette: RearStoreBadgePalette? = null,
-    singleLine: Boolean = true,
-) {
-    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
-    val pillFontSize = (13f / fontScale).sp
-    val horizontalPadding = (10f / fontScale).dp.coerceAtLeast(7.dp)
-    val verticalPadding = (7f / fontScale).dp.coerceAtLeast(5.dp)
-    val resolvedPalette = palette ?: RearStoreBadgePalette(
-        background = if (emphasized) {
-            MiuixTheme.colorScheme.primary.copy(alpha = 0.18f)
-        } else {
-            MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f)
-        },
-        text = if (emphasized) {
-            MiuixTheme.colorScheme.primary
-        } else {
-            MiuixTheme.colorScheme.onSurface.copy(alpha = 0.82f)
-        },
-    )
-
-    Surface(
-        color = resolvedPalette.background,
-        shape = RoundedCornerShape(18.dp),
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = horizontalPadding, vertical = verticalPadding),
-            color = resolvedPalette.text,
-            fontSize = pillFontSize,
-            fontWeight = FontWeight.Medium,
-            maxLines = if (singleLine) 1 else 2,
-            softWrap = !singleLine,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun RearStoreAdaptiveBadgeGroup(
-    badges: List<RearStoreBadgeItem>,
-    modifier: Modifier = Modifier,
-) {
-    if (badges.isEmpty()) return
-
-    val spacing = 6.dp
-    Layout(
-        modifier = modifier,
-        content = {
-            badges.forEach { badge ->
-                RearStoreStatusPill(
-                    text = badge.text,
-                    emphasized = badge.emphasized,
-                    palette = badge.palette,
-                    singleLine = true,
-                )
-            }
-        },
-    ) { measurables, constraints ->
-        val spacingPx = spacing.roundToPx()
-        val looseConstraints = constraints.copy(minWidth = 0, minHeight = 0)
-        val placeables = measurables.map { it.measure(looseConstraints) }
-
-        val horizontalWidth = if (placeables.isEmpty()) {
-            0
-        } else {
-            placeables.sumOf { it.width } + spacingPx * (placeables.size - 1)
-        }
-        val horizontalHeight = placeables.maxOfOrNull { it.height } ?: 0
-        val useVertical = placeables.size > 1 && horizontalWidth > constraints.maxWidth
-
-        if (!useVertical) {
-            val layoutWidth = horizontalWidth.coerceIn(constraints.minWidth, constraints.maxWidth)
-            val layoutHeight =
-                horizontalHeight.coerceIn(constraints.minHeight, constraints.maxHeight)
-            layout(layoutWidth, layoutHeight) {
-                var currentX = 0
-                placeables.forEachIndexed { index, placeable ->
-                    placeable.placeRelative(currentX, (layoutHeight - placeable.height) / 2)
-                    currentX += placeable.width
-                    if (index != placeables.lastIndex) {
-                        currentX += spacingPx
-                    }
-                }
-            }
-        } else {
-            val verticalWidth = placeables.maxOfOrNull { it.width } ?: 0
-            val verticalHeight = if (placeables.isEmpty()) {
-                0
-            } else {
-                placeables.sumOf { it.height } + spacingPx * (placeables.size - 1)
-            }
-            val layoutWidth = verticalWidth.coerceIn(constraints.minWidth, constraints.maxWidth)
-            val layoutHeight = verticalHeight.coerceIn(constraints.minHeight, constraints.maxHeight)
-            layout(layoutWidth, layoutHeight) {
-                var currentY = 0
-                placeables.forEachIndexed { index, placeable ->
-                    placeable.placeRelative(layoutWidth - placeable.width, currentY)
-                    currentY += placeable.height
-                    if (index != placeables.lastIndex) {
-                        currentY += spacingPx
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun rememberMetadataBadgePalette(metadataType: RearStoreWidgetMetadataType): RearStoreBadgePalette {
-    val colorScheme = MiuixTheme.colorScheme
+private fun rememberMetadataBadgePalette(metadataType: RearStoreWidgetMetadataType): RearBadgePalette {
     val accent = when (metadataType) {
         RearStoreWidgetMetadataType.CARD -> Color(0xFF3B82F6)
         RearStoreWidgetMetadataType.NOTIFICATION -> Color(0xFF34A853)
         RearStoreWidgetMetadataType.ENHANCED -> Color(0xFFF2B827)
         RearStoreWidgetMetadataType.WALLPAPER -> Color(0xFFEF4444)
-        RearStoreWidgetMetadataType.UNKNOWN -> colorScheme.outline
+        RearStoreWidgetMetadataType.UNKNOWN -> Color(0xFF64748B)
     }
-    val harmonizedAccent = lerp(accent, colorScheme.primary, 0.18f)
-    return remember(
-        metadataType,
-        colorScheme.surface,
-        colorScheme.onSurface,
-        harmonizedAccent,
-    ) {
-        RearStoreBadgePalette(
-            background = lerp(colorScheme.surface, harmonizedAccent, 0.24f),
-            text = lerp(colorScheme.onSurface, harmonizedAccent, 0.72f),
-        )
-    }
+    return rememberRearAccentBadgePalette(accent)
 }
 
 @Composable
@@ -2150,6 +2018,7 @@ private fun createGithubMarkdownWebView(
 
 private fun WebView.publishMarkdownContentHeight(onContentHeightChanged: (Int) -> Unit) {
     post {
+        @Suppress("DEPRECATION")
         val contentHeightPx = (contentHeight * scale).roundToInt()
         val measuredOrContentHeight = maxOf(measuredHeight, contentHeightPx)
         val resolvedHeight =

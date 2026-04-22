@@ -10,12 +10,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -52,6 +49,9 @@ import hk.uwu.reareye.repository.rearwidget.RearCardConfig
 import hk.uwu.reareye.repository.rearwidget.RearWidgetConfigCodec
 import hk.uwu.reareye.repository.rearwidget.RearWidgetManagerRepository
 import hk.uwu.reareye.repository.widgettemplate.WidgetTemplateConfigRepository
+import hk.uwu.reareye.ui.components.DialogFormColumn
+import hk.uwu.reareye.ui.components.OverlayDialog
+import hk.uwu.reareye.ui.components.RearBadgeGroup
 import hk.uwu.reareye.ui.components.card.ModuleStyleDeleteAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleIconAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleManagerCard
@@ -82,7 +82,6 @@ import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
@@ -390,31 +389,27 @@ fun CardManagerScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         SuperCard(
                             title = stringResource(R.string.rear_widget_card_dialog_hint_title),
-                            summary = buildString {
-                                if (cardsLoaded) {
-                                    append(
-                                        stringResource(
-                                            R.string.rear_widget_card_count,
-                                            cards.size,
-                                        )
-                                    )
-                                    append('\n')
-                                }
-                                append(stringResource(R.string.rear_widget_card_dialog_hint))
-                            },
+                            summary = stringResource(R.string.rear_widget_card_dialog_hint),
                             onClick = {},
                             bottomAction = {
-                                Button(
-                                    onClick = { openCreateDialog() },
-                                    colors = ButtonDefaults.buttonColorsPrimary(),
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Add,
-                                        contentDescription = null,
-                                        modifier = Modifier.padding(end = 6.dp),
-                                    )
-                                    Text(text = stringResource(R.string.rear_widget_add_card))
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    if (cardsLoaded) {
+                                        RearBadgeGroup(
+                                            badges = listOf(rearWidgetCardCountBadge(cards.size)),
+                                        )
+                                    }
+                                    Button(
+                                        onClick = { openCreateDialog() },
+                                        colors = ButtonDefaults.buttonColorsPrimary(),
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Add,
+                                            contentDescription = null,
+                                            modifier = Modifier.padding(end = 6.dp),
+                                        )
+                                        Text(text = stringResource(R.string.rear_widget_add_card))
+                                    }
                                 }
                             }
                         )
@@ -464,48 +459,29 @@ fun CardManagerScreen(
                     }
                     ModuleStyleManagerCard(
                         title = item.title,
-                        summaryLines = buildList {
-                            add(
-                                stringResource(
-                                    R.string.rear_widget_card_summary,
-                                    item.packageName,
-                                    item.business,
-                                    item.priority,
-                                )
-                            )
-                            add(
-                                stringResource(
-                                    R.string.rear_widget_card_sticky_summary,
-                                    stringResource(
-                                        if (item.sticky) {
-                                            R.string.rear_wallpaper_schedule_on
-                                        } else {
-                                            R.string.rear_wallpaper_schedule_off
-                                        }
-                                    ),
-                                )
-                            )
-                            item.storeWidgetId?.takeIf { it.isNotBlank() }?.let {
-                                add(
-                                    stringResource(
-                                        R.string.rear_widget_store_source_summary,
-                                        it,
-                                    )
-                                )
+                        badges = buildList {
+                            add(rearWidgetPackageBadge(item.packageName))
+                            add(rearWidgetBusinessBadge(item.business))
+                            add(rearWidgetPriorityBadge(item.priority))
+                            if (item.sticky) {
+                                add(rearWidgetStickyBadge())
                             }
                             if (!item.renameable) {
-                                add(stringResource(R.string.rear_widget_card_locked_summary))
+                                add(rearWidgetLockedBadge())
                             }
                             add(
-                                stringResource(
-                                    if (item.oneConfigJson.isNullOrBlank()) {
-                                        R.string.rear_widget_card_template_status_default
-                                    } else {
-                                        R.string.rear_widget_card_template_status_custom
-                                    }
+                                rearWidgetTemplateStatusBadge(
+                                    hasCustomConfig = item.oneConfigJson.isNullOrBlank().not(),
+                                )
+                            )
+                            addAll(
+                                rearWidgetSourceBadges(
+                                    downloadedFromStore = item.downloadedFromStore,
+                                    storeWidgetId = item.storeWidgetId,
                                 )
                             )
                         },
+                        summaryLines = emptyList(),
                         trailing = {
                             if (item.renameable) {
                                 Switch(
@@ -526,20 +502,11 @@ fun CardManagerScreen(
                                     },
                                 )
                             } else {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Lock,
-                                        contentDescription = null,
-                                        tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                    )
-                                    Text(
-                                        text = stringResource(R.string.rear_store_locked),
-                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                    )
-                                }
+                                Icon(
+                                    imageVector = Icons.Outlined.Lock,
+                                    contentDescription = null,
+                                    tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                )
                             }
                         },
                         onCardClick = { openEditDialog(item) },
@@ -602,13 +569,7 @@ fun CardManagerScreen(
     ) {
         val editingCard = editingCardId?.let { id -> cards.firstOrNull { it.id == id } }
         val lockedCard = editingCard?.takeIf { !it.renameable }
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .imePadding(),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
+        DialogFormColumn {
             if (lockedCard == null) {
                 TextField(
                     value = draftTitle,

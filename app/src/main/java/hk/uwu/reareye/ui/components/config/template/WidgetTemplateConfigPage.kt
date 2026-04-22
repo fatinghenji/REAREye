@@ -112,6 +112,7 @@ import hk.uwu.reareye.repository.rearwidget.textValue
 import hk.uwu.reareye.repository.widgettemplate.WidgetTemplateConfigRepository
 import hk.uwu.reareye.repository.widgettemplate.WidgetTemplateField
 import hk.uwu.reareye.repository.widgettemplate.WidgetTemplateSchema
+import hk.uwu.reareye.ui.components.OverlayDialog
 import hk.uwu.reareye.ui.components.rememberRearWidgetTemplatePreviewBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -134,7 +135,6 @@ import top.yukonga.miuix.kmp.basic.SpinnerItemImpl
 import top.yukonga.miuix.kmp.basic.TabRowWithContour
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.overlay.OverlayListPopup
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference

@@ -21,9 +21,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,20 +32,17 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.style.MutableStyleState
 import androidx.compose.foundation.style.Style
 import androidx.compose.foundation.style.StyleScope
 import androidx.compose.foundation.style.StyleStateKey
 import androidx.compose.foundation.style.styleable
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -90,8 +85,12 @@ import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperCatalog
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperInfo
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperMetadataOptions
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperRepository
+import hk.uwu.reareye.ui.components.DialogFormColumn
+import hk.uwu.reareye.ui.components.OverlayDialog
+import hk.uwu.reareye.ui.components.RearBadgeGroup
 import hk.uwu.reareye.ui.components.card.ModuleStyleDeleteAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleIconAction
+import hk.uwu.reareye.ui.components.card.ModuleStyleManagerCard
 import hk.uwu.reareye.ui.components.card.SuperCard
 import hk.uwu.reareye.ui.components.rememberRearWallpaperPreviewBitmap
 import hk.uwu.reareye.ui.config.PrefsManager
@@ -110,9 +109,7 @@ import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
@@ -124,7 +121,6 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
@@ -442,19 +438,10 @@ fun RearWallpaperManagerScreen(
         draggedId?.let { wallpaperId -> schedule.firstOrNull { it.wallpaperId == wallpaperId } }
     val currentWallpaperName = wallpaperMap[currentWallpaperId]?.name
         ?: stringResource(R.string.rear_wallpaper_current_none)
-    val statusLines = listOf(
-        stringResource(R.string.rear_wallpaper_status_current_line, currentWallpaperName),
-        stringResource(R.string.rear_wallpaper_status_count_line, wallpapers.size),
-        stringResource(
-            R.string.rear_wallpaper_status_schedule_line,
-            stringResource(
-                if (scheduleEnabled) {
-                    R.string.rear_wallpaper_schedule_on
-                } else {
-                    R.string.rear_wallpaper_schedule_off
-                }
-            ),
-        ),
+    val statusBadges = rearWallpaperStatusBadges(
+        currentWallpaperName = currentWallpaperName,
+        wallpaperCount = wallpapers.size,
+        scheduleEnabled = scheduleEnabled,
     )
 
     BackHandler(enabled = activePage == RearWallpaperPage.MANAGEMENT) {
@@ -604,36 +591,40 @@ fun RearWallpaperManagerScreen(
                                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                         SuperCard(
                                             title = stringResource(R.string.rear_wallpaper_status_title),
-                                            summary = statusLines.joinToString(separator = "\n"),
                                             onClick = {},
                                             bottomAction = {
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                ) {
-                                                    Button(
-                                                        onClick = {
-                                                            pickerMode.value =
-                                                                WallpaperPickerMode.ADD_TO_SCHEDULE
-                                                        },
-                                                        colors = ButtonDefaults.buttonColorsPrimary(),
-                                                        modifier = Modifier.weight(1f),
+                                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                                    RearBadgeGroup(badges = statusBadges)
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.spacedBy(
+                                                            8.dp
+                                                        ),
                                                     ) {
-                                                        Icon(
-                                                            imageVector = Icons.Filled.Add,
-                                                            contentDescription = null,
-                                                            modifier = Modifier.padding(end = 6.dp),
-                                                        )
-                                                        Text(stringResource(R.string.rear_wallpaper_add_sheet_trigger))
-                                                    }
-                                                    Button(
-                                                        onClick = {
-                                                            activePage =
-                                                                RearWallpaperPage.MANAGEMENT
-                                                        },
-                                                        modifier = Modifier.weight(1f),
-                                                    ) {
-                                                        Text(stringResource(R.string.rear_wallpaper_manage_title))
+                                                        Button(
+                                                            onClick = {
+                                                                pickerMode.value =
+                                                                    WallpaperPickerMode.ADD_TO_SCHEDULE
+                                                            },
+                                                            colors = ButtonDefaults.buttonColorsPrimary(),
+                                                            modifier = Modifier.weight(1f),
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Filled.Add,
+                                                                contentDescription = null,
+                                                                modifier = Modifier.padding(end = 6.dp),
+                                                            )
+                                                            Text(stringResource(R.string.rear_wallpaper_add_sheet_trigger))
+                                                        }
+                                                        Button(
+                                                            onClick = {
+                                                                activePage =
+                                                                    RearWallpaperPage.MANAGEMENT
+                                                            },
+                                                            modifier = Modifier.weight(1f),
+                                                        ) {
+                                                            Text(stringResource(R.string.rear_wallpaper_manage_title))
+                                                        }
                                                     }
                                                 }
                                             },
@@ -949,7 +940,6 @@ fun RearWallpaperManagerScreen(
                     wallpaper = wallpaper,
                     isCurrent = wallpaper.wallpaperId == currentWallpaperId,
                     inSchedule = schedule.any { it.wallpaperId == wallpaper.wallpaperId },
-                    onUseNow = { switchWallpaper(wallpaper.wallpaperId) },
                     onAddToSchedule = { addToSchedule(wallpaper.wallpaperId) },
                 )
             }
@@ -961,13 +951,7 @@ fun RearWallpaperManagerScreen(
         title = stringResource(R.string.rear_wallpaper_edit_interval),
         onDismissRequest = { editTargetId.value = null },
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .imePadding(),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
+        DialogFormColumn {
             TextField(
                 value = delayInput,
                 onValueChange = { delayInput = it.filter(Char::isDigit) },
@@ -1066,11 +1050,12 @@ private fun ScheduleItemCard(
         scheduleEntry.wallpaperId,
     )
     val unavailableSummary = stringResource(R.string.rear_wallpaper_unavailable_desc)
-    val intervalSummary = stringResource(
-        R.string.rear_wallpaper_interval_summary,
-        formatDelay(scheduleEntry.delayMs, locale),
+    val intervalLabel = formatDelay(scheduleEntry.delayMs, locale)
+    val scheduleBadges = rearWallpaperScheduleItemBadges(
+        wallpaper = wallpaper,
+        intervalLabel = intervalLabel,
+        isCurrent = isCurrent,
     )
-    val currentLabel = stringResource(R.string.rear_wallpaper_current)
     val animatedShadow by animateDpAsState(
         targetValue = if (isDragged) 18.dp else 0.dp,
         animationSpec = spring(
@@ -1101,65 +1086,41 @@ private fun ScheduleItemCard(
         }
     }
 
-    Card(
+    ModuleStyleManagerCard(
         modifier = modifier
             .styleable(motionStyleState, motionStyle)
             .graphicsLayer {
                 translationY = dragOffsetY
             }
             .shadow(shadowElevation, SCHEDULE_ITEM_SHAPE, clip = false),
-        insideMargin = PaddingValues(12.dp),
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(
+        bottomPadding = 0.dp,
+        title = title,
+        summaryLines = listOfNotNull(unavailableSummary.takeIf { wallpaper == null }),
+        badges = scheduleBadges,
+        headerVerticalAlignment = Alignment.Top,
+        onCardClick = onEdit,
+        trailing = {
+            WallpaperPreview(
+                cachePath = wallpaper?.cachePath,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onEdit,
-                    )
-            ) {
-                BasicComponent(
-                    title = title,
-                    summary = listOfNotNull(
-                        wallpaper?.title ?: unavailableSummary,
-                        intervalSummary,
-                        currentLabel.takeIf { isCurrent },
-                    ).joinToString(separator = "\n"),
-                    startAction = {
-                        WallpaperPreview(
-                            cachePath = wallpaper?.cachePath,
-                            modifier = Modifier
-                                .width(88.dp)
-                                .aspectRatio(WALLPAPER_PREVIEW_RATIO),
-                        )
-                    },
-                    onClick = null,
-                )
-            }
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 2.dp),
-                thickness = 0.5.dp,
-                color = MiuixTheme.colorScheme.outline.copy(alpha = 0.5f),
+                    .width(88.dp)
+                    .aspectRatio(WALLPAPER_PREVIEW_RATIO),
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ModuleStyleIconAction(
-                    icon = Icons.Rounded.EditNote,
-                    onClick = onEdit,
-                )
-                Spacer(Modifier.weight(1f))
-                ModuleStyleDeleteAction(
-                    icon = MiuixIcons.Delete,
-                    text = stringResource(R.string.rear_widget_action_delete),
-                    onClick = onDelete,
-                )
-            }
-        }
-    }
+        },
+        leftAction = {
+            ModuleStyleIconAction(
+                icon = Icons.Rounded.EditNote,
+                onClick = onEdit,
+            )
+        },
+        rightAction = {
+            ModuleStyleDeleteAction(
+                icon = MiuixIcons.Delete,
+                text = stringResource(R.string.rear_widget_action_delete),
+                onClick = onDelete,
+            )
+        },
+    )
 }
 
 @Composable
@@ -1219,76 +1180,39 @@ private fun WallpaperPickerCard(
     wallpaper: RearWallpaperInfo,
     isCurrent: Boolean,
     inSchedule: Boolean,
-    onUseNow: () -> Unit,
     onAddToSchedule: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 1.dp),
-        insideMargin = PaddingValues(8.dp),
-        colors = CardDefaults.defaultColors(
-            color = MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.92f),
-            contentColor = MiuixTheme.colorScheme.onSurface,
-        ),
-    ) {
-        BasicComponent(
-            title = wallpaper.name,
-            summary = buildString {
-                append(wallpaper.title)
-                if (isCurrent) {
-                    append('\n')
-                    append(stringResource(R.string.rear_wallpaper_current))
-                }
-            },
-            startAction = {
-                WallpaperPreview(
-                    cachePath = wallpaper.cachePath,
-                    modifier = Modifier
-                        .width(104.dp)
-                        .aspectRatio(WALLPAPER_PREVIEW_RATIO),
-                )
-            },
-            bottomAction = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Button(
-                        onClick = onAddToSchedule,
-                        enabled = !inSchedule,
-                        colors = ButtonDefaults.buttonColorsPrimary(),
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Add,
-                            contentDescription = null,
-                            modifier = Modifier.padding(end = 6.dp),
-                        )
-                        Text(
-                            text = stringResource(
-                                if (inSchedule) {
-                                    R.string.rear_wallpaper_already_in_schedule
-                                } else {
-                                    R.string.rear_wallpaper_add_to_schedule
-                                }
-                            )
-                        )
-                    }
-                    Button(
-                        onClick = onUseNow,
-                        colors = ButtonDefaults.buttonColors(
-                            color = MiuixTheme.colorScheme.surface,
-                            contentColor = MiuixTheme.colorScheme.onSurface,
-                        ),
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text(text = stringResource(R.string.rear_wallpaper_set_now))
-                    }
-                }
-            },
-        )
-    }
+    val pickerBadges = rearWallpaperPickerBadges(
+        wallpaper = wallpaper,
+        isCurrent = isCurrent,
+        inSchedule = inSchedule,
+    )
+
+    ModuleStyleManagerCard(
+        title = wallpaper.name,
+        summaryLines = emptyList(),
+        badges = pickerBadges,
+        headerVerticalAlignment = Alignment.Top,
+        showActions = !inSchedule,
+        backgroundColor = MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.92f),
+        trailing = {
+            WallpaperPreview(
+                cachePath = wallpaper.cachePath,
+                modifier = Modifier
+                    .width(104.dp)
+                    .aspectRatio(WALLPAPER_PREVIEW_RATIO),
+            )
+        },
+        leftAction = {
+            ModuleStyleIconAction(
+                icon = Icons.Filled.Add,
+                backgroundColor = MiuixTheme.colorScheme.surface,
+                contentColor = MiuixTheme.colorScheme.onSurface,
+                onClick = onAddToSchedule,
+            )
+        },
+        rightAction = {},
+    )
 }
 
 @Composable

@@ -13,16 +13,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -49,6 +45,9 @@ import dev.chrisbanes.haze.HazeState
 import hk.uwu.reareye.R
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperInfo
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperMetadataOptions
+import hk.uwu.reareye.ui.components.DialogFormColumn
+import hk.uwu.reareye.ui.components.OverlayDialog
+import hk.uwu.reareye.ui.components.RearBadgeGroup
 import hk.uwu.reareye.ui.components.card.ModuleStyleDeleteAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleIconAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleManagerCard
@@ -69,7 +68,6 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
@@ -416,6 +414,13 @@ private fun RearWallpaperManagementList(
     onGeneratePreview: (RearWallpaperInfo) -> Unit,
     onDelete: (RearWallpaperInfo) -> Unit,
 ) {
+    val currentWallpaperName = wallpapers.firstOrNull { it.wallpaperId == currentWallpaperId }?.name
+        ?: stringResource(R.string.rear_wallpaper_current_none)
+    val overviewBadges = rearWallpaperManagementOverviewBadges(
+        currentWallpaperName = currentWallpaperName,
+        wallpaperCount = wallpapers.size,
+    )
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -437,33 +442,36 @@ private fun RearWallpaperManagementList(
                     title = stringResource(R.string.rear_wallpaper_manage_title),
                     summary = stringResource(R.string.rear_wallpaper_manage_summary),
                     bottomAction = {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Button(
-                                onClick = onImportClick,
-                                colors = ButtonDefaults.buttonColorsPrimary(),
-                                modifier = Modifier.weight(1f),
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            RearBadgeGroup(badges = overviewBadges)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Add,
-                                    contentDescription = null,
-                                    modifier = Modifier.padding(end = 6.dp),
-                                )
-                                Text(stringResource(R.string.rear_wallpaper_import))
-                            }
-                            Button(
-                                onClick = onRefresh,
-                                enabled = !refreshing,
-                                modifier = Modifier.weight(1f),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Refresh,
-                                    contentDescription = null,
-                                    modifier = Modifier.padding(end = 6.dp),
-                                )
-                                Text(stringResource(R.string.rear_wallpaper_refresh))
+                                Button(
+                                    onClick = onImportClick,
+                                    colors = ButtonDefaults.buttonColorsPrimary(),
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Add,
+                                        contentDescription = null,
+                                        modifier = Modifier.padding(end = 6.dp),
+                                    )
+                                    Text(stringResource(R.string.rear_wallpaper_import))
+                                }
+                                Button(
+                                    onClick = onRefresh,
+                                    enabled = !refreshing,
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Refresh,
+                                        contentDescription = null,
+                                        modifier = Modifier.padding(end = 6.dp),
+                                    )
+                                    Text(stringResource(R.string.rear_wallpaper_refresh))
+                                }
                             }
                         }
                     },
@@ -514,20 +522,14 @@ private fun WallpaperManageCard(
     onGeneratePreview: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val summaryLines = buildList {
-        if (wallpaper.title.isNotBlank()) add(wallpaper.title)
-        if (wallpaper.description.isNotBlank()) add(wallpaper.description)
-
-        val badges = buildList {
-            if (wallpaper.imported) add(stringResource(R.string.rear_wallpaper_imported_badge))
-            if (isCurrent) add(stringResource(R.string.rear_wallpaper_current))
-        }
-        if (badges.isNotEmpty()) add(badges.joinToString(separator = " · "))
-    }
-
     ModuleStyleManagerCard(
         title = wallpaper.name,
-        summaryLines = summaryLines,
+        summaryLines = emptyList(),
+        badges = rearWallpaperManagementBadges(
+            wallpaper = wallpaper,
+            isCurrent = isCurrent,
+        ),
+        headerVerticalAlignment = Alignment.Top,
         trailing = {
             ManagedWallpaperPreview(
                 cachePath = wallpaper.cachePath,
@@ -553,6 +555,8 @@ private fun WallpaperManageCard(
                         modifier = Modifier.size(18.dp),
                         onClick = onGeneratePreview,
                     )
+                }
+                if (wallpaper.canEditMetadata || wallpaper.editable) {
                     ModuleStyleIconAction(
                         icon = Icons.Rounded.EditNote,
                         onClick = onEditMetadata,
@@ -561,7 +565,7 @@ private fun WallpaperManageCard(
             }
         },
         rightAction = {
-            if (wallpaper.canDelete) {
+            if (wallpaper.canDelete || wallpaper.imported) {
                 ModuleStyleDeleteAction(
                     icon = MiuixIcons.Delete,
                     text = stringResource(R.string.rear_widget_action_delete),
@@ -607,14 +611,7 @@ private fun WallpaperImportForm(
     onConfirm: () -> Unit,
     onCancel: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(max = 620.dp)
-            .verticalScroll(rememberScrollState())
-            .imePadding(),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
+    DialogFormColumn(maxHeight = 620.dp) {
         FilePickRow(
             title = stringResource(R.string.rear_wallpaper_package_file),
             label = packageLabel.ifBlank { stringResource(R.string.rear_wallpaper_no_file_selected) },
@@ -694,14 +691,7 @@ private fun WallpaperMetadataForm(
     onConfirm: () -> Unit,
     onCancel: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(max = 620.dp)
-            .verticalScroll(rememberScrollState())
-            .imePadding(),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
+    DialogFormColumn(maxHeight = 620.dp) {
         FilePickRow(
             title = stringResource(R.string.rear_wallpaper_preview_file),
             label = previewLabel.ifBlank { stringResource(R.string.rear_wallpaper_preview_keep_current) },

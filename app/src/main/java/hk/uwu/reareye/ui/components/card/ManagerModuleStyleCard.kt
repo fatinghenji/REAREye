@@ -11,13 +11,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import hk.uwu.reareye.ui.components.RearBadgeGroup
+import hk.uwu.reareye.ui.components.RearBadgeItem
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -26,25 +31,28 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
 fun ModuleStyleManagerCard(
+    modifier: Modifier = Modifier,
+    bottomPadding: Dp = 12.dp,
     title: String,
     summaryLines: List<String>,
+    badges: List<RearBadgeItem> = emptyList(),
+    detailsBelowHeader: Boolean = false,
     trailing: @Composable (() -> Unit)? = null,
+    headerVerticalAlignment: Alignment.Vertical = Alignment.CenterVertically,
+    showActions: Boolean = true,
+    backgroundColor: Color? = null,
+    contentColor: Color? = null,
     onCardClick: (() -> Unit)? = null,
     leftAction: @Composable () -> Unit,
     rightAction: @Composable () -> Unit,
 ) {
-    val cardModifier = Modifier
-        .padding(bottom = 12.dp)
+    val cardModifier = modifier.padding(bottom = bottomPadding)
 
-    if (onCardClick != null) {
-        Card(
-            modifier = cardModifier,
-            insideMargin = PaddingValues(16.dp),
-            onClick = onCardClick,
-        ) {
+    val headerContent: @Composable () -> Unit = {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = headerVerticalAlignment,
             ) {
                 Column(
                     modifier = Modifier
@@ -57,74 +65,97 @@ fun ModuleStyleManagerCard(
                         fontSize = 17.sp,
                         fontWeight = FontWeight(550),
                     )
-                    summaryLines.forEach { line ->
-                        Text(
-                            text = line,
-                            fontSize = 12.sp,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                    if (!detailsBelowHeader) {
+                        if (badges.isNotEmpty()) {
+                            RearBadgeGroup(
+                                badges = badges,
+                                modifier = Modifier.padding(top = 2.dp),
+                            )
+                        }
+                        summaryLines.forEach { line ->
+                            Text(
+                                text = line,
+                                fontSize = 12.sp,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
                 trailing?.invoke()
             }
 
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 8.dp),
-                thickness = 0.5.dp,
-                color = MiuixTheme.colorScheme.outline.copy(alpha = 0.5f),
-            )
+            if (detailsBelowHeader) {
+                if (badges.isNotEmpty()) {
+                    RearBadgeGroup(badges = badges)
+                }
+                summaryLines.forEach { line ->
+                    Text(
+                        text = line,
+                        fontSize = 12.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                leftAction()
-                Spacer(Modifier.weight(1f))
-                rightAction()
+    if (onCardClick != null) {
+        Card(
+            modifier = cardModifier,
+            insideMargin = PaddingValues(16.dp),
+            colors = backgroundColor?.let {
+                CardDefaults.defaultColors(
+                    color = it,
+                    contentColor = contentColor ?: MiuixTheme.colorScheme.onSurface,
+                )
+            } ?: CardDefaults.defaultColors(),
+            onClick = onCardClick,
+        ) {
+            headerContent()
+
+            if (showActions) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    thickness = 0.5.dp,
+                    color = MiuixTheme.colorScheme.outline.copy(alpha = 0.5f),
+                )
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    leftAction()
+                    Spacer(Modifier.weight(1f))
+                    rightAction()
+                }
             }
         }
     } else {
         Card(
             modifier = cardModifier,
             insideMargin = PaddingValues(16.dp),
+            colors = backgroundColor?.let {
+                CardDefaults.defaultColors(
+                    color = it,
+                    contentColor = contentColor ?: MiuixTheme.colorScheme.onSurface,
+                )
+            } ?: CardDefaults.defaultColors(),
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(
-                        text = title,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight(550),
-                    )
-                    summaryLines.forEach { line ->
-                        Text(
-                            text = line,
-                            fontSize = 12.sp,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
+            headerContent()
+
+            if (showActions) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    thickness = 0.5.dp,
+                    color = MiuixTheme.colorScheme.outline.copy(alpha = 0.5f),
+                )
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    leftAction()
+                    Spacer(Modifier.weight(1f))
+                    rightAction()
                 }
-                trailing?.invoke()
-            }
-
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 8.dp),
-                thickness = 0.5.dp,
-                color = MiuixTheme.colorScheme.outline.copy(alpha = 0.5f),
-            )
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                leftAction()
-                Spacer(Modifier.weight(1f))
-                rightAction()
             }
         }
     }
@@ -135,17 +166,18 @@ fun ModuleStyleIconAction(
     @SuppressLint("ModifierParameter")
     modifier: Modifier = Modifier.size(20.dp),
     icon: ImageVector,
+    backgroundColor: Color = MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f),
+    contentColor: Color? = null,
     onClick: () -> Unit,
 ) {
-    val secondaryContainer = MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f)
-    val actionIconAlpha = if (secondaryContainer.luminance() < 0.5f) 0.7f else 0.9f
+    val actionIconAlpha = if (backgroundColor.luminance() < 0.5f) 0.7f else 0.9f
     val actionIconTint =
-        MiuixTheme.colorScheme.onSurface.copy(alpha = actionIconAlpha)
+        (contentColor ?: MiuixTheme.colorScheme.onSurface).copy(alpha = actionIconAlpha)
     IconButton(
         minHeight = 35.dp,
         minWidth = 35.dp,
         onClick = onClick,
-        backgroundColor = secondaryContainer,
+        backgroundColor = backgroundColor,
     ) {
         Icon(
             imageVector = icon,
