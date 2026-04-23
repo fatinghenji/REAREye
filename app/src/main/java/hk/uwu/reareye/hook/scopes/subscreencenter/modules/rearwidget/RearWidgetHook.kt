@@ -433,16 +433,20 @@ class RearWidgetHook : YukiBaseHooker() {
                 .resolve().firstMethod {
                     name = resolveSmartAssistantManagerRemoveNotificationMethod().methodName
                     parameterCount = 3
-                }.hook().after {
-                    val notificationId = args.getOrNull(0) as? Int ?: return@after
-                    val packageName = args.getOrNull(1) as? String ?: return@after
-                    val removeReason = args.getOrNull(2) as? Int ?: 0
-                    handleOriginalNotificationRemoved(
-                        packageName = packageName,
-                        notificationId = notificationId,
-                        notificationKey = null,
-                        removeReason = removeReason,
-                    )
+                }.also {
+                    val compat = it.self.parameterTypes[1] == String::class.java
+                    it.hook().after {
+                        val notificationId = args.getOrNull(0) as? Int ?: return@after
+                        val packageName =
+                            args.getOrNull(if (compat) 1 else 2) as? String ?: return@after
+                        val removeReason = args.getOrNull(if (compat) 2 else 1) as? Int ?: 0
+                        handleOriginalNotificationRemoved(
+                            packageName = packageName,
+                            notificationId = notificationId,
+                            notificationKey = null,
+                            removeReason = removeReason,
+                        )
+                    }
                 }
 
             postRunnableRef.firstConstructor {
@@ -945,7 +949,7 @@ class RearWidgetHook : YukiBaseHooker() {
             findMethod {
                 matcher {
                     declaredClass = resolveSmartAssistantManagerClassName()
-                    paramTypes("int", "java.lang.String", "int")
+                    paramCount(3)
                     returnType = "void"
                     usingStrings("Widget not found for multi-business app: %s, ID: %d")
                 }
