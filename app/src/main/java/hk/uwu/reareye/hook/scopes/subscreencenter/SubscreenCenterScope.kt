@@ -9,6 +9,7 @@ import hk.uwu.reareye.hook.scopes.subscreencenter.modules.VideoVolumeHook
 import hk.uwu.reareye.hook.scopes.subscreencenter.modules.lyrics.LyriconHook
 import hk.uwu.reareye.hook.scopes.subscreencenter.modules.rearwidget.ExtraTimeTipHook
 import hk.uwu.reareye.hook.scopes.subscreencenter.modules.rearwidget.RearWidgetHook
+import hk.uwu.reareye.hook.scopes.subscreencenter.modules.rearwidget.SystemUiNotificationBridgeHook
 
 class SubscreenCenterScope : Scope {
     override val hooks: List<YukiBaseHooker> = listOf(
@@ -16,6 +17,7 @@ class SubscreenCenterScope : Scope {
         VideoLoopModule(),
         RearWallpaperHook(),
         RearWidgetHook(),
+        SystemUiNotificationBridgeHook(),
         LyriconHook(),
         VideoVolumeHook(),
         ExtraTimeTipHook()

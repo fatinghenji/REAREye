@@ -3,7 +3,6 @@
 package hk.uwu.reareye.hook.scopes.subscreencenter.modules.rearwidget
 
 import android.annotation.SuppressLint
-import android.app.Notification
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -24,12 +23,14 @@ import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.hook.hostbridge.HookHostBridgeBootstrapRegistry
 import hk.uwu.reareye.hook.utils.DexKitMethodInjectionPoint
 import hk.uwu.reareye.hook.utils.createDexKitCacheBridge
 import hk.uwu.reareye.hook.utils.resolveDexKitClassValue
 import hk.uwu.reareye.hook.utils.resolveDexKitFieldValue
 import hk.uwu.reareye.hook.utils.resolveDexKitMethodInjectionPoint
 import hk.uwu.reareye.hook.utils.resolveHookPackageVersionCode
+import hk.uwu.reareye.internal.notification.INotificationRouteBridgeService
 import hk.uwu.reareye.repository.rearwidget.REAR_WIDGET_CARD_ONE_CONFIG_JSON_KEY
 import hk.uwu.reareye.repository.rearwidget.RearBusinessExtraConfigRepository.getShowTimeTipForBusiness
 import hk.uwu.reareye.repository.rearwidget.RearWidgetConfigCodec
@@ -94,19 +95,6 @@ class RearWidgetHook : YukiBaseHooker() {
         val notificationKey: String? = null,
     )
 
-    private data class ActiveNotificationSnapshot(
-        val notificationId: Int,
-        val packageName: String,
-        val notificationKey: String?,
-        val postTime: Long,
-        val channelId: String,
-        val title: String?,
-        val text: String?,
-        val bigText: String?,
-        val subText: String?,
-        val shortCriticalText: String?
-    )
-
     companion object {
         private const val TAG = "REAREye-RearWidget"
         private const val PERSISTENCE_MANAGER_CLASS_CACHE_KEY =
@@ -163,16 +151,7 @@ class RearWidgetHook : YukiBaseHooker() {
             "SSC_NOTIFICATION_WIDGET_TEMPLATE_PATH_FIELD"
         private const val NOTIFICATION_WIDGET_EXTRAS_FIELD_CACHE_KEY =
             "SSC_NOTIFICATION_WIDGET_EXTRAS_FIELD"
-        private const val ORDINARY_NOTIFICATION_MANAGER_LOAD_METHOD_CACHE_KEY =
-            "SSC_ORDINARY_NOTIFICATION_MANAGER_LOAD_METHOD"
-        private const val ORDINARY_NOTIFICATION_MANAGER_OBSERVER_METHOD_CACHE_KEY =
-            "SSC_ORDINARY_NOTIFICATION_MANAGER_OBSERVER_METHOD"
-        private const val ORDINARY_NOTIFICATION_MANAGER_POST_METHOD_CACHE_KEY =
-            "SSC_ORDINARY_NOTIFICATION_MANAGER_POST_METHOD"
         private const val CHANNEL_SCENE_PREFIX = "CH:"
-        private const val ORDINARY_CHANNEL_CARD_ID_PREFIX = "__ordinary_channel__"
-        private const val ORDINARY_CHANNEL_SCAN_INTERVAL_MS = 5000L
-        private const val ORDINARY_CHANNEL_STALE_GRACE_MS = 10000L
         private const val TEMPLATE_BASE =
             "/data/system/theme_magic/users/%s/subscreencenter/smart_assistant"
         private const val CARD_CONFIG_BASE =
@@ -222,8 +201,11 @@ class RearWidgetHook : YukiBaseHooker() {
     private var dexKitBridge: DexKitCacheBridge.RecyclableBridge? = null
     private val postRunnableSnapshots = WeakHashMap<Any, PostRunnableSnapshot>()
     private val ordinaryChannelNoticeIndex = ConcurrentHashMap<String, String>()
-    private val ordinaryChannelNoticeSeenAt = ConcurrentHashMap<String, Long>()
-    private val ordinaryChannelScannerEpoch = AtomicInteger(-1)
+    private val notificationRouteBridgeBootstrap = HookHostBridgeBootstrapRegistry(
+        action = NotificationRouteBridgeContract.Action.REQUEST_BINDER,
+        binderProvider = { notificationRouteBridgeBinder },
+        logger = ::debugLog,
+    )
 
     override fun onHook() {
         loadApp("com.xiaomi.subscreencenter") {
@@ -252,6 +234,12 @@ class RearWidgetHook : YukiBaseHooker() {
             }.hook().after {
                 hostContext = (args[0] as? Context)?.applicationContext ?: (args[0] as? Context)
                 registerHookBootstrapReceiver()
+                hostContext?.let {
+                    registerNotificationRouteBridge()
+                    debugLog(
+                        "notification route bridge installed host=${it.packageName} action=${NotificationRouteBridgeContract.Action.REQUEST_BINDER}"
+                    )
+                }
                 applyRuntimeMaps(force = true)
                 debugLog("attachBaseContext applied runtime maps and waiting for preset release")
             }
@@ -265,9 +253,6 @@ class RearWidgetHook : YukiBaseHooker() {
             val allowAppPoint = resolveSmartAssistantAllowAppMethod()
             val decorateExtrasPoint = resolveSmartAssistantDecorateExtrasMethod()
             val widgetApplyPoint = resolveNotificationWidgetApplyMethod()
-            val ordinaryLoadPoint = resolveOrdinaryNotificationManagerLoadMethod()
-            val ordinaryObserverPoint = resolveOrdinaryNotificationManagerObserverMethod()
-            val ordinaryPostPoint = resolveOrdinaryNotificationManagerPostMethod()
             resolveSmartAssistantManagerHandlerFieldName()
             resolveSmartAssistantManagerWidgetListFieldName()
             resolveSmartAssistantManagerCurrentIndexFieldName()
@@ -283,7 +268,6 @@ class RearWidgetHook : YukiBaseHooker() {
             val persistenceRef = resolvePersistenceManagerClassName().toClass().resolve()
             val postRunnableRef =
                 resolveSmartAssistantPostRunnableClassName().toClass().resolve()
-            val ordinaryNotificationManagerRef = ordinaryLoadPoint.className.toClass().resolve()
 
             persistenceRef.firstConstructor {
                 parameterCount = 0
@@ -309,16 +293,12 @@ class RearWidgetHook : YukiBaseHooker() {
                     injectedCardSignatureCache.clear()
                     injectedCompositeAt.clear()
                     ordinaryChannelNoticeIndex.clear()
-                    ordinaryChannelNoticeSeenAt.clear()
-                    ordinaryChannelScannerEpoch.set(-1)
                 }
 
                 if (!managerChanged && startupBootstrapped.get()) {
                     applyRuntimeMaps(force = true)
                     patchManagerAppGates(manager)
                     scheduleInjectAllActiveNotices()
-                    scheduleOrdinaryChannelRouteScanner()
-                    syncActiveNotificationChannelRoutes("manager_unchanged")
                     debugLog("captured manager unchanged, skip bootstrap and reinject active notices")
                     return@after
                 }
@@ -328,8 +308,6 @@ class RearWidgetHook : YukiBaseHooker() {
                 applyRuntimeMaps(force = true)
                 patchManagerAppGates(manager)
                 scheduleInjectAllActiveNotices()
-                scheduleOrdinaryChannelRouteScanner()
-                syncActiveNotificationChannelRoutes("manager_captured")
                 debugLog("captured manager=${manager != null}, handler=${mainHandler != null}")
             }
 
@@ -338,7 +316,6 @@ class RearWidgetHook : YukiBaseHooker() {
                 parameterCount = 1
             }.hook().after {
                 patchManagerAppGates(instance)
-                syncActiveNotificationChannelRoutes("manager_refresh")
             }
 
             restoreWidgetsPoint.className.toClass().resolve().firstMethod {
@@ -352,30 +329,6 @@ class RearWidgetHook : YukiBaseHooker() {
                 parameterCount = 1
             }.hook().after {
                 normalizeInitialManagerWidgetPriority(instance, args.getOrNull(0))
-            }
-
-            ordinaryNotificationManagerRef.firstMethod {
-                name = ordinaryLoadPoint.methodName
-                parameterCount = 0
-            }.hook().after {
-                syncActiveNotificationChannelRoutes("x0_load")
-            }
-
-            ordinaryNotificationManagerRef.firstMethod {
-                name = ordinaryObserverPoint.methodName
-                parameterCount = 1
-            }.hook().after {
-                val enabled = args.getOrNull(0) as? Boolean ?: return@after
-                if (enabled) {
-                    syncActiveNotificationChannelRoutes("x0_observer_enabled")
-                }
-            }
-
-            ordinaryNotificationManagerRef.firstMethod {
-                name = ordinaryPostPoint.methodName
-                parameterCount = 1
-            }.hook().after {
-                syncActiveNotificationChannelRoutes("x0_post")
             }
 
             parseWidgetPoint.className.toClass().resolve().firstMethod {
@@ -468,12 +421,6 @@ class RearWidgetHook : YukiBaseHooker() {
                             "hasRear=${
                                 !extras.getString("miui.rear.param").isNullOrBlank()
                             }"
-                )
-                ensureChannelSceneFocusParam(
-                    packageName = packageName,
-                    notificationId = notificationId,
-                    notificationKey = notificationKey,
-                    extras = extras,
                 )
                 val injected = applySceneRouteBusinessToExtras(
                     packageName = packageName,
@@ -1161,68 +1108,6 @@ class RearWidgetHook : YukiBaseHooker() {
         }
     }
 
-    private fun resolveOrdinaryNotificationManagerClassName(): String {
-        return resolveOrdinaryNotificationManagerLoadMethod().className
-    }
-
-    private fun resolveOrdinaryNotificationManagerLoadMethod(): DexKitMethodInjectionPoint {
-        return resolveCachedMethodPoint(
-            cacheKey = ORDINARY_NOTIFICATION_MANAGER_LOAD_METHOD_CACHE_KEY,
-        ) {
-            // Original method: Z1.X0.b() load ordinary/keyguard notifications
-            findMethod {
-                matcher {
-                    paramCount(0)
-                    returnType = "void"
-                    usingStrings(
-                        "intercept keyguard notifications because pause",
-                        "load keyguard notifications cursor is null",
-                        "load keyguard notifications error icon is null",
-                    )
-                }
-            }.singleOrNull()
-        }
-    }
-
-    private fun resolveOrdinaryNotificationManagerObserverMethod(): DexKitMethodInjectionPoint {
-        return resolveCachedMethodPoint(
-            cacheKey = ORDINARY_NOTIFICATION_MANAGER_OBSERVER_METHOD_CACHE_KEY,
-        ) {
-            // Original method: Z1.X0.c(boolean) toggle notification observer
-            findMethod {
-                matcher {
-                    declaredClass = resolveOrdinaryNotificationManagerClassName()
-                    paramTypes("boolean")
-                    returnType = "void"
-                    usingStrings(
-                        "notification observer has already register",
-                        "fail register content observer:",
-                        "fail unregister content observer:",
-                    )
-                }
-            }.singleOrNull()
-        }
-    }
-
-    private fun resolveOrdinaryNotificationManagerPostMethod(): DexKitMethodInjectionPoint {
-        return resolveCachedMethodPoint(
-            cacheKey = ORDINARY_NOTIFICATION_MANAGER_POST_METHOD_CACHE_KEY,
-        ) {
-            // Original method: Z1.X0.d(k2.b) post ordinary notification to panel
-            findMethod {
-                matcher {
-                    declaredClass = resolveOrdinaryNotificationManagerClassName()
-                    paramCount(1)
-                    returnType = "void"
-                    usingStrings(
-                        "post notification:",
-                        "get application name error",
-                    )
-                }
-            }.singleOrNull()
-        }
-    }
-
     private fun invokeSmartAssistantManagerRemoveNotification(
         target: Any,
         notificationId: Int,
@@ -1573,6 +1458,36 @@ class RearWidgetHook : YukiBaseHooker() {
         }
     }
 
+    private val notificationRouteBridgeBinder = object : INotificationRouteBridgeService.Stub() {
+        override fun dispatch(subchannel: String?, payload: Bundle?): Boolean {
+            enforceNotificationRouteCaller()
+            val normalizedSubchannel = subchannel?.trim().orEmpty()
+            if (normalizedSubchannel.isBlank()) return false
+
+            val payloadCopy = Bundle(payload ?: Bundle.EMPTY)
+            return runCatching {
+                when (normalizedSubchannel) {
+                    NotificationRouteBridgeContract.Subchannel.NOTIFICATION_POSTED -> {
+                        //debugLog("notification route posted payload=$payloadCopy")
+                        handleNotificationRoutePosted(payloadCopy)
+                    }
+
+                    NotificationRouteBridgeContract.Subchannel.NOTIFICATION_REMOVED -> {
+                        //debugLog("notification route removed payload=$payloadCopy")
+                        handleNotificationRouteRemoved(payloadCopy)
+                    }
+
+                    else -> return false
+                }
+                true
+            }.onFailure {
+                debugLog(
+                    "notification route dispatch failed subchannel=$normalizedSubchannel err=${it.message}"
+                )
+            }.getOrDefault(false)
+        }
+    }
+
     private val hookBootstrapReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action != RearWidgetApiContract.ACTION_REQUEST_HOOK_SERVICE) return
@@ -1618,14 +1533,138 @@ class RearWidgetHook : YukiBaseHooker() {
         }
     }
 
+    private fun registerNotificationRouteBridge() {
+        val ctx = hostContext ?: return
+        notificationRouteBridgeBootstrap.register(ctx)
+        /*if (ok) {
+            debugLog(
+                "register notification route bridge success action=${NotificationRouteBridgeContract.Action.REQUEST_BINDER}"
+            )
+        }*/
+    }
+
     private fun dispatchOperation(op: String, action: () -> OperationOutcome) {
         val outcome = action()
         clearInjectCache(op, outcome)
         applyRuntimeMaps(force = true)
         patchManagerAppGates(manager)
+        if (!RearWidgetRuntimeStore.hasAnySceneRoutePrefix(CHANNEL_SCENE_PREFIX)) {
+            clearAllOrdinaryChannelRouteNotices("$op:no_channel_route")
+        }
         outcome.injectCompositeKey?.let { injectByCompositeKey(it) }
         outcome.ejectTicket?.let { ejectByTicket(it) }
         outcome.ejectBusiness?.let { (pkg, biz) -> ejectBusinessDisplay(pkg, biz) }
+    }
+
+    private fun handleNotificationRoutePosted(payload: Bundle) {
+        val snapshot = NotificationRouteSnapshot.fromBundle(payload) ?: return
+        val cardId = snapshot.cardId()
+        if (!RearWidgetRuntimeStore.hasSceneRoutePrefix(
+                snapshot.packageName,
+                CHANNEL_SCENE_PREFIX
+            )
+        ) {
+            removeOrdinaryChannelRouteNotice(cardId, "event_post:no_route_prefix")
+            return
+        }
+
+        val scene = buildChannelScene(snapshot.channelId)
+        val business = RearWidgetRuntimeStore.resolveBusinessForScene(snapshot.packageName, scene)
+            ?: run {
+                removeOrdinaryChannelRouteNotice(cardId, "event_post:route_miss")
+                return
+            }
+        if (!RearWidgetRuntimeStore.ensureBusinessRegistered(snapshot.packageName, business)) {
+            removeOrdinaryChannelRouteNotice(cardId, "event_post:business_unregistered")
+            debugLog(
+                "ordinary event skip unregistered pkg=${snapshot.packageName} channel=${snapshot.channelId} business=$business"
+            )
+            return
+        }
+
+        val noticePayload = buildOrdinaryChannelRoutePayload(snapshot, cardId, scene)
+        val options = RearWidgetNoticeOptions(
+            sticky = false,
+            disablePopup = false,
+            forcePopup = false,
+            enableFloat = false,
+            showTimeTip = true,
+            index = 0,
+            priority = -1,
+        )
+        runCatching {
+            val ticket = RearWidgetRuntimeStore.postNotice(
+                business = business,
+                payload = noticePayload,
+                options = options,
+                packageName = snapshot.packageName,
+            )
+            ordinaryChannelNoticeIndex[cardId] = ticket.compositeKey
+            injectByCompositeKey(ticket.compositeKey)
+            debugLog(
+                "ordinary event inject pkg=${snapshot.packageName} id=${snapshot.notificationId} key=${snapshot.notificationKey.orEmpty()} channel=${snapshot.channelId} scene=$scene business=$business"
+            )
+        }.onFailure {
+            debugLog(
+                "ordinary event inject failed pkg=${snapshot.packageName} id=${snapshot.notificationId} channel=${snapshot.channelId} err=${it.message}"
+            )
+        }
+    }
+
+    private fun handleNotificationRouteRemoved(payload: Bundle) {
+        val snapshot = NotificationRouteSnapshot.fromBundle(payload) ?: return
+        val removeReason = payload.getInt(NotificationRouteBridgeContract.Keys.REMOVE_REASON, 1)
+        val removed = removeOrdinaryChannelRouteNotice(
+            snapshot.cardId(),
+            "event_remove:$removeReason",
+        )
+        if (removed) {
+            debugLog(
+                "ordinary event remove pkg=${snapshot.packageName} id=${snapshot.notificationId} key=${snapshot.notificationKey.orEmpty()} channel=${snapshot.channelId} reason=$removeReason"
+            )
+        }
+    }
+
+    private fun buildOrdinaryChannelRoutePayload(
+        snapshot: NotificationRouteSnapshot,
+        cardId: String,
+        scene: String,
+    ): Bundle {
+        return Bundle().apply {
+            putString("__rear_card_id__", cardId)
+            putString("title", snapshot.title.orEmpty())
+            putString("text", snapshot.text.orEmpty())
+            putString("bigText", snapshot.bigText.orEmpty())
+            putString("subText", snapshot.subText.orEmpty())
+            putString("channelId", snapshot.channelId)
+            putString("notificationKey", snapshot.notificationKey.orEmpty())
+            putString(
+                "miui.focus.param",
+                buildSyntheticChannelFocusParamJson(
+                    packageName = snapshot.packageName,
+                    notificationId = snapshot.notificationId,
+                    notificationKey = snapshot.notificationKey,
+                    scene = scene,
+                    seed = ChannelRouteSeed(
+                        channelId = snapshot.channelId,
+                        title = snapshot.title,
+                        text = snapshot.text,
+                        bigText = snapshot.bigText,
+                        subText = snapshot.subText,
+                        shortCriticalText = snapshot.shortCriticalText,
+                        notificationKey = snapshot.notificationKey,
+                    ),
+                ),
+            )
+        }
+    }
+
+    private fun removeOrdinaryChannelRouteNotice(cardId: String, reason: String): Boolean {
+        val compositeKey = ordinaryChannelNoticeIndex.remove(cardId)
+        if (compositeKey.isNullOrBlank()) return false
+        ejectByCompositeKey(compositeKey)
+        debugLog("ordinary event eject card=$cardId composite=$compositeKey reason=$reason")
+        return true
     }
 
     private fun enforceCallerPermission() {
@@ -1645,6 +1684,26 @@ class RearWidgetHook : YukiBaseHooker() {
                 "caller uid=$uid requires ${RearWidgetApiContract.SERVICE_PERMISSION}"
             )
         }
+    }
+
+    private fun enforceNotificationRouteCaller() {
+        val ctx = hostContext
+        val uid = Binder.getCallingUid()
+        if (uid == Process.myUid()) return
+        if (ctx == null) {
+            throw SecurityException("context not ready for notification route bridge")
+        }
+
+        val packages = runCatching {
+            ctx.packageManager.getPackagesForUid(uid)?.toSet().orEmpty()
+        }.getOrDefault(emptySet())
+        if (packages.contains(NotificationRouteBridgeContract.SOURCE_HOST_PACKAGE)) {
+            return
+        }
+
+        throw SecurityException(
+            "caller uid=$uid is not allowed for ${NotificationRouteBridgeContract.Action.REQUEST_BINDER}"
+        )
     }
 
     private fun normalizeTargetPackage(targetPackage: String?): String {
@@ -2151,62 +2210,6 @@ class RearWidgetHook : YukiBaseHooker() {
         )
     }
 
-    private fun ensureChannelSceneFocusParam(
-        packageName: String,
-        notificationId: Int,
-        notificationKey: String?,
-        extras: Bundle,
-    ): String? {
-        if (!RearWidgetRuntimeStore.hasSceneRoutePrefix(packageName, CHANNEL_SCENE_PREFIX)) {
-            return null
-        }
-        if (!extras.getString("miui.focus.param").isNullOrBlank()) {
-            debugLog(
-                "ordinary notice skip existing focus pkg=$packageName id=$notificationId key=${notificationKey.orEmpty()}"
-            )
-            return null
-        }
-        if (!extras.getString("miui.rear.param").isNullOrBlank()) {
-            debugLog(
-                "ordinary notice skip existing rear pkg=$packageName id=$notificationId key=${notificationKey.orEmpty()}"
-            )
-            return null
-        }
-
-        val seed = queryActiveNotificationSeed(
-            packageName = packageName,
-            notificationId = notificationId,
-            notificationKey = notificationKey,
-        ) ?: run {
-            debugLog(
-                "ordinary notice seed miss pkg=$packageName id=$notificationId key=${notificationKey.orEmpty()}"
-            )
-            return null
-        }
-        val scene = buildChannelScene(seed.channelId)
-        val business = RearWidgetRuntimeStore.resolveBusinessForScene(packageName, scene) ?: run {
-            debugLog(
-                "ordinary notice route miss pkg=$packageName id=$notificationId key=${notificationKey.orEmpty()} scene=$scene"
-            )
-            return null
-        }
-
-        extras.putString(
-            "miui.focus.param",
-            buildSyntheticChannelFocusParamJson(
-                packageName = packageName,
-                notificationId = notificationId,
-                notificationKey = notificationKey,
-                scene = scene,
-                seed = seed,
-            )
-        )
-        debugLog(
-            "channel route synthesized pkg=$packageName channel=${seed.channelId} scene=$scene business=$business"
-        )
-        return scene
-    }
-
     private fun normalizeInitialManagerWidgetPriority(target: Any?, widget: Any?) {
         val managerTarget = target ?: return
         val insertedWidget = widget ?: return
@@ -2323,217 +2326,13 @@ class RearWidgetHook : YukiBaseHooker() {
         return managerWidgetBundle(widget)?.getLong("timestamp", Long.MIN_VALUE) ?: Long.MIN_VALUE
     }
 
-    private fun scheduleOrdinaryChannelRouteScanner() {
-        val handler = mainHandler ?: return
-        val epoch = managerEpoch.get()
-        if (ordinaryChannelScannerEpoch.get() == epoch) return
-        ordinaryChannelScannerEpoch.set(epoch)
-        val task = object : Runnable {
-            override fun run() {
-                if (ordinaryChannelScannerEpoch.get() != epoch || managerEpoch.get() != epoch) return
-                syncActiveNotificationChannelRoutes("scan_loop")
-                handler.postDelayed(this, ORDINARY_CHANNEL_SCAN_INTERVAL_MS)
-            }
-        }
-        handler.post(task)
-    }
-
-    private fun syncActiveNotificationChannelRoutes(reason: String) {
-        if (!RearWidgetRuntimeStore.hasAnySceneRoutePrefix(CHANNEL_SCENE_PREFIX)) {
-            clearAllOrdinaryChannelRouteNotices("$reason:no_ch_route")
-            return
-        }
-
-        val now = System.currentTimeMillis()
-        val snapshots = listActiveNotificationSnapshots()
-        val activeCardIds = LinkedHashSet<String>()
-        snapshots.forEach { snapshot ->
-            if (!RearWidgetRuntimeStore.hasSceneRoutePrefix(
-                    snapshot.packageName,
-                    CHANNEL_SCENE_PREFIX
-                )
-            ) {
-                return@forEach
-            }
-            val scene = buildChannelScene(snapshot.channelId)
-            val business =
-                RearWidgetRuntimeStore.resolveBusinessForScene(snapshot.packageName, scene)
-                    ?: return@forEach
-            if (!RearWidgetRuntimeStore.ensureBusinessRegistered(snapshot.packageName, business)) {
-                debugLog(
-                    "ordinary scan skip unregistered pkg=${snapshot.packageName} channel=${snapshot.channelId} business=$business"
-                )
-                return@forEach
-            }
-            val cardId = buildOrdinaryChannelCardId(snapshot)
-            activeCardIds += cardId
-            ordinaryChannelNoticeSeenAt[cardId] = now
-            val payload = Bundle().apply {
-                putString("__rear_card_id__", cardId)
-                putString("title", snapshot.title.orEmpty())
-                putString("text", snapshot.text.orEmpty())
-                putString("bigText", snapshot.bigText.orEmpty())
-                putString("subText", snapshot.subText.orEmpty())
-                putString("channelId", snapshot.channelId)
-                putString("notificationKey", snapshot.notificationKey.orEmpty())
-                putString(
-                    "miui.focus.param",
-                    buildSyntheticChannelFocusParamJson(
-                        packageName = snapshot.packageName,
-                        notificationId = snapshot.notificationId,
-                        notificationKey = snapshot.notificationKey,
-                        scene = scene,
-                        seed = ChannelRouteSeed(
-                            channelId = snapshot.channelId,
-                            title = snapshot.title,
-                            text = snapshot.text,
-                            bigText = snapshot.bigText,
-                            subText = snapshot.subText,
-                            shortCriticalText = snapshot.shortCriticalText,
-                            notificationKey = snapshot.notificationKey,
-                        ),
-                    )
-                )
-            }
-            val options = RearWidgetNoticeOptions(
-                sticky = false,
-                disablePopup = false,
-                forcePopup = false,
-                enableFloat = false,
-                showTimeTip = true,
-                index = 0,
-                priority = -1,
-            )
-            runCatching {
-                val ticket = RearWidgetRuntimeStore.postNotice(
-                    business = business,
-                    payload = payload,
-                    options = options,
-                    packageName = snapshot.packageName,
-                )
-                ordinaryChannelNoticeIndex[cardId] = ticket.compositeKey
-                injectByCompositeKey(ticket.compositeKey)
-                debugLog(
-                    "ordinary scan inject pkg=${snapshot.packageName} id=${snapshot.notificationId} key=${snapshot.notificationKey.orEmpty()} channel=${snapshot.channelId} scene=$scene business=$business reason=$reason"
-                )
-            }.onFailure {
-                debugLog(
-                    "ordinary scan inject failed pkg=${snapshot.packageName} id=${snapshot.notificationId} channel=${snapshot.channelId} err=${it.message}"
-                )
-            }
-        }
-        cleanupStaleOrdinaryChannelRouteNotices(activeCardIds, reason, now)
-    }
-
-    private fun cleanupStaleOrdinaryChannelRouteNotices(
-        activeCardIds: Set<String>,
-        reason: String,
-        now: Long,
-    ) {
-        ordinaryChannelNoticeIndex.keys.toList()
-            .filterNot { activeCardIds.contains(it) }
-            .forEach { staleId ->
-                val lastSeenAt = ordinaryChannelNoticeSeenAt[staleId] ?: 0L
-                if (lastSeenAt > 0L && now - lastSeenAt < ORDINARY_CHANNEL_STALE_GRACE_MS) {
-                    return@forEach
-                }
-                ordinaryChannelNoticeSeenAt.remove(staleId)
-                val compositeKey = ordinaryChannelNoticeIndex.remove(staleId)
-                if (!compositeKey.isNullOrBlank()) {
-                    ejectByCompositeKey(compositeKey)
-                    debugLog("ordinary scan eject stale card=$staleId composite=$compositeKey reason=$reason")
-                }
-            }
-    }
-
     private fun clearAllOrdinaryChannelRouteNotices(reason: String) {
-        if (ordinaryChannelNoticeIndex.isEmpty()) {
-            ordinaryChannelNoticeSeenAt.clear()
-            return
-        }
+        if (ordinaryChannelNoticeIndex.isEmpty()) return
         ordinaryChannelNoticeIndex.entries.toList().forEach { (_, compositeKey) ->
             ejectByCompositeKey(compositeKey)
-            debugLog("ordinary scan clear composite=$compositeKey reason=$reason")
+            debugLog("ordinary event clear composite=$compositeKey reason=$reason")
         }
         ordinaryChannelNoticeIndex.clear()
-        ordinaryChannelNoticeSeenAt.clear()
-    }
-
-    private fun listActiveNotificationSnapshots(): List<ActiveNotificationSnapshot> {
-        val service = runCatching {
-            "android.app.NotificationManager".toClass().resolve()
-                .firstMethod { name = "getService" }
-                .invoke()
-        }.onFailure {
-            debugLog("ordinary scan getService failed err=${it.message}")
-        }.getOrNull() ?: return emptyList()
-
-        val notifications = resolveActiveNotifications(service, null)
-        if (notifications.isEmpty()) {
-            debugLog("ordinary scan active list empty")
-            return emptyList()
-        }
-        val out = ArrayList<ActiveNotificationSnapshot>(notifications.size)
-        notifications.forEach { candidate ->
-            val snapshot = buildActiveNotificationSnapshot(candidate) ?: return@forEach
-            out += snapshot
-        }
-        return out
-    }
-
-    private fun buildActiveNotificationSnapshot(candidate: Any): ActiveNotificationSnapshot? {
-        val packageName = runCatching {
-            candidate.javaClass.getMethod("getPackageName").invoke(candidate) as? String
-        }.getOrNull()?.trim().orEmpty()
-        if (packageName.isBlank()) return null
-
-        val notification = runCatching {
-            candidate.javaClass.getMethod("getNotification").invoke(candidate) as? Notification
-        }.getOrNull() ?: return null
-        val channelId = notification.channelId?.trim()?.ifBlank { null } ?: return null
-        val extras = notification.extras ?: Bundle.EMPTY
-        if (!extras.getString("miui.focus.param").isNullOrBlank()) return null
-        if (!extras.getString("miui.rear.param").isNullOrBlank()) return null
-
-        val notificationId = runCatching {
-            candidate.javaClass.getMethod("getId").invoke(candidate) as? Int
-        }.getOrNull() ?: return null
-        val notificationKey = runCatching {
-            candidate.javaClass.getMethod("getKey").invoke(candidate) as? String
-        }.getOrNull()?.trim()?.ifBlank { null }
-        val postTime = runCatching {
-            candidate.javaClass.getMethod("getPostTime").invoke(candidate) as? Long
-        }.getOrNull() ?: 0L
-
-        return ActiveNotificationSnapshot(
-            notificationId = notificationId,
-            packageName = packageName,
-            notificationKey = notificationKey,
-            postTime = postTime,
-            channelId = channelId,
-            title = extractTextCandidate(
-                extras,
-                Notification.EXTRA_TITLE,
-                Notification.EXTRA_TITLE_BIG
-            ),
-            text = extractTextCandidate(extras, Notification.EXTRA_TEXT),
-            bigText = extractTextCandidate(extras, Notification.EXTRA_BIG_TEXT),
-            subText = extractTextCandidate(
-                extras,
-                Notification.EXTRA_SUB_TEXT,
-                Notification.EXTRA_SUMMARY_TEXT,
-            ),
-            shortCriticalText = extractTextCandidate(
-                extras,
-                "android.shortCriticalText"
-            )
-        )
-    }
-
-    private fun buildOrdinaryChannelCardId(snapshot: ActiveNotificationSnapshot): String {
-        val stableKey = snapshot.notificationKey?.takeIf { it.isNotBlank() }
-            ?: "${snapshot.packageName}:${snapshot.notificationId}:${snapshot.postTime}:${snapshot.channelId}"
-        return "$ORDINARY_CHANNEL_CARD_ID_PREFIX:$stableKey"
     }
 
     private fun extractSceneCandidate(vararg sources: JSONObject?): String? {
@@ -2542,241 +2341,6 @@ class RearWidgetHook : YukiBaseHooker() {
             if (scene.isNotBlank()) return scene
         }
         return null
-    }
-
-    private fun queryActiveNotificationSeed(
-        packageName: String,
-        notificationId: Int,
-        notificationKey: String?,
-        postTime: Long? = null,
-    ): ChannelRouteSeed? {
-        val service = runCatching {
-            "android.app.NotificationManager".toClass().resolve()
-                .firstMethod { name = "getService" }
-                .invoke()
-        }.onFailure {
-            debugLog(
-                "ordinary notice getService failed pkg=$packageName id=$notificationId key=${notificationKey.orEmpty()} err=${it.message}"
-            )
-        }.getOrNull() ?: return null
-
-        val activeNotifications = resolveActiveNotifications(service, notificationKey)
-        if (activeNotifications.isEmpty()) {
-            debugLog(
-                "ordinary notice active list empty pkg=$packageName id=$notificationId key=${notificationKey.orEmpty()}"
-            )
-            return null
-        }
-
-        activeNotifications.forEach { candidate ->
-            val currentKey = runCatching {
-                candidate.javaClass.getMethod("getKey").invoke(candidate) as? String
-            }.getOrNull()?.trim().orEmpty()
-            if (!matchesActiveNotification(
-                    candidate = candidate,
-                    packageName = packageName,
-                    notificationId = notificationId,
-                    notificationKey = notificationKey,
-                    postTime = postTime,
-                )
-            ) {
-                return@forEach
-            }
-            val notification = runCatching {
-                candidate.javaClass.getMethod("getNotification").invoke(candidate) as? Notification
-            }.getOrNull() ?: run {
-                debugLog(
-                    "ordinary notice candidate has no Notification pkg=$packageName id=$notificationId key=${notificationKey.orEmpty()}"
-                )
-                return@forEach
-            }
-            val channelId = notification.channelId?.trim()?.ifBlank { null } ?: run {
-                debugLog(
-                    "ordinary notice candidate missing channel pkg=$packageName id=$notificationId key=${notificationKey.orEmpty()} notifExtras=${
-                        bundleDebugString(
-                            notification.extras
-                        )
-                    }"
-                )
-                return@forEach
-            }
-            val extras = notification.extras ?: Bundle.EMPTY
-            debugLog(
-                "ordinary notice hook pkg=$packageName id=$notificationId key=${notificationKey.orEmpty()} channel=$channelId " +
-                        "title=${
-                            extractTextCandidate(
-                                extras,
-                                Notification.EXTRA_TITLE,
-                                Notification.EXTRA_TITLE_BIG
-                            ).orEmpty()
-                        } " +
-                        "text=${extractTextCandidate(extras, Notification.EXTRA_TEXT).orEmpty()} " +
-                        "bigText=${
-                            extractTextCandidate(
-                                extras,
-                                Notification.EXTRA_BIG_TEXT
-                            ).orEmpty()
-                        } " +
-                        "subText=${
-                            extractTextCandidate(
-                                extras,
-                                Notification.EXTRA_SUB_TEXT,
-                                Notification.EXTRA_SUMMARY_TEXT
-                            ).orEmpty()
-                        } " +
-                        "extras=${bundleDebugString(extras)}"
-            )
-            return ChannelRouteSeed(
-                channelId = channelId,
-                title = extractTextCandidate(
-                    extras,
-                    Notification.EXTRA_TITLE,
-                    Notification.EXTRA_TITLE_BIG
-                ),
-                text = extractTextCandidate(extras, Notification.EXTRA_TEXT),
-                bigText = extractTextCandidate(extras, Notification.EXTRA_BIG_TEXT),
-                subText = extractTextCandidate(
-                    extras,
-                    Notification.EXTRA_SUB_TEXT,
-                    Notification.EXTRA_SUMMARY_TEXT,
-                ),
-                shortCriticalText = extractTextCandidate(
-                    extras,
-                    "android.shortCriticalText"
-                ),
-                notificationKey = currentKey.ifBlank { null },
-            )
-        }
-
-        debugLog(
-            "ordinary notice no matched active notification pkg=$packageName id=$notificationId key=${notificationKey.orEmpty()} candidates=${activeNotifications.size}"
-        )
-
-        return null
-    }
-
-    private fun resolveActiveNotifications(service: Any, notificationKey: String?): List<Any> {
-        val methods = service.javaClass.methods
-            .filter { method ->
-                method.name == "getAppActiveNotifications" ||
-                        method.name == "getActiveNotifications" ||
-                        method.name == "getActiveNotificationsWithAttribution"
-            }
-            .sortedBy { method ->
-                when (method.name) {
-                    "getAppActiveNotifications" -> 0
-                    "getActiveNotificationsWithAttribution" -> 1
-                    else -> 2
-                }
-            }
-
-        if (methods.isEmpty()) {
-            debugLog("ordinary notice no active notification methods on ${service.javaClass.name}")
-            return emptyList()
-        }
-
-        methods.forEach { method ->
-            val args = buildActiveNotificationMethodArgs(method.parameterTypes, notificationKey)
-                ?: run {
-                    debugLog(
-                        "ordinary notice skip active method=${method.name} params=${method.parameterTypes.joinToString { it.simpleName }}"
-                    )
-                    return@forEach
-                }
-            val result = runCatching { method.invoke(service, *args) }.onFailure {
-                debugLog("ordinary notice invoke ${method.name} failed err=${it.message}")
-            }.getOrNull() ?: return@forEach
-            val notifications = unwrapStatusBarNotifications(result)
-            if (notifications.isNotEmpty()) return notifications
-        }
-        return emptyList()
-    }
-
-    private fun buildActiveNotificationMethodArgs(
-        parameterTypes: Array<Class<*>>,
-        notificationKey: String?,
-    ): Array<Any?>? {
-        val hostPackage = hostContext?.packageName ?: "com.xiaomi.subscreencenter"
-        var stringIndex = 0
-        return arrayOfNulls<Any?>(parameterTypes.size).also { args ->
-            parameterTypes.forEachIndexed { index, type ->
-                args[index] = when {
-                    type == String::class.java -> {
-                        val value = if (stringIndex++ == 0) hostPackage else null
-                        value
-                    }
-
-                    type == Int::class.javaPrimitiveType || type == Int::class.javaObjectType -> {
-                        Process.myUid() / 100000
-                    }
-
-                    type == Boolean::class.javaPrimitiveType || type == Boolean::class.javaObjectType -> {
-                        false
-                    }
-
-                    type == Long::class.javaPrimitiveType || type == Long::class.javaObjectType -> {
-                        0L
-                    }
-
-                    type.isArray && type.componentType == String::class.java -> {
-                        notificationKey
-                            ?.trim()
-                            ?.takeIf { it.isNotBlank() }
-                            ?.let { arrayOf(it) }
-                            ?: emptyArray<String>()
-                    }
-
-                    else -> return null
-                }
-            }
-        }
-    }
-
-    private fun unwrapStatusBarNotifications(value: Any?): List<Any> {
-        if (value == null) return emptyList()
-        if (value is Array<*>) {
-            return value.filterNotNull().filter(::isStatusBarNotification)
-        }
-        if (value is List<*>) {
-            return value.filterNotNull().filter(::isStatusBarNotification)
-        }
-        val sliceList = runCatching {
-            value.javaClass.getMethod("getList").invoke(value) as? List<*>
-        }.getOrNull()
-        return sliceList?.filterNotNull()?.filter(::isStatusBarNotification).orEmpty()
-    }
-
-    private fun isStatusBarNotification(value: Any): Boolean {
-        return value.javaClass.name == "android.service.notification.StatusBarNotification"
-    }
-
-    private fun matchesActiveNotification(
-        candidate: Any,
-        packageName: String,
-        notificationId: Int,
-        notificationKey: String?,
-        postTime: Long? = null,
-    ): Boolean {
-        val currentKey = runCatching {
-            candidate.javaClass.getMethod("getKey").invoke(candidate) as? String
-        }.getOrNull()?.trim().orEmpty()
-        if (notificationKey?.trim()?.isNotBlank() == true && currentKey == notificationKey.trim()) {
-            return true
-        }
-
-        val currentPackage = runCatching {
-            candidate.javaClass.getMethod("getPackageName").invoke(candidate) as? String
-        }.getOrNull()?.trim().orEmpty()
-        val currentId = runCatching {
-            candidate.javaClass.getMethod("getId").invoke(candidate) as? Int
-        }.getOrNull()
-        if (currentPackage != packageName || currentId != notificationId) return false
-
-        val expectedPostTime = postTime?.takeIf { it > 0L } ?: return true
-        val currentPostTime = runCatching {
-            candidate.javaClass.getMethod("getPostTime").invoke(candidate) as? Long
-        }.getOrNull() ?: return true
-        return currentPostTime == expectedPostTime
     }
 
     private fun buildChannelScene(channelId: String): String {
@@ -2834,45 +2398,6 @@ class RearWidgetHook : YukiBaseHooker() {
             .put("hintInfo", hintInfo)
             .put("reareyeInfo", reareyeInfo)
         return JSONObject().put("param_v2", paramV2).toString()
-    }
-
-    private fun extractTextCandidate(extras: Bundle, vararg keys: String): String? {
-        keys.forEach { key ->
-            val text = extras.getCharSequence(key)?.toString()?.trim().orEmpty()
-            if (text.isNotBlank()) return text
-        }
-        return null
-    }
-
-    private fun bundleDebugString(bundle: Bundle?): String {
-        if (bundle == null) return "<null>"
-        if (bundle.isEmpty) return "{}"
-        return bundle.keySet()
-            .sorted()
-            .joinToString(prefix = "{", postfix = "}") { key ->
-                "$key=${debugValueString(bundle.get(key))}"
-            }
-    }
-
-    private fun debugValueString(value: Any?): String {
-        return when (value) {
-            null -> "null"
-            is Bundle -> bundleDebugString(value)
-            is Array<*> -> value.joinToString(prefix = "[", postfix = "]") { debugValueString(it) }
-            is BooleanArray -> value.joinToString(prefix = "[", postfix = "]")
-            is ByteArray -> value.joinToString(prefix = "[", postfix = "]")
-            is CharArray -> value.joinToString(prefix = "[", postfix = "]")
-            is DoubleArray -> value.joinToString(prefix = "[", postfix = "]")
-            is FloatArray -> value.joinToString(prefix = "[", postfix = "]")
-            is IntArray -> value.joinToString(prefix = "[", postfix = "]")
-            is LongArray -> value.joinToString(prefix = "[", postfix = "]")
-            is ShortArray -> value.joinToString(prefix = "[", postfix = "]")
-            is Collection<*> -> value.joinToString(prefix = "[", postfix = "]") {
-                debugValueString(it)
-            }
-
-            else -> value.toString()
-        }
     }
 
     private fun JSONObject.putIfNotBlank(key: String, value: String?): JSONObject {
