@@ -1233,7 +1233,14 @@ class RearWidgetHook : YukiBaseHooker() {
         target.asResolver().firstMethod {
             name = point.methodName
             parameterCount = 3
-        }.invoke(notificationId, packageName, removeReason)
+        }.also {
+            val compat = it.self.parameterTypes[1] == String::class.java
+            if (compat) {
+                it.invoke(notificationId, packageName, removeReason)
+            } else {
+                it.invoke(notificationId, removeReason, packageName)
+            }
+        }
     }
 
     private fun invokeSmartAssistantManagerRemoveBusiness(
