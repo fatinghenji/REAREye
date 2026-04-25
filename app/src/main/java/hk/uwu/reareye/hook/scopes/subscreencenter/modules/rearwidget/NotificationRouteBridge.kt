@@ -22,6 +22,7 @@ internal object NotificationRouteBridgeContract {
         const val PACKAGE_NAME = "packageName"
         const val NOTIFICATION_ID = "notificationId"
         const val NOTIFICATION_KEY = "notificationKey"
+        const val NOTIFICATION_TAG = "notificationTag"
         const val POST_TIME = "postTime"
         const val CHANNEL_ID = "channelId"
         const val TITLE = "title"
@@ -37,6 +38,7 @@ internal data class NotificationRouteSnapshot(
     val packageName: String,
     val notificationId: Int,
     val notificationKey: String?,
+    val notificationTag: String?,
     val postTime: Long,
     val channelId: String,
     val title: String?,
@@ -47,7 +49,13 @@ internal data class NotificationRouteSnapshot(
 ) {
     fun stableKey(): String {
         return notificationKey?.takeIf { it.isNotBlank() }
-            ?: "$packageName:$notificationId:$postTime:$channelId"
+            ?: buildString {
+                append(packageName)
+                append(':').append(notificationId)
+                notificationTag?.takeIf { it.isNotBlank() }?.let {
+                    append(':').append(it)
+                }
+            }
     }
 
     fun cardId(): String {
@@ -61,6 +69,7 @@ internal data class NotificationRouteSnapshot(
             putLong(NotificationRouteBridgeContract.Keys.POST_TIME, postTime)
             putString(NotificationRouteBridgeContract.Keys.CHANNEL_ID, channelId)
             putString(NotificationRouteBridgeContract.Keys.NOTIFICATION_KEY, notificationKey)
+            putString(NotificationRouteBridgeContract.Keys.NOTIFICATION_TAG, notificationTag)
             putString(NotificationRouteBridgeContract.Keys.TITLE, title)
             putString(NotificationRouteBridgeContract.Keys.TEXT, text)
             putString(NotificationRouteBridgeContract.Keys.BIG_TEXT, bigText)
@@ -96,6 +105,9 @@ internal data class NotificationRouteSnapshot(
                 notificationKey = bundle.getString(NotificationRouteBridgeContract.Keys.NOTIFICATION_KEY)
                     ?.trim()
                     ?.ifBlank { null },
+                notificationTag = bundle.getString(NotificationRouteBridgeContract.Keys.NOTIFICATION_TAG)
+                    ?.trim()
+                    ?.ifBlank { null },
                 postTime = bundle.getLong(NotificationRouteBridgeContract.Keys.POST_TIME, 0L),
                 channelId = channelId,
                 title = bundle.getString(NotificationRouteBridgeContract.Keys.TITLE),
@@ -126,6 +138,7 @@ internal data class NotificationRouteSnapshot(
                 packageName = packageName,
                 notificationId = sbn.id,
                 notificationKey = sbn.key?.trim()?.ifBlank { null },
+                notificationTag = sbn.tag?.trim()?.ifBlank { null },
                 postTime = sbn.postTime,
                 channelId = channelId,
                 title = extractTextCandidate(

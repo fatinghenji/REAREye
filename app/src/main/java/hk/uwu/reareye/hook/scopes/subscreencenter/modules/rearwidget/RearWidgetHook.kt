@@ -23,6 +23,7 @@ import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.generated.AppProperties
 import hk.uwu.reareye.hook.hostbridge.HookHostBridgeBootstrapRegistry
 import hk.uwu.reareye.hook.utils.DexKitMethodInjectionPoint
 import hk.uwu.reareye.hook.utils.createDexKitCacheBridge
@@ -55,6 +56,7 @@ import org.luckypray.dexkit.result.FieldData
 import org.luckypray.dexkit.result.MethodData
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.lang.ref.WeakReference
 import java.lang.reflect.Modifier
 import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
@@ -151,6 +153,14 @@ class RearWidgetHook : YukiBaseHooker() {
             "SSC_NOTIFICATION_WIDGET_TEMPLATE_PATH_FIELD"
         private const val NOTIFICATION_WIDGET_EXTRAS_FIELD_CACHE_KEY =
             "SSC_NOTIFICATION_WIDGET_EXTRAS_FIELD"
+        private const val NOTIFICATION_WIDGET_CHANGED_FLAG_FIELD_CACHE_KEY =
+            "SSC_NOTIFICATION_WIDGET_CHANGED_FLAG_FIELD"
+        private const val NOTIFICATION_WIDGET_EXTRA_CHANGED_METHOD_CACHE_KEY =
+            "SSC_NOTIFICATION_WIDGET_EXTRA_CHANGED_METHOD"
+        private const val SMART_ASSISTANT_PANEL_HOLDER_LIST_FIELD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_PANEL_HOLDER_LIST_FIELD"
+        private const val SMART_ASSISTANT_PANEL_REFRESH_METHOD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_PANEL_REFRESH_METHOD"
         private const val CHANNEL_SCENE_PREFIX = "CH:"
         private const val TEMPLATE_BASE =
             "/data/system/theme_magic/users/%s/subscreencenter/smart_assistant"
@@ -190,10 +200,13 @@ class RearWidgetHook : YukiBaseHooker() {
     private val bootstrapReceiverRegistered = AtomicBoolean(false)
     private val deployedBlobMetaCache = ConcurrentHashMap<String, String>()
     private val deployedCardConfigMetaCache = ConcurrentHashMap<String, String>()
-    private val injectedCardSignatureCache = ConcurrentHashMap<String, String>()
-    private val injectedCompositeAt = ConcurrentHashMap<String, Long>()
     private val bootstrapRetryCount = AtomicInteger(0)
     private val managerEpoch = AtomicInteger(0)
+    private val liveNotificationWidgets = ConcurrentHashMap<String, WeakReference<Any>>()
+    private val smartAssistantPanels = ConcurrentHashMap<Int, WeakReference<Any>>()
+
+    @Volatile
+    private var allowNotificationRoutePayloadJsonLog = false
 
     private var manager: Any? = null
     private var mainHandler: Handler? = null
@@ -201,6 +214,15 @@ class RearWidgetHook : YukiBaseHooker() {
     private var dexKitBridge: DexKitCacheBridge.RecyclableBridge? = null
     private val postRunnableSnapshots = WeakHashMap<Any, PostRunnableSnapshot>()
     private val ordinaryChannelNoticeIndex = ConcurrentHashMap<String, String>()
+    private val ordinaryChannelRouteNoticeOptions = RearWidgetNoticeOptions(
+        sticky = false,
+        disablePopup = false,
+        forcePopup = false,
+        enableFloat = false,
+        showTimeTip = true,
+        index = 0,
+        priority = -1,
+    )
     private val notificationRouteBridgeBootstrap = HookHostBridgeBootstrapRegistry(
         action = NotificationRouteBridgeContract.Action.REQUEST_BINDER,
         binderProvider = { notificationRouteBridgeBinder },
@@ -209,6 +231,8 @@ class RearWidgetHook : YukiBaseHooker() {
 
     override fun onHook() {
         loadApp("com.xiaomi.subscreencenter") {
+            allowNotificationRoutePayloadJsonLog =
+                AppProperties.BUILD_CHANNEL.equals("dev", ignoreCase = true)
             debugLog("hook process=$processName")
             RearWidgetRuntimeStore.install(packageName)
             debugLog("onHook start")
@@ -268,6 +292,37 @@ class RearWidgetHook : YukiBaseHooker() {
             val persistenceRef = resolvePersistenceManagerClassName().toClass().resolve()
             val postRunnableRef =
                 resolveSmartAssistantPostRunnableClassName().toClass().resolve()
+            val smartAssistantPanelRef =
+                "com.xiaomi.subscreencenter.SmartAssistantPanel".toClass().resolve()
+
+            listOf(1, 2, 3).forEach { constructorParamCount ->
+                runCatching {
+                    smartAssistantPanelRef.firstConstructor {
+                        parameterCount = constructorParamCount
+                    }.hook().after {
+                        rememberSmartAssistantPanel(instance)
+                    }
+                }
+            }
+
+            runCatching {
+                smartAssistantPanelRef.firstMethod {
+                    name = "setAssistantVisibleImpl"
+                    parameterCount = 1
+                }.hook().before {
+                    rememberSmartAssistantPanel(instance)
+                }
+            }
+
+            runCatching {
+                val panelRefreshPoint = resolveSmartAssistantPanelRefreshMethod()
+                smartAssistantPanelRef.firstMethod {
+                    name = panelRefreshPoint.methodName
+                    parameterCount = 3
+                }.hook().before {
+                    rememberSmartAssistantPanel(instance)
+                }
+            }
 
             persistenceRef.firstConstructor {
                 parameterCount = 0
@@ -290,8 +345,8 @@ class RearWidgetHook : YukiBaseHooker() {
                 val managerChanged = oldManager !== manager
                 if (managerChanged) {
                     managerEpoch.incrementAndGet()
-                    injectedCardSignatureCache.clear()
-                    injectedCompositeAt.clear()
+                    liveNotificationWidgets.clear()
+                    smartAssistantPanels.clear()
                     ordinaryChannelNoticeIndex.clear()
                 }
 
@@ -451,6 +506,7 @@ class RearWidgetHook : YukiBaseHooker() {
                 name = widgetApplyPoint.methodName
                 parameterCount = 1
             }.hook().after {
+                rememberLiveNotificationWidget(instance)
                 applyCardOneConfig(
                     instance,
                     args.getOrNull(0),
@@ -1108,6 +1164,76 @@ class RearWidgetHook : YukiBaseHooker() {
         }
     }
 
+    private fun resolveNotificationWidgetChangedFlagFieldName(): String {
+        return resolveCachedFieldName(
+            cacheKey = NOTIFICATION_WIDGET_CHANGED_FLAG_FIELD_CACHE_KEY,
+        ) {
+            val baseClass = resolveNotificationWidgetBaseClassName()
+            findField {
+                searchPackages(baseClass.substringBeforeLast('.'))
+                matcher {
+                    declaredClass = baseClass
+                    type = "int"
+                    writeMethods {
+                        add {
+                            paramCount(0)
+                            returnType = "void"
+                            usingStrings("Refresh current widget, because")
+                        }
+                    }
+                }
+            }.singleOrNull()
+        }
+    }
+
+    private fun resolveNotificationWidgetExtraChangedMethodName(): String {
+        return resolveCachedMethodPoint(
+            cacheKey = NOTIFICATION_WIDGET_EXTRA_CHANGED_METHOD_CACHE_KEY,
+        ) {
+            findMethod {
+                matcher {
+                    paramTypes(Bundle::class.java)
+                    returnType = "void"
+                    usingStrings("extra changed, extra =")
+                }
+            }.singleOrNull()
+        }.methodName
+    }
+
+    private fun resolveSmartAssistantPanelHolderListFieldName(): String {
+        return resolveCachedFieldName(
+            cacheKey = SMART_ASSISTANT_PANEL_HOLDER_LIST_FIELD_CACHE_KEY,
+        ) {
+            findField {
+                searchPackages("com.xiaomi.subscreencenter")
+                matcher {
+                    declaredClass = "com.xiaomi.subscreencenter.SmartAssistantPanel"
+                    type = "java.util.ArrayList"
+                    readMethods {
+                        add {
+                            declaredClass = "com.xiaomi.subscreencenter.SmartAssistantPanel"
+                            usingStrings("createWidgets: index=")
+                        }
+                    }
+                }
+            }.singleOrNull()
+        }
+    }
+
+    private fun resolveSmartAssistantPanelRefreshMethod(): DexKitMethodInjectionPoint {
+        return resolveCachedMethodPoint(
+            cacheKey = SMART_ASSISTANT_PANEL_REFRESH_METHOD_CACHE_KEY,
+        ) {
+            findMethod {
+                matcher {
+                    declaredClass = "com.xiaomi.subscreencenter.SmartAssistantPanel"
+                    paramTypes("int", "int", "java.lang.Runnable")
+                    returnType = "void"
+                }
+            }.singleOrNull()
+        }
+    }
+
     private fun invokeSmartAssistantManagerRemoveNotification(
         target: Any,
         notificationId: Int,
@@ -1468,12 +1594,13 @@ class RearWidgetHook : YukiBaseHooker() {
             return runCatching {
                 when (normalizedSubchannel) {
                     NotificationRouteBridgeContract.Subchannel.NOTIFICATION_POSTED -> {
-                        //debugLog("notification route posted payload=$payloadCopy")
+                        if (shouldLogNotificationRoutePayloadJson()) {
+                            debugLog("notification route posted payload=${payloadCopy.toJsonStringByGson()}")
+                        }
                         handleNotificationRoutePosted(payloadCopy)
                     }
 
                     NotificationRouteBridgeContract.Subchannel.NOTIFICATION_REMOVED -> {
-                        //debugLog("notification route removed payload=$payloadCopy")
                         handleNotificationRouteRemoved(payloadCopy)
                     }
 
@@ -1536,22 +1663,32 @@ class RearWidgetHook : YukiBaseHooker() {
     private fun registerNotificationRouteBridge() {
         val ctx = hostContext ?: return
         notificationRouteBridgeBootstrap.register(ctx)
-        /*if (ok) {
-            debugLog(
-                "register notification route bridge success action=${NotificationRouteBridgeContract.Action.REQUEST_BINDER}"
-            )
-        }*/
+    }
+
+    private fun shouldLogNotificationRoutePayloadJson(): Boolean {
+        return allowNotificationRoutePayloadJsonLog && prefs.getBoolean(
+            ConfigKeys.MORE_DEBUG,
+            false
+        )
+    }
+
+    private fun Bundle.toJsonStringByGson(): String {
+        val map = LinkedHashMap<String, Any?>(keySet().size)
+        keySet().forEach { key ->
+            @Suppress("DEPRECATION")
+            map[key] = get(key)
+        }
+        return com.google.gson.Gson().toJson(map)
     }
 
     private fun dispatchOperation(op: String, action: () -> OperationOutcome) {
         val outcome = action()
-        clearInjectCache(op, outcome)
         applyRuntimeMaps(force = true)
         patchManagerAppGates(manager)
         if (!RearWidgetRuntimeStore.hasAnySceneRoutePrefix(CHANNEL_SCENE_PREFIX)) {
             clearAllOrdinaryChannelRouteNotices("$op:no_channel_route")
         }
-        outcome.injectCompositeKey?.let { injectByCompositeKey(it) }
+        outcome.injectCompositeKey?.let { applyNoticeDisplayByCompositeKey(it) }
         outcome.ejectTicket?.let { ejectByTicket(it) }
         outcome.ejectBusiness?.let { (pkg, biz) -> ejectBusinessDisplay(pkg, biz) }
     }
@@ -1582,25 +1719,22 @@ class RearWidgetHook : YukiBaseHooker() {
             return
         }
 
+        val existingCompositeKey = ordinaryChannelNoticeIndex[cardId]
+        val existingNotice = existingCompositeKey?.let(RearWidgetRuntimeStore::getNotice)
+        if (existingNotice != null && existingNotice.ticket.business != business) {
+            removeOrdinaryChannelRouteNotice(cardId, "event_post:business_changed")
+        }
+
         val noticePayload = buildOrdinaryChannelRoutePayload(snapshot, cardId, scene)
-        val options = RearWidgetNoticeOptions(
-            sticky = false,
-            disablePopup = false,
-            forcePopup = false,
-            enableFloat = false,
-            showTimeTip = true,
-            index = 0,
-            priority = -1,
-        )
         runCatching {
             val ticket = RearWidgetRuntimeStore.postNotice(
                 business = business,
                 payload = noticePayload,
-                options = options,
+                options = ordinaryChannelRouteNoticeOptions,
                 packageName = snapshot.packageName,
             )
             ordinaryChannelNoticeIndex[cardId] = ticket.compositeKey
-            injectByCompositeKey(ticket.compositeKey)
+            applyNoticeDisplayByCompositeKey(ticket.compositeKey)
             debugLog(
                 "ordinary event inject pkg=${snapshot.packageName} id=${snapshot.notificationId} key=${snapshot.notificationKey.orEmpty()} channel=${snapshot.channelId} scene=$scene business=$business"
             )
@@ -1636,6 +1770,7 @@ class RearWidgetHook : YukiBaseHooker() {
             putString("text", snapshot.text.orEmpty())
             putString("bigText", snapshot.bigText.orEmpty())
             putString("subText", snapshot.subText.orEmpty())
+            putString("shortCriticalText", snapshot.shortCriticalText.orEmpty())
             putString("channelId", snapshot.channelId)
             putString("notificationKey", snapshot.notificationKey.orEmpty())
             putString(
@@ -1842,7 +1977,7 @@ class RearWidgetHook : YukiBaseHooker() {
 
     private fun injectAllActiveNotices() {
         RearWidgetRuntimeStore.listNotices().forEach { notice ->
-            injectByCompositeKey(notice.ticket.compositeKey, true)
+            applyNoticeDisplayByCompositeKey(notice.ticket.compositeKey)
         }
     }
 
@@ -1874,30 +2009,44 @@ class RearWidgetHook : YukiBaseHooker() {
         }
     }
 
-    private fun injectByCompositeKey(compositeKey: String, force: Boolean = false) {
+    private fun applyNoticeDisplayByCompositeKey(compositeKey: String) {
+        val notice = RearWidgetRuntimeStore.getNotice(compositeKey) ?: return
+        if (tryUpdateExistingNoticeDisplay(notice)) return
+        injectByCompositeKey(compositeKey)
+    }
+
+    private fun tryUpdateExistingNoticeDisplay(notice: RearWidgetActiveNotice): Boolean {
+        if (notice.payload.containsKey(REAR_WIDGET_CARD_ONE_CONFIG_JSON_KEY)) {
+            return false
+        }
+
+        val extras = runCatching {
+            RearWidgetRuntimeStore.buildDecoratedExtras(notice.ticket)
+        }.onFailure {
+            debugLog("build decorated extras failed key=${notice.ticket.compositeKey} err=${it.message}")
+        }.getOrNull() ?: return false
+
+        val recordUpdated = updateManagerWidgetRecord(notice, extras)
+        val liveUpdated = updateLiveNotificationWidget(notice.ticket.compositeKey, extras)
+        if (liveUpdated) {
+            debugLog("updated live widget key=${notice.ticket.compositeKey} business=${notice.ticket.business}")
+            return true
+        }
+        if (recordUpdated) {
+            val panelRefreshQueued =
+                queueSmartAssistantPanelRefresh(notice.ticket.compositeKey, extras)
+            debugLog(
+                "updated widget record key=${notice.ticket.compositeKey} business=${notice.ticket.business} panelRefreshQueued=$panelRefreshQueued"
+            )
+            if (panelRefreshQueued) return true
+        }
+        return false
+    }
+
+    private fun injectByCompositeKey(compositeKey: String) {
         val notice = RearWidgetRuntimeStore.getNotice(compositeKey) ?: return
         val mgr = manager ?: return
         val handler = mainHandler ?: return
-
-        val now = System.currentTimeMillis()
-        val lastAt = injectedCompositeAt[compositeKey] ?: 0L
-        if (!force && now - lastAt < 1200L) {
-            debugLog("skip duplicate inject by composite window key=$compositeKey")
-            return
-        }
-
-        val cardId = notice.payload.getString("__rear_card_id__")?.trim().orEmpty()
-        if (cardId.isNotBlank()) {
-            val cardKey = "${notice.ticket.packageName}:${notice.ticket.business}:$cardId"
-            val signature = buildInjectSignature(notice)
-            val old = injectedCardSignatureCache[cardKey]
-            if (!force && old == signature) {
-                debugLog("skip duplicate inject by card signature card=$cardKey")
-                injectedCompositeAt[compositeKey] = now
-                return
-            }
-            injectedCardSignatureCache[cardKey] = signature
-        }
 
         runCatching {
             val extras = RearWidgetRuntimeStore.buildDecoratedExtras(notice.ticket)
@@ -1912,7 +2061,6 @@ class RearWidgetHook : YukiBaseHooker() {
                 extras,
             ) as? Runnable ?: return
             handler.post(runnable)
-            injectedCompositeAt[compositeKey] = now
             debugLog("injected ticket key=${notice.ticket.compositeKey} business=${notice.ticket.business}")
         }.onFailure {
             debugLog("inject failed key=$compositeKey err=${it.message}")
@@ -1922,6 +2070,7 @@ class RearWidgetHook : YukiBaseHooker() {
     private fun ejectByTicket(ticket: RearWidgetNoticeTicket) {
         val mgr = manager ?: return
         val handler = mainHandler ?: return
+        liveNotificationWidgets.remove(ticket.compositeKey)
         runCatching {
             handler.post {
                 runCatching {
@@ -1942,7 +2091,9 @@ class RearWidgetHook : YukiBaseHooker() {
     }
 
     private fun ejectByCompositeKey(compositeKey: String) {
-        val ticket = RearWidgetRuntimeStore.getNotice(compositeKey)?.ticket
+        liveNotificationWidgets.remove(compositeKey)
+        val notice = RearWidgetRuntimeStore.getNotice(compositeKey)
+        val ticket = notice?.ticket
         if (ticket != null) {
             runCatching {
                 RearWidgetRuntimeStore.removeNotice(ticket)
@@ -2002,8 +2153,7 @@ class RearWidgetHook : YukiBaseHooker() {
         val mgr = manager ?: return
         val handler = mainHandler ?: return
         val prefix = "$packageName:$business:"
-        injectedCardSignatureCache.keys.removeIf { it.startsWith(prefix) }
-        injectedCompositeAt.keys.removeIf { it.startsWith(prefix) }
+        liveNotificationWidgets.keys.removeIf { it.startsWith(prefix) }
         runCatching {
             handler.post {
                 runCatching {
@@ -2313,6 +2463,237 @@ class RearWidgetHook : YukiBaseHooker() {
         return runCatching {
             widget.asResolver().firstField { name = extrasFieldName }.get<Bundle?>()
         }.getOrNull()
+    }
+
+    private fun setManagerWidgetBundle(widget: Any, extras: Bundle) {
+        val extrasFieldName = resolveSmartAssistantWidgetRecordExtrasFieldName()
+        widget.asResolver().firstField { name = extrasFieldName }.set(Bundle(extras))
+    }
+
+    private fun setManagerWidgetPriority(widget: Any, priority: Int) {
+        val priorityFieldName = resolveSmartAssistantWidgetRecordPriorityFieldName()
+        widget.asResolver().firstField { name = priorityFieldName }.set(priority)
+    }
+
+    private fun updateManagerWidgetRecord(notice: RearWidgetActiveNotice, extras: Bundle): Boolean {
+        val managerTarget = manager ?: return false
+        val listFieldName = resolveSmartAssistantManagerWidgetListFieldName()
+        val list = runCatching {
+            @Suppress("UNCHECKED_CAST")
+            managerTarget.asResolver().firstField { name = listFieldName }.get() as ArrayList<Any>
+        }.getOrNull() ?: return false
+
+        synchronized(list) {
+            val record = list.firstOrNull { widget ->
+                managerWidgetBundle(widget)?.getString("composite_key") == notice.ticket.compositeKey
+            } ?: return false
+
+            runCatching {
+                setManagerWidgetBundle(record, extras)
+                val priority = notice.options.priority ?: 500
+                if (managerWidgetPriority(record) != priority) {
+                    setManagerWidgetPriority(record, priority)
+                }
+            }.onFailure {
+                debugLog("update widget record failed key=${notice.ticket.compositeKey} err=${it.message}")
+                return false
+            }
+        }
+        return true
+    }
+
+    private fun rememberSmartAssistantPanel(panel: Any?) {
+        val target = panel ?: return
+        smartAssistantPanels[System.identityHashCode(target)] = WeakReference(target)
+    }
+
+    private fun forEachRememberedPanel(action: (Any) -> Unit) {
+        smartAssistantPanels.entries.toList().forEach { (id, ref) ->
+            val panel = ref.get()
+            if (panel == null) {
+                smartAssistantPanels.remove(id)
+                return@forEach
+            }
+            action(panel)
+        }
+    }
+
+    private fun queueSmartAssistantPanelRefresh(compositeKey: String, extras: Bundle): Boolean {
+        var queued = false
+        forEachRememberedPanel { panel ->
+            val view = panel as? View
+            if (view == null) {
+                return@forEachRememberedPanel
+            }
+            queued = true
+            view.post {
+                runCatching {
+                    refreshSmartAssistantPanelWidget(panel, compositeKey, extras)
+                }.onFailure {
+                    debugLog("panel refresh failed key=$compositeKey err=${it.message}")
+                }
+            }
+        }
+        return queued
+    }
+
+    private fun findLiveNotificationWidget(compositeKey: String): Any? {
+        liveNotificationWidgets[compositeKey]?.get()?.let { cached ->
+            val currentExtras = extractFieldFromHierarchy(
+                cached,
+                resolveNotificationWidgetExtrasFieldName(),
+            ) as? Bundle
+            if (currentExtras?.getString("composite_key") == compositeKey) {
+                return cached
+            }
+            liveNotificationWidgets.remove(compositeKey)
+        }
+
+        var found: Any? = null
+        forEachRememberedPanel { panel ->
+            if (found != null) return@forEachRememberedPanel
+            val holderList = panel.asResolver().firstField {
+                name = resolveSmartAssistantPanelHolderListFieldName()
+            }.get<Any>() as? Iterable<*>
+            if (holderList == null) {
+                return@forEachRememberedPanel
+            }
+            holderList.forEach { holder ->
+                if (found != null) return@forEach
+                val widget = resolveSmartAssistantHolderWidget(holder) ?: return@forEach
+                val widgetExtras = extractFieldFromHierarchy(
+                    widget,
+                    resolveNotificationWidgetExtrasFieldName(),
+                ) as? Bundle ?: return@forEach
+                if (widgetExtras.getString("composite_key") != compositeKey) return@forEach
+                found = widget
+            }
+        }
+        found?.let { liveNotificationWidgets[compositeKey] = WeakReference(it) }
+        return found
+    }
+
+    private fun refreshSmartAssistantPanelWidget(panel: Any, compositeKey: String, extras: Bundle) {
+        val holderList = panel.asResolver().firstField {
+            name = resolveSmartAssistantPanelHolderListFieldName()
+        }.get<Any>() as? Iterable<*>
+            ?: return
+        var matched = false
+        holderList.forEach { holder ->
+            val widget = resolveSmartAssistantHolderWidget(holder) ?: return@forEach
+            val widgetExtras = extractFieldFromHierarchy(
+                widget,
+                resolveNotificationWidgetExtrasFieldName(),
+            ) as? Bundle ?: return@forEach
+            if (widgetExtras.getString("composite_key") != compositeKey) return@forEach
+
+            matched = true
+            setFieldInHierarchy(widget, resolveNotificationWidgetExtrasFieldName(), Bundle(extras))
+            invokeNotificationWidgetExtraChanged(widget, extras)
+            markWidgetExtraChanged(widget)
+        }
+        if (!matched) return
+        val refreshPoint = resolveSmartAssistantPanelRefreshMethod()
+        panel.asResolver().firstMethod {
+            name = refreshPoint.methodName
+            parameterCount = 3
+        }.invoke(1, 3, null)
+        debugLog("queued panel refresh key=$compositeKey")
+    }
+
+    private fun markWidgetExtraChanged(widget: Any) {
+        runCatching {
+            val fieldName = resolveNotificationWidgetChangedFlagFieldName()
+            val currentFlags = (extractFieldFromHierarchy(widget, fieldName) as? Int) ?: 0
+            setFieldInHierarchy(widget, fieldName, currentFlags or 2)
+        }.onFailure {
+            debugLog("mark extra changed skipped widget=${widget.javaClass.name} err=${it.message}")
+        }
+    }
+
+    private fun rememberLiveNotificationWidget(widget: Any?) {
+        val owner = widget ?: return
+        val extras = extractFieldFromHierarchy(
+            owner,
+            resolveNotificationWidgetExtrasFieldName(),
+        ) as? Bundle ?: return
+        val compositeKey = extras.getString("composite_key")?.trim().orEmpty()
+        if (compositeKey.isBlank()) return
+        liveNotificationWidgets[compositeKey] = WeakReference(owner)
+    }
+
+    private fun updateLiveNotificationWidget(compositeKey: String, extras: Bundle): Boolean {
+        val widget = findLiveNotificationWidget(compositeKey)
+        if (widget == null) {
+            liveNotificationWidgets.remove(compositeKey)
+            return false
+        }
+
+        val currentExtras = extractFieldFromHierarchy(
+            widget,
+            resolveNotificationWidgetExtrasFieldName(),
+        ) as? Bundle
+        val currentCompositeKey = currentExtras?.getString("composite_key")?.trim().orEmpty()
+        if (currentCompositeKey != compositeKey) {
+            liveNotificationWidgets.remove(compositeKey)
+            return false
+        }
+
+        return runCatching {
+            setFieldInHierarchy(widget, resolveNotificationWidgetExtrasFieldName(), Bundle(extras))
+            invokeNotificationWidgetExtraChanged(widget, extras)
+            markWidgetExtraChanged(widget)
+            true
+        }.onFailure {
+            liveNotificationWidgets.remove(compositeKey)
+            debugLog("update live widget failed key=$compositeKey err=${it.message}")
+        }.getOrDefault(false)
+    }
+
+    private fun invokeNotificationWidgetExtraChanged(widget: Any, extras: Bundle) {
+        val methodName = resolveNotificationWidgetExtraChangedMethodName()
+        var current: Class<*>? = widget.javaClass
+        while (current != null && current != Any::class.java) {
+            val method = current.declaredMethods.firstOrNull {
+                it.name == methodName &&
+                        it.parameterCount == 1 &&
+                        it.parameterTypes[0] == Bundle::class.java &&
+                        it.returnType == Void.TYPE
+            }
+            if (method != null) {
+                method.isAccessible = true
+                method.invoke(widget, Bundle(extras))
+                debugLog(
+                    "invoked extra changed method=${method.name} widget=${widget.javaClass.name} key=${
+                        extras.getString(
+                            "composite_key"
+                        ).orEmpty()
+                    }"
+                )
+                return
+            }
+            current = current.superclass
+        }
+        error("notification widget extra changed method not found: ${widget.javaClass.name}")
+    }
+
+    private fun resolveSmartAssistantHolderWidget(holder: Any?): Any? {
+        val target = holder ?: return null
+        val baseClass = resolveNotificationWidgetBaseClassName().toClass()
+        var current: Class<*>? = target.javaClass
+        while (current != null && current != Any::class.java) {
+            current.declaredFields.forEach { field ->
+                runCatching {
+                    field.isAccessible = true
+                    val value = field.get(target) ?: return@runCatching
+                    if (baseClass.isAssignableFrom(value.javaClass)) {
+                        return value
+                    }
+                }
+            }
+            current = current.superclass
+        }
+        return null
     }
 
     private fun managerWidgetPriority(widget: Any): Int {
@@ -2794,6 +3175,21 @@ class RearWidgetHook : YukiBaseHooker() {
         return null
     }
 
+    private fun setFieldInHierarchy(owner: Any, fieldName: String, value: Any?) {
+        var current: Class<*>? = owner.javaClass
+        while (current != null && current != Any::class.java) {
+            current.declaredFields.firstOrNull { it.name == fieldName }?.let { field ->
+                runCatching {
+                    field.isAccessible = true
+                    field.set(owner, value)
+                }.getOrThrow()
+                return
+            }
+            current = current.superclass
+        }
+        error("field not found in hierarchy: ${owner.javaClass.name}#$fieldName")
+    }
+
     private fun Bundle.hasCardConfigMarkers(): Boolean {
         return containsKey(REAR_WIDGET_CARD_ONE_CONFIG_JSON_KEY) || containsKey("__rear_card_id__")
     }
@@ -3217,35 +3613,4 @@ class RearWidgetHook : YukiBaseHooker() {
         file.parentFile?.setExecutable(true, false)
     }
 
-    private fun clearInjectCache(op: String, outcome: OperationOutcome) {
-        when (op) {
-            RearWidgetApiContract.Operation.DISABLE_DISPLAY,
-            RearWidgetApiContract.Operation.UNREGISTER -> {
-                val (pkg, biz) = outcome.ejectBusiness ?: return
-                val prefix = "$pkg:$biz:"
-                injectedCardSignatureCache.keys.removeIf { it.startsWith(prefix) }
-                injectedCompositeAt.keys.removeIf { it.startsWith(prefix) }
-            }
-
-            RearWidgetApiContract.Operation.REMOVE -> {
-                val composite = outcome.ejectTicket?.compositeKey.orEmpty()
-                if (composite.isNotBlank()) injectedCompositeAt.remove(composite)
-            }
-        }
-    }
-
-    private fun buildInjectSignature(notice: RearWidgetActiveNotice): String {
-        val payload = notice.payload
-        return buildString {
-            append(notice.ticket.compositeKey)
-            append('|').append(payload.getString("title").orEmpty())
-            append('|').append(payload.getString("business").orEmpty())
-            append('|').append(
-                payload.getString(REAR_WIDGET_CARD_ONE_CONFIG_JSON_KEY).orEmpty().hashCode()
-            )
-            append('|').append(notice.options.index ?: -1)
-            append('|').append(notice.options.priority ?: -1)
-            append('|').append(notice.options.sticky)
-        }
-    }
 }

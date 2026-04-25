@@ -106,13 +106,10 @@ class SystemUiNotificationBridgeHook : YukiBaseHooker() {
 
     private fun handleNotificationPosted(sbn: StatusBarNotification?) {
         val current = sbn ?: return
-        //debugLog("posted callback ${sbnSummary(current)}")
         val snapshot = NotificationRouteSnapshot.fromStatusBarNotification(current)
         if (snapshot == null) {
-            //debugLog("posted filtered ${filterReason(current)} ${sbnSummary(current)}")
             NotificationRouteSnapshot.identityKeyFor(current)?.let { key ->
                 activeSnapshots.remove(key)?.let { removed ->
-                    //debugLog("posted filtered triggers cached removal key=$key")
                     dispatchRemoved(removed, removeReason = 1, reason = "filtered_post")
                 }
             }
@@ -128,7 +125,6 @@ class SystemUiNotificationBridgeHook : YukiBaseHooker() {
 
     private fun handleNotificationRemoved(sbn: StatusBarNotification?, removeReason: Int) {
         val current = sbn ?: return
-        //debugLog("removed callback reason=$removeReason ${sbnSummary(current)}")
         val snapshot = NotificationRouteSnapshot.identityKeyFor(current)
             ?.let(activeSnapshots::remove)
             ?: NotificationRouteSnapshot.fromStatusBarNotification(
@@ -136,13 +132,6 @@ class SystemUiNotificationBridgeHook : YukiBaseHooker() {
                 requirePlainExtras = false,
             )
             ?: run {
-                /*debugLog(
-                    "removed ignored reason=$removeReason snapshot_unavailable ${
-                        sbnSummary(
-                            current
-                        )
-                    }"
-                )*/
                 return
             }
         debugLog(
@@ -157,11 +146,7 @@ class SystemUiNotificationBridgeHook : YukiBaseHooker() {
             NotificationRouteBridgeContract.Subchannel.NOTIFICATION_POSTED,
             snapshot.toBundle(),
         )
-        if (ok) {
-            /*debugLog(
-                "dispatch posted accepted key=${snapshot.stableKey()} pkg=${snapshot.packageName} channel=${snapshot.channelId} reason=$reason"
-            )*/
-        } else {
+        if (!ok) {
             debugLog("dispatch posted failed key=${snapshot.stableKey()} reason=$reason")
         }
     }
@@ -176,48 +161,10 @@ class SystemUiNotificationBridgeHook : YukiBaseHooker() {
             NotificationRouteBridgeContract.Subchannel.NOTIFICATION_REMOVED,
             snapshot.toRemovalBundle(removeReason),
         )
-        if (ok) {
-            /*debugLog(
-                "dispatch removed accepted key=${snapshot.stableKey()} pkg=${snapshot.packageName} channel=${snapshot.channelId} removeReason=$removeReason reason=$reason"
-            )*/
-        } else {
+        if (!ok) {
             debugLog("dispatch removed failed key=${snapshot.stableKey()} reason=$reason")
         }
     }
-
-    /*private fun filterReason(sbn: StatusBarNotification): String {
-        val packageName = sbn.packageName?.trim().orEmpty()
-        if (packageName.isBlank()) return "blank_package"
-
-        val notification = sbn.notification
-        val channelId = notification.channelId?.trim().orEmpty()
-        if (channelId.isBlank()) return "blank_channel"
-
-        val extras = notification.extras ?: Bundle.EMPTY
-        if (!extras.getString("miui.focus.param").isNullOrBlank()) return "has_focus_param"
-        if (!extras.getString("miui.rear.param").isNullOrBlank()) return "has_rear_param"
-        return "unknown"
-    }*/
-
-    /*private fun sbnSummary(sbn: StatusBarNotification): String {
-        val notification = sbn.notification
-        val extras = notification.extras ?: Bundle.EMPTY
-        val title = extras.getCharSequence(android.app.Notification.EXTRA_TITLE)
-            ?.toString()
-            ?.trim()
-            .orEmpty()
-        val text = extras.getCharSequence(android.app.Notification.EXTRA_TEXT)
-            ?.toString()
-            ?.trim()
-            .orEmpty()
-        return "pkg=${sbn.packageName.orEmpty()} id=${sbn.id} key=${sbn.key.orEmpty()} channel=${notification.channelId.orEmpty()} postTime=${sbn.postTime} hasFocus=${
-            !extras.getString(
-                "miui.focus.param"
-            ).isNullOrBlank()
-        } hasRear=${
-            !extras.getString("miui.rear.param").isNullOrBlank()
-        } title=${title.ifBlank { "<empty>" }} text=${text.ifBlank { "<empty>" }}"
-    }*/
 
     private fun debugLog(message: String) {
         if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {

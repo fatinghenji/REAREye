@@ -315,6 +315,7 @@ object RearWidgetRuntimeStore {
         val notice = notices[ticket.compositeKey]
             ?: error("Notice not found: ${ticket.compositeKey}")
         val options = notice.options
+        val timestamp = notice.createdAt
         return Bundle(notice.payload).apply {
             putString("package_name", ticket.packageName)
             putString("creator_package", ticket.packageName)
@@ -324,7 +325,7 @@ object RearWidgetRuntimeStore {
             putInt("notification_id", ticket.notificationId)
             putInt("widget_id", ticket.notificationId)
             putString("composite_key", ticket.compositeKey)
-            putLong("timestamp", System.currentTimeMillis())
+            putLong("timestamp", timestamp)
 
             putBoolean("disable_popup", options.disablePopup)
             putBoolean("force_popup", options.forcePopup)
