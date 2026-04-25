@@ -17,6 +17,7 @@ object ConfigKeys {
     const val MODULE_STORE_API_CUSTOM_DOMAIN = "module_store_api_custom_domain"
     const val MODULE_STORE_WEBVIEW_HARDWARE_ACCELERATION =
         "module_store_webview_hardware_acceleration"
+    const val REAR_STORE_WALLPAPER_INSTALL_DATA = "rear_store_wallpaper_install_data"
 
     const val HOOK_ACTIVITIES_WHITELIST = "enable_activities_whitelist_hook"
     const val ACTIVITIES_WHITELIST_APPS = "activities_whitelist_apps"

@@ -731,7 +731,7 @@ private fun WallpaperMetadataForm(
 }
 
 @Composable
-private fun WallpaperMetadataFields(
+internal fun WallpaperMetadataFields(
     titleFallback: String,
     titleZhCn: String,
     descriptionFallback: String,

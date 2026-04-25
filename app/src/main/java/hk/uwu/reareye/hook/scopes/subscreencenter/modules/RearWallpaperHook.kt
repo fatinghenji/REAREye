@@ -17,6 +17,7 @@ import android.os.Binder
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.ParcelFileDescriptor
 import android.os.Process
 import android.view.View
 import android.view.ViewGroup
@@ -354,17 +355,15 @@ class RearWallpaperHook : YukiBaseHooker() {
         }
 
         override fun importWallpaperPackage(
-            packageUri: String?,
+            packageFd: ParcelFileDescriptor?,
             displayNameHint: String?,
-            metadataUri: String?,
             previewUri: String?,
             options: Bundle?,
         ): Bundle {
             enforceCallerPermission()
             return importWallpaperPackageInternal(
-                packageUri = packageUri,
+                packageFd = packageFd,
                 displayNameHint = displayNameHint,
-                metadataUri = metadataUri,
                 previewUri = previewUri,
                 options = options,
             )
@@ -1751,16 +1750,14 @@ class RearWallpaperHook : YukiBaseHooker() {
     }
 
     private fun importWallpaperPackageInternal(
-        packageUri: String?,
+        packageFd: ParcelFileDescriptor?,
         displayNameHint: String?,
-        metadataUri: String?,
         previewUri: String?,
         options: Bundle?,
     ): Bundle {
         val context =
             hostContext ?: return operationResult(false, error = "host context is not ready")
-        val sourceUri = packageUri?.takeIf { it.isNotBlank() }?.let(Uri::parse)
-            ?: return operationResult(false, error = "package uri is empty")
+        val sourceFd = packageFd ?: return operationResult(false, error = "package fd is empty")
         val sourceName = displayNameHint?.takeIf { it.isNotBlank() } ?: "wallpaper.mrc"
         if (!sourceName.endsWith(".mrc", ignoreCase = true) &&
             !sourceName.endsWith(".zip", ignoreCase = true)
@@ -1769,7 +1766,7 @@ class RearWallpaperHook : YukiBaseHooker() {
         }
 
         debugLog(
-            "importWallpaperPackageInternal start packageUri=$packageUri displayName=$sourceName metadataUri=$metadataUri previewUri=$previewUri"
+            "importWallpaperPackageInternal start displayName=$sourceName previewUri=$previewUri"
         )
 
         return runCatching {
@@ -1788,7 +1785,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                     )
                 }
 
-                val packageSize = copyUriToFileLimited(context, sourceUri, packageFile)
+                val packageSize = copyParcelFileDescriptorToFileLimited(sourceFd, packageFile)
                 validateMamlPackage(packageFile)
                 val extractedPreviewPath = extractPreviewFromPackage(packageFile, targetDir)
                 val previewPath = previewUri
@@ -1797,18 +1794,14 @@ class RearWallpaperHook : YukiBaseHooker() {
                     ?.let { copyPreviewImageFromUri(context, it, targetDir, "preview_imported") }
                     ?: extractedPreviewPath
 
-                val providedMetadata = metadataUri
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let(Uri::parse)
-                    ?.let { readJsonFromUri(context, it) }
-                val packageMetadata = readDescriptionMetadata(packageFile)
+                val packageMetadata = readPackageMetadata(packageFile)
                 val metadataValues = resolveMetadataValues(
                     options = options,
-                    source = providedMetadata?.toMetadataValues(sourceName) ?: packageMetadata,
+                    source = packageMetadata,
                     displayNameHint = sourceName,
                 )
                 val metadataJson = buildMetadataJson(
-                    base = providedMetadata,
+                    base = null,
                     resId = resId,
                     packageFile = packageFile,
                     metadataFile = metadataFile,
@@ -1842,7 +1835,7 @@ class RearWallpaperHook : YukiBaseHooker() {
             }
         }.getOrElse {
             debugFailure(
-                message = "importWallpaperPackageInternal failed packageUri=$packageUri displayName=$sourceName err=${it.message}",
+                message = "importWallpaperPackageInternal failed displayName=$sourceName err=${it.message}",
                 error = it,
             )
             YLog.error(it)
@@ -2057,11 +2050,14 @@ class RearWallpaperHook : YukiBaseHooker() {
         }
     }
 
-    private fun copyUriToFileLimited(context: Context, uri: Uri, target: File): Long {
+    private fun copyParcelFileDescriptorToFileLimited(
+        descriptor: ParcelFileDescriptor,
+        target: File,
+    ): Long {
         target.parentFile?.mkdirs()
         val tempFile = File(target.parentFile, "${target.name}.tmp")
         var total = 0L
-        context.contentResolver.openInputStream(uri)?.use { input ->
+        ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { input ->
             tempFile.outputStream().use { output ->
                 val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                 while (true) {
@@ -2074,7 +2070,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                     output.write(buffer, 0, read)
                 }
             }
-        } ?: throw IllegalArgumentException("failed to open package uri")
+        }
 
         if (target.exists()) target.delete()
         if (!tempFile.renameTo(target)) {
@@ -2558,16 +2554,24 @@ class RearWallpaperHook : YukiBaseHooker() {
         return null
     }
 
-    private fun readJsonFromUri(context: Context, uri: Uri): JSONObject {
-        val text = context.contentResolver.openInputStream(uri)?.use { input ->
-            input.bufferedReader().use { it.readText() }
-        } ?: throw IllegalArgumentException("failed to open metadata uri")
-        return JSONObject(text)
-    }
-
     private fun readJsonFile(file: File?): JSONObject? {
         if (file == null || !file.isFile) return null
         return runCatching { JSONObject(file.readText()) }.getOrNull()
+    }
+
+    private fun readPackageMetadata(packageFile: File): MetadataValues? {
+        return readEmbeddedMetadata(packageFile) ?: readDescriptionMetadata(packageFile)
+    }
+
+    private fun readEmbeddedMetadata(packageFile: File): MetadataValues? {
+        return runCatching {
+            ZipFile(packageFile).use { zip ->
+                val entry = zip.getEntry("metadata.mrm") ?: return null
+                zip.getInputStream(entry).bufferedReader().use { reader ->
+                    JSONObject(reader.readText()).toMetadataValues(packageFile.nameWithoutExtension)
+                }
+            }
+        }.getOrNull()
     }
 
     private fun readDescriptionMetadata(packageFile: File): MetadataValues? {

@@ -1,6 +1,7 @@
 package hk.uwu.reareye.widgetapi;
 
 import android.os.Bundle;
+import android.os.ParcelFileDescriptor;
 
 interface IRearWallpaperApiService {
     Bundle getCatalog();
@@ -12,9 +13,8 @@ interface IRearWallpaperApiService {
     boolean syncSchedule(boolean enabled, String scheduleData);
 
     Bundle importWallpaperPackage(
-        String packageUri,
+        in ParcelFileDescriptor packageFd,
         String displayNameHint,
-        String metadataUri,
         String previewUri,
         in Bundle options
     );

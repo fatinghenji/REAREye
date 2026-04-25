@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.PrefsManager
@@ -16,11 +17,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 
 object RearWallpaperRepository {
 
     private const val PREVIEW_CACHE_DIR = "rear_wallpaper_preview_cache"
+    private const val IMPORT_CACHE_DIR = "rear_wallpaper_import_cache"
 
     private val clientMutex = Mutex()
 
@@ -65,23 +71,72 @@ object RearWallpaperRepository {
         options: RearWallpaperMetadataOptions,
     ): RearWallpaperOperationResult {
         return withContext(Dispatchers.IO) {
-            grantReadAccess(context, packageUri)
-            metadataUri?.let { grantReadAccess(context, it) }
             previewUri?.let { grantReadAccess(context, it) }
             val displayNameHint = queryDisplayName(context, packageUri)
                 ?.trim()
                 ?.ifBlank { null }
                 ?: "wallpaper.mrc"
-            val result = withRemote(context) { client ->
-                client.importWallpaperPackage(
-                    packageUri = packageUri.toString(),
-                    displayNameHint = displayNameHint,
-                    metadataUri = metadataUri?.toString(),
-                    previewUri = previewUri?.toString(),
-                    options = options.toBundle(),
-                )
+            val packageFile = createImportCacheFile(context, displayNameHint)
+            val metadataBytes = metadataUri?.let { readBytes(context, it) }
+            writeImportPackageToFile(
+                targetFile = packageFile,
+                metadataBytes = metadataBytes,
+                source = {
+                    context.contentResolver.openInputStream(packageUri)
+                        ?: error("failed to open package uri")
+                },
+            )
+            try {
+                val result = withRemote(context) { client ->
+                    ParcelFileDescriptor.open(packageFile, ParcelFileDescriptor.MODE_READ_ONLY)
+                        .use { packageFd ->
+                            client.importWallpaperPackage(
+                                packageFd = packageFd,
+                                displayNameHint = displayNameHint,
+                                previewUri = previewUri?.toString(),
+                                options = options.toBundle(),
+                            )
+                        }
+                }
+                parseOperationResult(result, "wallpaper import failed without an error message")
+            } finally {
+                runCatching { packageFile.delete() }
             }
-            parseOperationResult(result, "wallpaper import failed without an error message")
+        }
+    }
+
+    suspend fun importWallpaperBytes(
+        context: Context,
+        bytes: ByteArray,
+        displayNameHint: String,
+        metadataBytes: ByteArray? = null,
+        previewUri: Uri? = null,
+        options: RearWallpaperMetadataOptions? = null,
+    ): RearWallpaperOperationResult {
+        return withContext(Dispatchers.IO) {
+            val cacheFile = createImportCacheFile(context, displayNameHint)
+            writeImportPackageToFile(
+                targetFile = cacheFile,
+                metadataBytes = metadataBytes ?: options?.toMetadataJsonBytes(),
+                source = { bytes.inputStream() },
+            )
+            try {
+                previewUri?.let { grantReadAccess(context, it) }
+                val result = withRemote(context) { client ->
+                    ParcelFileDescriptor.open(cacheFile, ParcelFileDescriptor.MODE_READ_ONLY)
+                        .use { packageFd ->
+                            client.importWallpaperPackage(
+                                packageFd = packageFd,
+                                displayNameHint = displayNameHint.trim().ifBlank { cacheFile.name },
+                                previewUri = previewUri?.toString(),
+                                options = options?.toBundle() ?: Bundle(),
+                            )
+                        }
+                }
+                parseOperationResult(result, "wallpaper import failed without an error message")
+            } finally {
+                runCatching { cacheFile.delete() }
+            }
         }
     }
 
@@ -318,6 +373,13 @@ object RearWallpaperRepository {
         return File(context.filesDir, PREVIEW_CACHE_DIR)
     }
 
+    private fun createImportCacheFile(context: Context, displayNameHint: String): File {
+        val root = File(context.cacheDir, IMPORT_CACHE_DIR)
+        if (!root.exists()) root.mkdirs()
+        val fileName = sanitizeFileName(displayNameHint.ifBlank { "wallpaper.mrc" })
+        return File(root, "${System.currentTimeMillis()}_$fileName")
+    }
+
     private fun grantReadAccess(context: Context, uri: Uri) {
         runCatching {
             context.contentResolver.takePersistableUriPermission(
@@ -346,6 +408,96 @@ object RearWallpaperRepository {
                 cursor.getString(idx)
             }
         }.getOrNull()
+    }
+
+    private fun sanitizeFileName(source: String): String {
+        return source.trim().replace(Regex("[^a-zA-Z0-9._-]"), "_")
+    }
+
+    private fun writeImportPackageToFile(
+        targetFile: File,
+        metadataBytes: ByteArray?,
+        source: () -> java.io.InputStream,
+    ) {
+        targetFile.parentFile?.mkdirs()
+        val tempFile = File(targetFile.parentFile, "${targetFile.name}.tmp")
+        if (metadataBytes == null || metadataBytes.isEmpty()) {
+            source().use { input ->
+                tempFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+        } else {
+            source().use { rawInput ->
+                ZipInputStream(rawInput).use { input ->
+                    tempFile.outputStream().use { rawOutput ->
+                        ZipOutputStream(rawOutput).use { zipOutput ->
+                            var metadataWritten = false
+                            while (true) {
+                                val entry = input.nextEntry ?: break
+                                val normalizedName = entry.name.replace('\\', '/').trimStart('/')
+                                val targetEntry = ZipEntry(entry.name).apply {
+                                    time = entry.time
+                                    comment = entry.comment
+                                }
+                                if (entry.isDirectory) {
+                                    zipOutput.putNextEntry(targetEntry)
+                                    zipOutput.closeEntry()
+                                    continue
+                                }
+                                if (normalizedName == "metadata.mrm") {
+                                    zipOutput.putNextEntry(ZipEntry("metadata.mrm"))
+                                    zipOutput.write(metadataBytes)
+                                    zipOutput.closeEntry()
+                                    metadataWritten = true
+                                    continue
+                                }
+                                zipOutput.putNextEntry(targetEntry)
+                                input.copyTo(zipOutput)
+                                zipOutput.closeEntry()
+                            }
+                            if (!metadataWritten) {
+                                zipOutput.putNextEntry(ZipEntry("metadata.mrm"))
+                                zipOutput.write(metadataBytes)
+                                zipOutput.closeEntry()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (targetFile.exists()) targetFile.delete()
+        if (!tempFile.renameTo(targetFile)) {
+            tempFile.copyTo(targetFile, overwrite = true)
+            tempFile.delete()
+        }
+    }
+
+    private fun readBytes(context: Context, uri: Uri): ByteArray? {
+        return runCatching {
+            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        }.getOrNull()
+    }
+
+    private fun RearWallpaperMetadataOptions.toMetadataJsonBytes(): ByteArray {
+        return JSONObject().apply {
+            put("authors", localeObject(author, author))
+            put("designers", localeObject(designer, designer))
+            put("titles", localeObject(titleFallback, titleZhCn))
+            put("descriptions", localeObject(descriptionFallback, descriptionZhCn))
+            put("subResourceType", category)
+            put("resSubType", resSubType)
+            put("isRearScreenEditable", editable)
+            put("isThirdParties", thirdParties)
+            put("supportAon", supportAon)
+        }.toString(2).toByteArray(Charsets.UTF_8)
+    }
+
+    private fun localeObject(fallback: String, zhCn: String): JSONObject {
+        return JSONObject().apply {
+            put("fallback", fallback)
+            put("zh_CN", zhCn.ifBlank { fallback })
+        }
     }
 
     private fun RearWallpaperMetadataOptions.toBundle(): Bundle {

@@ -42,6 +42,9 @@ fun ModuleStyleManagerCard(
     showActions: Boolean = true,
     backgroundColor: Color? = null,
     contentColor: Color? = null,
+    titleColor: Color = contentColor ?: MiuixTheme.colorScheme.onSurface,
+    summaryColor: Color = contentColor ?: MiuixTheme.colorScheme.onSurfaceVariantSummary,
+    dividerColor: Color = MiuixTheme.colorScheme.outline.copy(alpha = 0.5f),
     onCardClick: (() -> Unit)? = null,
     leftAction: @Composable () -> Unit,
     rightAction: @Composable () -> Unit,
@@ -64,6 +67,7 @@ fun ModuleStyleManagerCard(
                         text = title,
                         fontSize = 17.sp,
                         fontWeight = FontWeight(550),
+                        color = titleColor,
                     )
                     if (!detailsBelowHeader) {
                         if (badges.isNotEmpty()) {
@@ -76,7 +80,7 @@ fun ModuleStyleManagerCard(
                             Text(
                                 text = line,
                                 fontSize = 12.sp,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                color = summaryColor,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -94,7 +98,7 @@ fun ModuleStyleManagerCard(
                     Text(
                         text = line,
                         fontSize = 12.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        color = summaryColor,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -121,7 +125,7 @@ fun ModuleStyleManagerCard(
                 HorizontalDivider(
                     modifier = Modifier.padding(vertical = 8.dp),
                     thickness = 0.5.dp,
-                    color = MiuixTheme.colorScheme.outline.copy(alpha = 0.5f),
+                    color = dividerColor,
                 )
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -148,7 +152,7 @@ fun ModuleStyleManagerCard(
                 HorizontalDivider(
                     modifier = Modifier.padding(vertical = 8.dp),
                     thickness = 0.5.dp,
-                    color = MiuixTheme.colorScheme.outline.copy(alpha = 0.5f),
+                    color = dividerColor,
                 )
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -193,17 +197,18 @@ fun ModuleStyleTextAction(
     icon: ImageVector,
     text: String,
     enabled: Boolean = true,
+    backgroundColor: Color = MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f),
+    contentColor: Color = MiuixTheme.colorScheme.onSurface,
     onClick: () -> Unit,
 ) {
-    val secondaryContainer = MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f)
-    val actionIconAlpha = if (secondaryContainer.luminance() < 0.5f) 0.7f else 0.9f
+    val actionIconAlpha = if (backgroundColor.luminance() < 0.5f) 0.7f else 0.9f
     val actionIconTint =
-        MiuixTheme.colorScheme.onSurface.copy(alpha = actionIconAlpha * if (enabled) 1f else 0.45f)
+        contentColor.copy(alpha = actionIconAlpha * if (enabled) 1f else 0.45f)
     IconButton(
         minHeight = 35.dp,
         minWidth = 35.dp,
         onClick = if (enabled) onClick else ({}),
-        backgroundColor = secondaryContainer.copy(alpha = if (enabled) 0.8f else 0.45f),
+        backgroundColor = backgroundColor.copy(alpha = if (enabled) backgroundColor.alpha else 0.45f),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp),
@@ -231,12 +236,16 @@ fun ModuleStyleDeleteAction(
     icon: ImageVector,
     text: String,
     enabled: Boolean = true,
+    backgroundColor: Color = MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f),
+    contentColor: Color = MiuixTheme.colorScheme.onSurface,
     onClick: () -> Unit,
 ) {
     ModuleStyleTextAction(
         icon = icon,
         text = text,
         enabled = enabled,
+        backgroundColor = backgroundColor,
+        contentColor = contentColor,
         onClick = onClick,
     )
 }

@@ -3,6 +3,7 @@ package hk.uwu.reareye.widgetapi
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.ParcelFileDescriptor
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -62,16 +63,14 @@ open class RearWallpaperApiClient(
     }
 
     open fun importWallpaperPackage(
-        packageUri: String,
+        packageFd: ParcelFileDescriptor,
         displayNameHint: String,
-        metadataUri: String?,
         previewUri: String?,
         options: Bundle,
     ): Bundle {
         return requireRemote().importWallpaperPackage(
-            packageUri,
+            packageFd,
             displayNameHint,
-            metadataUri,
             previewUri,
             options,
         ) ?: operationFailureBundle("hook service returned empty import result")

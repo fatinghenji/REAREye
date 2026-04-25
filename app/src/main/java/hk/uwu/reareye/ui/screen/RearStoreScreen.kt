@@ -24,6 +24,8 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -40,6 +42,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -74,6 +77,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
@@ -84,9 +88,12 @@ import androidx.core.net.toUri
 import hk.uwu.reareye.BuildConfig
 import hk.uwu.reareye.R
 import hk.uwu.reareye.repository.rearstore.RearStoreAuthor
+import hk.uwu.reareye.repository.rearstore.RearStoreInstallConflict
+import hk.uwu.reareye.repository.rearstore.RearStoreInstallConflictSource
 import hk.uwu.reareye.repository.rearstore.RearStoreInstallProgressStage
 import hk.uwu.reareye.repository.rearstore.RearStoreInstalledWidget
 import hk.uwu.reareye.repository.rearstore.RearStoreListItem
+import hk.uwu.reareye.repository.rearstore.RearStorePreparedInstallAsset
 import hk.uwu.reareye.repository.rearstore.RearStoreRelease
 import hk.uwu.reareye.repository.rearstore.RearStoreReleaseAsset
 import hk.uwu.reareye.repository.rearstore.RearStoreRepository
@@ -94,11 +101,16 @@ import hk.uwu.reareye.repository.rearstore.RearStoreWidgetDetail
 import hk.uwu.reareye.repository.rearstore.RearStoreWidgetInfoType
 import hk.uwu.reareye.repository.rearstore.RearStoreWidgetMetadataType
 import hk.uwu.reareye.repository.rearstore.resolvedType
+import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperMetadataOptions
+import hk.uwu.reareye.ui.components.DialogFormColumn
+import hk.uwu.reareye.ui.components.OverlayDialog
 import hk.uwu.reareye.ui.components.RearBadgeGroup
 import hk.uwu.reareye.ui.components.RearBadgeItem
 import hk.uwu.reareye.ui.components.RearBadgePalette
 import hk.uwu.reareye.ui.components.RearSearchBar
+import hk.uwu.reareye.ui.components.card.ModuleStyleDeleteAction
 import hk.uwu.reareye.ui.components.card.SuperCard
+import hk.uwu.reareye.ui.components.config.WallpaperMetadataFields
 import hk.uwu.reareye.ui.components.motion.ArtRevealItem
 import hk.uwu.reareye.ui.components.motion.ArtStaggeredReveal
 import hk.uwu.reareye.ui.components.rememberRearAccentBadgePalette
@@ -122,6 +134,7 @@ import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
@@ -139,6 +152,7 @@ import top.yukonga.miuix.kmp.basic.TabRowWithContour
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Download
 import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.icon.extended.Sort
@@ -188,6 +202,16 @@ private data class RearStoreActiveInstall(
     val phase: RearStoreInstallProgressStage = RearStoreInstallProgressStage.CONNECTING,
     val downloadedBytes: Long = 0L,
     val totalBytes: Long = -1L,
+)
+
+private data class RearStorePendingInstallConflict(
+    val release: RearStoreRelease,
+    val asset: RearStoreReleaseAsset,
+    val conflict: RearStoreInstallConflict,
+)
+
+private data class RearStorePendingWallpaperInstall(
+    val preparedAsset: RearStorePreparedInstallAsset,
 )
 
 private object RearStoreAvatarCache {
@@ -308,25 +332,38 @@ private fun rememberSkeletonPulseAlpha(label: String): Float {
 
 private data class RearStoreInstallInfo(
     val widgetInfoType: RearStoreWidgetInfoType,
-    val businessId: String,
+    val hasComponent: Boolean,
+    val componentId: String?,
     val hasBusinessSetup: Boolean,
     val hasCard: Boolean,
-    val cardId: String?,
+    val cardPackageName: String?,
+    val hasScene: Boolean,
+    val scenePackageName: String?,
+    val hasWallpaper: Boolean,
 )
 
 private fun defaultInstallInfo(detail: RearStoreWidgetDetail): RearStoreInstallInfo {
     val widgetInfoType = detail.widgetInfo.resolvedType()
+    val metadataType = detail.displayMetadataType()
     val businessSetupId = detail.widgetInfo?.businessSetup?.id.normalizedOrNull()
-    val businessId = businessSetupId ?: detail.widgetId
+    val cardPackageName = detail.widgetInfo?.cardSetup?.packageName.normalizedOrNull()
+    val sceneSetup = detail.widgetInfo?.sceneSetup
+    val sceneName = sceneSetup?.scene.normalizedOrNull()
+    val scenePackageName = sceneSetup?.packageName.normalizedOrNull()
     val hasCard = widgetInfoType == RearStoreWidgetInfoType.WIDGET &&
             detail.widgetInfo?.cardSetup != null
-    val cardId = if (hasCard) businessId else null
     return RearStoreInstallInfo(
         widgetInfoType = widgetInfoType,
-        businessId = businessId,
+        hasComponent = widgetInfoType == RearStoreWidgetInfoType.WIDGET,
+        componentId = businessSetupId,
         hasBusinessSetup = businessSetupId != null,
         hasCard = hasCard,
-        cardId = cardId,
+        cardPackageName = cardPackageName,
+        hasScene = metadataType == RearStoreWidgetMetadataType.NOTIFICATION &&
+                sceneName != null && scenePackageName != null,
+        scenePackageName = scenePackageName,
+        hasWallpaper = widgetInfoType == RearStoreWidgetInfoType.WALLPAPER ||
+                metadataType == RearStoreWidgetMetadataType.WALLPAPER,
     )
 }
 
@@ -435,6 +472,57 @@ private fun resolveInstallBlockMessage(
         return context.getString(R.string.rear_store_install_missing_business_setup)
     }
     return null
+}
+
+private fun defaultWallpaperMetadataOptions(detail: RearStoreWidgetDetail): RearWallpaperMetadataOptions {
+    val widgetName = detail.widgetInfo?.name.normalizedOrNull()
+        ?: detail.name.normalizedOrNull()
+        ?: detail.widgetId
+    val descriptionText = detail.description.normalizedOrNull().orEmpty()
+    val authorName = detail.author.displayName.normalizedOrNull().orEmpty()
+    return RearWallpaperMetadataOptions(
+        titleFallback = widgetName,
+        titleZhCn = widgetName,
+        descriptionFallback = descriptionText,
+        descriptionZhCn = descriptionText,
+        author = authorName,
+        designer = authorName,
+        category = "REAREye",
+        resSubType = "rearstore_" + detail.widgetId.lowercase(Locale.ROOT)
+            .replace(Regex("[^a-z0-9._-]"), "_"),
+        editable = false,
+        thirdParties = true,
+        supportAon = false,
+    )
+}
+
+private fun buildInstallConflictMessage(
+    context: Context,
+    conflict: RearStoreInstallConflict
+): String {
+    return when (conflict.source) {
+        RearStoreInstallConflictSource.SAME_WIDGET -> {
+            context.getString(
+                R.string.rear_store_install_conflict_same_widget,
+                conflict.businessId,
+            )
+        }
+
+        RearStoreInstallConflictSource.MANUAL_BUSINESS -> {
+            context.getString(
+                R.string.rear_store_install_conflict_manual_business,
+                conflict.businessId,
+            )
+        }
+
+        RearStoreInstallConflictSource.OTHER_STORE_WIDGET -> {
+            context.getString(
+                R.string.rear_store_install_conflict_other_widget,
+                conflict.businessId,
+                conflict.existingWidgetName ?: conflict.existingWidgetId ?: conflict.businessName,
+            )
+        }
+    }
 }
 
 private fun parseIsoEpochMillis(value: String?): Long {
@@ -907,6 +995,18 @@ private fun RearStoreDetailContent(
     var activeInstall by remember(widgetId) { mutableStateOf<RearStoreActiveInstall?>(null) }
     var readmeLoading by remember(widgetId) { mutableStateOf(false) }
     var readmeLoaded by remember(widgetId) { mutableStateOf(false) }
+    var installConflict by remember(widgetId) {
+        mutableStateOf<RearStorePendingInstallConflict?>(
+            null
+        )
+    }
+    var showUninstallDialog by remember(widgetId) { mutableStateOf(false) }
+    var pendingWallpaperInstall by remember(widgetId) {
+        mutableStateOf<RearStorePendingWallpaperInstall?>(null)
+    }
+    var wallpaperMetadataDraft by remember(widgetId) {
+        mutableStateOf<RearWallpaperMetadataOptions?>(null)
+    }
 
     suspend fun reloadDetail() {
         loading = true
@@ -940,6 +1040,197 @@ private fun RearStoreDetailContent(
         readmeLoading = false
     }
 
+    fun installAssetKey(release: RearStoreRelease, asset: RearStoreReleaseAsset): String {
+        return widgetId + ":" + release.tagName + ":" + asset.name
+    }
+
+    suspend fun performInstall(
+        release: RearStoreRelease,
+        asset: RearStoreReleaseAsset,
+        forceOverwrite: Boolean = false,
+        preparedAsset: RearStorePreparedInstallAsset? = null,
+        wallpaperMetadataOptions: RearWallpaperMetadataOptions? = null,
+    ) {
+        val widgetDetail = detail ?: return
+        val assetKey = installAssetKey(release, asset)
+        activeInstall = RearStoreActiveInstall(assetKey = assetKey)
+        val result = runCatching {
+            RearStoreRepository.quickInstallWidget(
+                context = context,
+                prefsManager = prefsManager,
+                detail = widgetDetail,
+                releaseTag = release.tagName,
+                assetName = asset.name,
+                forceOverwrite = forceOverwrite,
+                preparedAsset = preparedAsset,
+                wallpaperMetadataOptions = wallpaperMetadataOptions,
+                onProgress = { progress ->
+                    if (activeInstall?.assetKey == assetKey) {
+                        activeInstall = activeInstall?.copy(
+                            phase = progress.stage,
+                            downloadedBytes = progress.downloadedBytes,
+                            totalBytes = progress.totalBytes,
+                        )
+                    }
+                },
+            )
+        }
+        val installResult = result.getOrNull()
+        if (installResult != null) {
+            activeInstall = activeInstall?.takeIf { it.assetKey == assetKey }?.let {
+                if (it.totalBytes > 0L) {
+                    it.copy(
+                        phase = RearStoreInstallProgressStage.DOWNLOADING,
+                        downloadedBytes = it.totalBytes,
+                    )
+                } else {
+                    it
+                }
+            }
+            delay(360)
+            activeInstall = null
+            onInstalled()
+            Toast.makeText(
+                context,
+                context.getString(
+                    if (installResult.cardInstalled) {
+                        R.string.rear_store_install_success_with_card
+                    } else if (installResult.fallbackUsed) {
+                        R.string.rear_store_install_success_fallback
+                    } else {
+                        R.string.rear_store_install_success
+                    },
+                    installResult.widgetName,
+                    installResult.releaseTag ?: asset.name,
+                ),
+                Toast.LENGTH_SHORT,
+            ).show()
+        } else {
+            activeInstall = null
+            Toast.makeText(
+                context,
+                context.getString(
+                    R.string.rear_store_install_failed,
+                    result.exceptionOrNull()?.message ?: "unknown",
+                ),
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
+    suspend fun prepareWallpaperInstall(release: RearStoreRelease, asset: RearStoreReleaseAsset) {
+        val widgetDetail = detail ?: return
+        val assetKey = installAssetKey(release, asset)
+        activeInstall = RearStoreActiveInstall(assetKey = assetKey)
+        val preparedResult = runCatching {
+            RearStoreRepository.prepareInstallAsset(
+                prefsManager = prefsManager,
+                detail = widgetDetail,
+                releaseTag = release.tagName,
+                assetName = asset.name,
+                onProgress = { progress ->
+                    if (activeInstall?.assetKey == assetKey) {
+                        activeInstall = activeInstall?.copy(
+                            phase = progress.stage,
+                            downloadedBytes = progress.downloadedBytes,
+                            totalBytes = progress.totalBytes,
+                        )
+                    }
+                },
+            )
+        }
+        val preparedAsset = preparedResult.getOrNull()
+        if (preparedAsset == null) {
+            activeInstall = null
+            Toast.makeText(
+                context,
+                context.getString(
+                    R.string.rear_store_install_failed,
+                    preparedResult.exceptionOrNull()?.message ?: "unknown",
+                ),
+                Toast.LENGTH_SHORT,
+            ).show()
+            return
+        }
+        if (preparedAsset.embeddedMetadataBytes == null) {
+            activeInstall = null
+            wallpaperMetadataDraft = defaultWallpaperMetadataOptions(widgetDetail)
+            pendingWallpaperInstall =
+                RearStorePendingWallpaperInstall(preparedAsset = preparedAsset)
+            return
+        }
+        performInstall(
+            release = release,
+            asset = asset,
+            preparedAsset = preparedAsset,
+        )
+    }
+
+    suspend fun startInstallFlow(
+        release: RearStoreRelease,
+        asset: RearStoreReleaseAsset,
+        forceOverwrite: Boolean = false,
+    ) {
+        val widgetDetail = detail ?: return
+        val blockedMessage = resolveInstallBlockMessage(context, widgetDetail)
+        if (blockedMessage != null) {
+            Toast.makeText(context, blockedMessage, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val conflict = withContext(Dispatchers.IO) {
+            RearStoreRepository.resolveInstallConflict(prefsManager, widgetDetail)
+        }
+        if (conflict != null && !forceOverwrite) {
+            installConflict = RearStorePendingInstallConflict(
+                release = release,
+                asset = asset,
+                conflict = conflict,
+            )
+            return
+        }
+        if (widgetDetail.widgetInfo.resolvedType() == RearStoreWidgetInfoType.WALLPAPER) {
+            prepareWallpaperInstall(release, asset)
+        } else {
+            performInstall(release, asset, forceOverwrite = forceOverwrite)
+        }
+    }
+
+    suspend fun performUninstall(targetWidgetId: String) {
+        val result = runCatching {
+            RearStoreRepository.uninstallWidget(
+                context = context,
+                prefsManager = prefsManager,
+                widgetId = targetWidgetId,
+            )
+        }
+        val uninstallResult = result.getOrNull()
+        if (uninstallResult != null) {
+            showUninstallDialog = false
+            installConflict = null
+            pendingWallpaperInstall = null
+            wallpaperMetadataDraft = null
+            activeInstall = null
+            onInstalled()
+            Toast.makeText(
+                context,
+                context.getString(
+                    R.string.rear_store_uninstall_success,
+                    uninstallResult.widgetName,
+                ),
+                Toast.LENGTH_SHORT,
+            ).show()
+        } else {
+            Toast.makeText(
+                context,
+                context.getString(
+                    R.string.rear_store_uninstall_failed,
+                    result.exceptionOrNull()?.message ?: "unknown",
+                ),
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
     Scaffold(
         topBar = {
             val repositoryUrl = detail?.repository?.url?.normalizedOrNull()
@@ -962,6 +1253,15 @@ private fun RearStoreDetailContent(
                     }
                 },
                 actions = {
+                    if (installedWidget != null) {
+                        IconButton(onClick = { showUninstallDialog = true }) {
+                            Icon(
+                                imageVector = MiuixIcons.Delete,
+                                contentDescription = stringResource(R.string.rear_store_uninstall_action),
+                                tint = MiuixTheme.colorScheme.error,
+                            )
+                        }
+                    }
                     if (repositoryUrl != null) {
                         IconButton(
                             onClick = {
@@ -1073,6 +1373,7 @@ private fun RearStoreDetailContent(
                 RearStoreDetailTabContent(
                     selectedTab = selectedTab,
                     widgetDetail = widgetDetail,
+                    installedWidget = installedWidget,
                     visibleReleases = visibleReleases,
                     showAllReleases = showAllReleases,
                     readmeLoading = readmeLoading,
@@ -1081,79 +1382,190 @@ private fun RearStoreDetailContent(
                     activeInstall = activeInstall,
                     authorPlaceholderAlpha = authorPlaceholderAlpha,
                     onShowAllReleases = { showAllReleases = true },
+                    onRequestUninstall = { showUninstallDialog = true },
                     onInstallAsset = { release, asset ->
-                        scope.launch {
-                            val blockedMessage = resolveInstallBlockMessage(context, widgetDetail)
-                            if (blockedMessage != null) {
-                                Toast.makeText(context, blockedMessage, Toast.LENGTH_SHORT).show()
-                                return@launch
-                            }
-                            val assetKey =
-                                widgetDetail.widgetId + ":" + release.tagName + ":" + asset.name
-                            activeInstall = RearStoreActiveInstall(assetKey = assetKey)
-                            val result = runCatching {
-                                RearStoreRepository.quickInstallWidget(
-                                    context = context,
-                                    prefsManager = prefsManager,
-                                    widgetId = widgetDetail.widgetId,
-                                    releaseTag = release.tagName,
-                                    assetName = asset.name,
-                                    onProgress = { progress ->
-                                        if (activeInstall?.assetKey == assetKey) {
-                                            activeInstall = activeInstall?.copy(
-                                                phase = progress.stage,
-                                                downloadedBytes = progress.downloadedBytes,
-                                                totalBytes = progress.totalBytes,
-                                            )
-                                        }
-                                    },
-                                )
-                            }
-                            val installResult = result.getOrNull()
-                            if (installResult != null) {
-                                activeInstall =
-                                    activeInstall?.takeIf { it.assetKey == assetKey }?.let {
-                                        if (it.totalBytes > 0L) {
-                                            it.copy(
-                                                phase = RearStoreInstallProgressStage.DOWNLOADING,
-                                                downloadedBytes = it.totalBytes,
-                                            )
-                                        } else {
-                                            it
-                                        }
-                                    }
-                                delay(360)
-                                activeInstall = null
-                                onInstalled()
-                                Toast.makeText(
-                                    context,
-                                    context.getString(
-                                        if (installResult.cardInstalled) {
-                                            R.string.rear_store_install_success_with_card
-                                        } else if (installResult.fallbackUsed) {
-                                            R.string.rear_store_install_success_fallback
-                                        } else {
-                                            R.string.rear_store_install_success
-                                        },
-                                        installResult.widgetName,
-                                        installResult.releaseTag ?: asset.name,
-                                    ),
-                                    Toast.LENGTH_SHORT,
-                                ).show()
-                            } else {
-                                activeInstall = null
-                                Toast.makeText(
-                                    context,
-                                    context.getString(
-                                        R.string.rear_store_install_failed,
-                                        result.exceptionOrNull()?.message ?: "unknown",
-                                    ),
-                                    Toast.LENGTH_SHORT,
-                                ).show()
-                            }
-                        }
+                        scope.launch { startInstallFlow(release, asset) }
                     },
                 )
+            }
+        }
+    }
+
+    OverlayDialog(
+        show = showUninstallDialog && installedWidget != null,
+        title = stringResource(R.string.rear_store_uninstall_dialog_title),
+        onDismissRequest = { showUninstallDialog = false },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                RearStoreDialogMessageCard(
+                    message = stringResource(
+                        R.string.rear_store_uninstall_dialog_message,
+                        installedWidget?.widgetName ?: widgetId,
+                    ),
+                )
+            }
+            Button(
+                onClick = {
+                    showUninstallDialog = false
+                    scope.launch { performUninstall(widgetId) }
+                },
+                colors = ButtonDefaults.buttonColors(
+                    color = MiuixTheme.colorScheme.error,
+                    contentColor = MiuixTheme.colorScheme.onPrimary,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.rear_store_uninstall_action))
+            }
+            Button(
+                onClick = { showUninstallDialog = false },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.rear_widget_cancel))
+            }
+        }
+    }
+
+    val conflictDialog = installConflict
+    OverlayDialog(
+        show = conflictDialog != null,
+        title = stringResource(R.string.rear_store_install_conflict_title),
+        onDismissRequest = { installConflict = null },
+    ) {
+        val conflict = conflictDialog?.conflict ?: return@OverlayDialog
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                RearStoreDialogMessageCard(
+                    message = buildInstallConflictMessage(context, conflict),
+                )
+            }
+            if (conflict.source == RearStoreInstallConflictSource.OTHER_STORE_WIDGET &&
+                conflict.existingWidgetId != null
+            ) {
+                Button(
+                    onClick = {
+                        val targetWidgetId = conflict.existingWidgetId
+                        installConflict = null
+                        scope.launch { performUninstall(targetWidgetId) }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.rear_store_uninstall_conflicting_widget))
+                }
+            }
+            Button(
+                onClick = {
+                    installConflict = null
+                    scope.launch {
+                        startInstallFlow(
+                            release = conflictDialog.release,
+                            asset = conflictDialog.asset,
+                            forceOverwrite = true,
+                        )
+                    }
+                },
+                colors = ButtonDefaults.buttonColorsPrimary(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.rear_store_force_overwrite))
+            }
+            Button(
+                onClick = { installConflict = null },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.rear_widget_cancel))
+            }
+        }
+    }
+
+    val wallpaperDraft = wallpaperMetadataDraft
+    val pendingWallpaper = pendingWallpaperInstall
+    OverlayDialog(
+        show = pendingWallpaper != null && wallpaperDraft != null,
+        title = stringResource(R.string.rear_store_wallpaper_metadata_title),
+        onDismissRequest = {
+            pendingWallpaperInstall = null
+            wallpaperMetadataDraft = null
+        },
+    ) {
+        DialogFormColumn(maxHeight = 620.dp) {
+            WallpaperMetadataFields(
+                titleFallback = wallpaperDraft?.titleFallback.orEmpty(),
+                titleZhCn = wallpaperDraft?.titleZhCn.orEmpty(),
+                descriptionFallback = wallpaperDraft?.descriptionFallback.orEmpty(),
+                descriptionZhCn = wallpaperDraft?.descriptionZhCn.orEmpty(),
+                author = wallpaperDraft?.author.orEmpty(),
+                designer = wallpaperDraft?.designer.orEmpty(),
+                category = wallpaperDraft?.category.orEmpty(),
+                resSubType = wallpaperDraft?.resSubType.orEmpty(),
+                editable = wallpaperDraft?.editable ?: false,
+                thirdParties = wallpaperDraft?.thirdParties ?: true,
+                supportAon = wallpaperDraft?.supportAon ?: false,
+                onTitleFallbackChange = {
+                    wallpaperMetadataDraft = wallpaperMetadataDraft?.copy(titleFallback = it)
+                },
+                onTitleZhCnChange = {
+                    wallpaperMetadataDraft = wallpaperMetadataDraft?.copy(titleZhCn = it)
+                },
+                onDescriptionFallbackChange = {
+                    wallpaperMetadataDraft = wallpaperMetadataDraft?.copy(descriptionFallback = it)
+                },
+                onDescriptionZhCnChange = {
+                    wallpaperMetadataDraft = wallpaperMetadataDraft?.copy(descriptionZhCn = it)
+                },
+                onAuthorChange = {
+                    wallpaperMetadataDraft = wallpaperMetadataDraft?.copy(author = it)
+                },
+                onDesignerChange = {
+                    wallpaperMetadataDraft = wallpaperMetadataDraft?.copy(designer = it)
+                },
+                onCategoryChange = {
+                    wallpaperMetadataDraft = wallpaperMetadataDraft?.copy(category = it)
+                },
+                onResSubTypeChange = {
+                    wallpaperMetadataDraft = wallpaperMetadataDraft?.copy(resSubType = it)
+                },
+                onEditableChange = {
+                    wallpaperMetadataDraft = wallpaperMetadataDraft?.copy(editable = it)
+                },
+                onThirdPartiesChange = {
+                    wallpaperMetadataDraft = wallpaperMetadataDraft?.copy(thirdParties = it)
+                },
+                onSupportAonChange = {
+                    wallpaperMetadataDraft = wallpaperMetadataDraft?.copy(supportAon = it)
+                },
+            )
+            Button(
+                onClick = {
+                    val currentDraft = wallpaperMetadataDraft ?: return@Button
+                    val prepared = pendingWallpaperInstall?.preparedAsset ?: return@Button
+                    val release = prepared.release
+                    val asset = prepared.asset
+                    pendingWallpaperInstall = null
+                    wallpaperMetadataDraft = null
+                    scope.launch {
+                        performInstall(
+                            release = release,
+                            asset = asset,
+                            preparedAsset = prepared,
+                            wallpaperMetadataOptions = currentDraft,
+                        )
+                    }
+                },
+                colors = ButtonDefaults.buttonColorsPrimary(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.rear_widget_confirm))
+            }
+            Button(
+                onClick = {
+                    pendingWallpaperInstall = null
+                    wallpaperMetadataDraft = null
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.rear_widget_cancel))
             }
         }
     }
@@ -1163,6 +1575,7 @@ private fun RearStoreDetailContent(
 private fun RearStoreDetailTabContent(
     selectedTab: RearStoreDetailTab,
     widgetDetail: RearStoreWidgetDetail,
+    installedWidget: RearStoreInstalledWidget?,
     visibleReleases: List<RearStoreRelease>,
     showAllReleases: Boolean,
     readmeLoading: Boolean,
@@ -1171,6 +1584,7 @@ private fun RearStoreDetailTabContent(
     activeInstall: RearStoreActiveInstall?,
     authorPlaceholderAlpha: Float,
     onShowAllReleases: () -> Unit,
+    onRequestUninstall: () -> Unit,
     onInstallAsset: (RearStoreRelease, RearStoreReleaseAsset) -> Unit,
 ) {
     Column(
@@ -1223,6 +1637,12 @@ private fun RearStoreDetailTabContent(
             }
 
             RearStoreDetailTab.INFO -> {
+                installedWidget?.let {
+                    RearStoreUninstallCard(
+                        installedWidget = it,
+                        onClick = onRequestUninstall,
+                    )
+                }
                 RearStoreInstallInfoCard(detail = widgetDetail)
                 RearStoreRepositoryCard(detail = widgetDetail)
                 RearStoreAuthorCard(
@@ -1232,6 +1652,77 @@ private fun RearStoreDetailTabContent(
             }
         }
     }
+}
+
+@Composable
+private fun RearStoreUninstallCard(
+    installedWidget: RearStoreInstalledWidget,
+    onClick: () -> Unit,
+) {
+    val backgroundColor = MiuixTheme.colorScheme.error.copy(alpha = 0.92f)
+    val titleColor = MiuixTheme.colorScheme.errorContainer
+    val summaryColor = MiuixTheme.colorScheme.errorContainer.copy(alpha = 0.9f)
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.defaultColors(
+            color = backgroundColor,
+            contentColor = titleColor,
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 15.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.rear_store_uninstall_card_title),
+                    color = titleColor,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 16.sp,
+                )
+                Text(
+                    text = stringResource(
+                        R.string.rear_store_uninstall_card_summary,
+                        installedWidget.widgetName,
+                        installedWidget.releaseTag
+                            ?: stringResource(R.string.rear_store_status_not_installed),
+                    ),
+                    color = summaryColor,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    textAlign = TextAlign.Start,
+                )
+            }
+            ModuleStyleDeleteAction(
+                icon = MiuixIcons.Delete,
+                text = stringResource(R.string.rear_store_uninstall_action),
+                backgroundColor = MiuixTheme.colorScheme.errorContainer.copy(alpha = 0.14f),
+                contentColor = titleColor,
+                onClick = onClick,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RearStoreDialogMessageCard(message: String) {
+    Text(
+        text = message,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        color = MiuixTheme.colorScheme.onBackground,
+        fontSize = 15.sp,
+        fontWeight = FontWeight.Normal,
+        textAlign = TextAlign.Start,
+        lineHeight = 21.sp,
+    )
 }
 
 @Composable
@@ -1526,6 +2017,7 @@ private fun RearStoreAssetRow(
 ) {
     val assetKey = widgetId + ":" + release.tagName + ":" + asset.name
     val installState = activeInstall?.takeIf { it.assetKey == assetKey }
+    val isInstalling = installState != null
 
     Row(
         modifier = Modifier
@@ -1555,38 +2047,55 @@ private fun RearStoreAssetRow(
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
         }
-        AnimatedContent(
-            targetState = installState,
-            transitionSpec = {
-                fadeIn(
-                    animationSpec = tween(
-                        durationMillis = 180,
-                        delayMillis = 50,
-                        easing = LinearOutSlowInEasing,
+        Box(
+            modifier = Modifier.widthIn(min = 112.dp),
+            contentAlignment = Alignment.CenterEnd,
+        ) {
+            AnimatedContent(
+                targetState = isInstalling,
+                transitionSpec = {
+                    (fadeIn(
+                        animationSpec = tween(
+                            durationMillis = 180,
+                            delayMillis = 30,
+                            easing = LinearOutSlowInEasing,
+                        )
+                    ) + scaleIn(
+                        initialScale = 0.96f,
+                        animationSpec = tween(
+                            durationMillis = 220,
+                            easing = FastOutSlowInEasing,
+                        )
+                    )) togetherWith (fadeOut(
+                        animationSpec = tween(
+                            durationMillis = 120,
+                            easing = FastOutLinearInEasing,
+                        )
+                    ) + scaleOut(
+                        targetScale = 0.98f,
+                        animationSpec = tween(
+                            durationMillis = 160,
+                            easing = FastOutLinearInEasing,
+                        )
+                    ))
+                },
+                label = "RearStoreAssetInstallState",
+            ) { installing ->
+                if (installing && installState != null) {
+                    RearStoreInstallProgressChip(installState = installState)
+                } else {
+                    RearStoreDownloadBadge(
+                        text = stringResource(R.string.rear_store_asset_install),
+                        onClick = onInstall,
                     )
-                ) togetherWith fadeOut(
-                    animationSpec = tween(
-                        durationMillis = 130,
-                        easing = FastOutLinearInEasing,
-                    )
-                )
-            },
-            label = "RearStoreAssetInstallState",
-        ) { currentInstallState ->
-            if (currentInstallState != null) {
-                RearStoreInstallProgressView(installState = currentInstallState)
-            } else {
-                RearStoreDownloadBadge(
-                    text = stringResource(R.string.rear_store_asset_install),
-                    onClick = onInstall,
-                )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun RearStoreInstallProgressView(installState: RearStoreActiveInstall) {
+private fun RearStoreInstallProgressChip(installState: RearStoreActiveInstall) {
     val totalBytes = installState.totalBytes
     val downloadedBytes = installState.downloadedBytes.coerceAtLeast(0L)
     val determinateProgress = if (totalBytes > 0L) {
@@ -1594,25 +2103,89 @@ private fun RearStoreInstallProgressView(installState: RearStoreActiveInstall) {
     } else {
         null
     }
-    Box(
-        modifier = Modifier.size(28.dp),
-        contentAlignment = Alignment.Center,
+    val statusText = when (installState.phase) {
+        RearStoreInstallProgressStage.CONNECTING -> {
+            stringResource(R.string.rear_store_install_progress_connecting)
+        }
+
+        RearStoreInstallProgressStage.DOWNLOADING -> {
+            determinateProgress?.let {
+                stringResource(
+                    R.string.rear_store_install_progress_downloading_percent,
+                    (it * 100f).roundToInt(),
+                )
+            } ?: stringResource(R.string.rear_store_install_progress_downloading)
+        }
+
+        RearStoreInstallProgressStage.INSTALLING -> {
+            stringResource(R.string.rear_store_install_progress_installing)
+        }
+    }
+    Surface(
+        color = MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f),
+        shape = RoundedCornerShape(18.dp),
     ) {
-        if (determinateProgress != null && installState.phase == RearStoreInstallProgressStage.DOWNLOADING) {
-            androidx.compose.material3.CircularProgressIndicator(
-                progress = { determinateProgress },
-                modifier = Modifier.size(24.dp),
-                strokeWidth = 2.5.dp,
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (determinateProgress != null && installState.phase == RearStoreInstallProgressStage.DOWNLOADING) {
+                androidx.compose.material3.CircularProgressIndicator(
+                    progress = { determinateProgress },
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.2.dp,
+                    color = MiuixTheme.colorScheme.primary,
+                    trackColor = MiuixTheme.colorScheme.primary.copy(alpha = 0.16f),
+                )
+            } else {
+                androidx.compose.material3.CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.2.dp,
+                    color = MiuixTheme.colorScheme.primary,
+                    trackColor = MiuixTheme.colorScheme.primary.copy(alpha = 0.16f),
+                )
+            }
+            Text(
+                text = statusText,
                 color = MiuixTheme.colorScheme.primary,
-                trackColor = MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
             )
-        } else {
-            androidx.compose.material3.CircularProgressIndicator(
-                modifier = Modifier.size(24.dp),
-                strokeWidth = 2.5.dp,
-                color = MiuixTheme.colorScheme.primary,
-                trackColor = MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f),
-            )
+        }
+    }
+}
+
+private enum class RearStoreInstallInfoBadgeGroup {
+    COMPONENT,
+    CARD,
+    NOTIFICATION,
+    WALLPAPER,
+    WARNING,
+}
+
+@Composable
+private fun rememberInstallInfoBadgePalette(group: RearStoreInstallInfoBadgeGroup): RearBadgePalette {
+    return when (group) {
+        RearStoreInstallInfoBadgeGroup.COMPONENT -> {
+            rememberRearAccentBadgePalette(Color(0xFF10B981))
+        }
+
+        RearStoreInstallInfoBadgeGroup.CARD -> {
+            rememberRearAccentBadgePalette(Color(0xFF6366F1))
+        }
+
+        RearStoreInstallInfoBadgeGroup.NOTIFICATION -> {
+            rememberRearAccentBadgePalette(Color(0xFF8B5CF6))
+        }
+
+        RearStoreInstallInfoBadgeGroup.WALLPAPER -> {
+            rememberRearAccentBadgePalette(Color(0xFF06B6D4))
+        }
+
+        RearStoreInstallInfoBadgeGroup.WARNING -> {
+            rememberRearAccentBadgePalette(Color(0xFFF59E0B))
         }
     }
 }
@@ -1620,45 +2193,111 @@ private fun RearStoreInstallProgressView(installState: RearStoreActiveInstall) {
 @Composable
 private fun RearStoreInstallInfoCard(detail: RearStoreWidgetDetail) {
     val installInfo = defaultInstallInfo(detail)
-    val typeLabel = stringResource(installInfo.widgetInfoType.labelResId())
-    val summaryText = buildString {
-        append(stringResource(R.string.rear_store_widget_id_summary, installInfo.businessId))
-        append('\n')
-        append(stringResource(R.string.rear_store_install_mode_summary, typeLabel))
-        if (installInfo.widgetInfoType == RearStoreWidgetInfoType.WIDGET && !installInfo.hasBusinessSetup) {
-            append('\n')
-            append(stringResource(R.string.rear_store_install_missing_business_setup))
-        }
-        append('\n')
-        append(
-            stringResource(
-                R.string.rear_store_will_install_card_summary,
-                stringResource(
-                    if (installInfo.hasCard) R.string.rear_store_yes else R.string.rear_store_no
-                ),
+    val componentPalette = rememberInstallInfoBadgePalette(RearStoreInstallInfoBadgeGroup.COMPONENT)
+    val cardPalette = rememberInstallInfoBadgePalette(RearStoreInstallInfoBadgeGroup.CARD)
+    val notificationPalette =
+        rememberInstallInfoBadgePalette(RearStoreInstallInfoBadgeGroup.NOTIFICATION)
+    val wallpaperPalette = rememberInstallInfoBadgePalette(RearStoreInstallInfoBadgeGroup.WALLPAPER)
+    val warningPalette = rememberInstallInfoBadgePalette(RearStoreInstallInfoBadgeGroup.WARNING)
+    val componentBadges = buildList {
+        if (!installInfo.hasComponent) return@buildList
+        add(
+            RearBadgeItem(
+                text = stringResource(R.string.rear_store_install_mode_widget_badge),
+                palette = componentPalette,
             )
         )
-        installInfo.cardId?.let {
-            append('\n')
-            append(stringResource(R.string.rear_store_card_id_summary, it))
+        installInfo.componentId?.let {
+            add(
+                RearBadgeItem(
+                    text = stringResource(R.string.rear_store_install_badge_component_id, it),
+                    palette = componentPalette,
+                )
+            )
         }
-        if (installInfo.hasCard) {
-            detail.widgetInfo?.cardSetup
-                ?.packageName
-                ?.normalizedOrNull()
-                ?.let {
-                    append('\n')
-                    append(stringResource(R.string.rear_store_card_package_summary, it))
-                }
+    }
+    val cardBadges = buildList {
+        if (!installInfo.hasCard) return@buildList
+        add(
+            RearBadgeItem(
+                text = stringResource(R.string.rear_store_install_badge_card),
+                palette = cardPalette,
+            )
+        )
+        installInfo.cardPackageName?.takeIf { installInfo.hasCard }?.let {
+            add(
+                RearBadgeItem(
+                    text = stringResource(R.string.rear_store_install_badge_card_package, it),
+                    palette = cardPalette,
+                )
+            )
+        }
+    }
+    val notificationBadges = buildList {
+        if (!installInfo.hasScene) return@buildList
+        add(
+            RearBadgeItem(
+                text = stringResource(R.string.rear_store_install_badge_scene),
+                palette = notificationPalette,
+            )
+        )
+        installInfo.scenePackageName?.let {
+            add(
+                RearBadgeItem(
+                    text = stringResource(R.string.rear_store_install_badge_scene_package, it),
+                    palette = notificationPalette,
+                )
+            )
+        }
+    }
+    val wallpaperBadges = buildList {
+        if (!installInfo.hasWallpaper) return@buildList
+        add(
+            RearBadgeItem(
+                text = stringResource(R.string.rear_store_install_mode_wallpaper_badge),
+                palette = wallpaperPalette,
+            )
+        )
+    }
+    val warningBadges = buildList {
+        if (installInfo.hasComponent && !installInfo.hasBusinessSetup) {
+            add(
+                RearBadgeItem(
+                    text = stringResource(R.string.rear_store_install_missing_business_setup),
+                    palette = warningPalette,
+                )
+            )
         }
     }
     Card(modifier = Modifier.fillMaxWidth()) {
-        BasicComponent(
-            title = stringResource(R.string.rear_store_install_info_title),
-            summary = summaryText,
-            summaryColor = BasicComponentDefaults.summaryColor(),
-            onClick = null,
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.rear_store_install_info_title),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MiuixTheme.colorScheme.onBackground,
+            )
+            if (componentBadges.isNotEmpty()) {
+                RearBadgeGroup(badges = componentBadges)
+            }
+            if (cardBadges.isNotEmpty()) {
+                RearBadgeGroup(badges = cardBadges)
+            }
+            if (notificationBadges.isNotEmpty()) {
+                RearBadgeGroup(badges = notificationBadges)
+            }
+            if (wallpaperBadges.isNotEmpty()) {
+                RearBadgeGroup(badges = wallpaperBadges)
+            }
+            if (warningBadges.isNotEmpty()) {
+                RearBadgeGroup(badges = warningBadges)
+            }
+        }
     }
 }
 
