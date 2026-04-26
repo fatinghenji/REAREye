@@ -35,6 +35,7 @@ import java.util.TimeZone
 import java.util.zip.ZipInputStream
 
 private const val DEFAULT_COMPONENT_ROUTE_PACKAGE = "com.xiaomi.subscreencenter"
+private const val WIDGET_VERSION_CHECK_DISABLED = -1L
 
 private fun String?.normalizedOrNull(): String? {
     return this?.trim()?.takeIf { it.isNotEmpty() }
@@ -79,6 +80,15 @@ enum class RearStoreWidgetMetadataType(val rawValue: String) {
 
 fun RearStoreWidgetInfo?.resolvedType(): RearStoreWidgetInfoType {
     return RearStoreWidgetInfoType.fromRaw(this?.type)
+}
+
+fun RearStoreWidgetInfo?.supportsModuleVersion(
+    versionCode: Long = BuildConfig.VERSION_CODE.toLong(),
+): Boolean {
+    val minVersion = this?.minVersion ?: WIDGET_VERSION_CHECK_DISABLED
+    val maxVersion = this?.maxVersion ?: WIDGET_VERSION_CHECK_DISABLED
+    return (minVersion == WIDGET_VERSION_CHECK_DISABLED || versionCode >= minVersion) &&
+            (maxVersion == WIDGET_VERSION_CHECK_DISABLED || versionCode <= maxVersion)
 }
 
 fun RearStoreWidgetMetadata?.resolvedType(): RearStoreWidgetMetadataType {
@@ -281,6 +291,10 @@ data class RearStoreWidgetInfo(
     val cardSetup: RearStoreCardSetup? = null,
     @SerializedName(value = "scene_setup", alternate = ["sceneSetup"])
     val sceneSetup: RearStoreSceneSetup? = null,
+    @SerializedName(value = "minVersion", alternate = ["min_version"])
+    val minVersion: Long = WIDGET_VERSION_CHECK_DISABLED,
+    @SerializedName(value = "maxVersion", alternate = ["max_version"])
+    val maxVersion: Long = WIDGET_VERSION_CHECK_DISABLED,
 )
 
 @Keep
@@ -835,6 +849,9 @@ object RearStoreRepository {
         val widgetInfoType = detail.widgetInfo.resolvedType()
         if (!widgetInfoType.supportedInCurrentVersion) {
             error("Install mode '${widgetInfoType.rawValue}' is not supported by current version")
+        }
+        if (!detail.widgetInfo.supportsModuleVersion()) {
+            error("Current module version does not support installing this component")
         }
         val conflict = resolveInstallConflict(prefsManager, detail)
         if (conflict != null && !forceOverwrite) {

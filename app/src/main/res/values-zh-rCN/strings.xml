@@ -332,6 +332,7 @@
     <string name="rear_store_asset_install">安装</string>
     <string name="rear_store_asset_meta_summary">%1$s / %2$d 次下载</string>
     <string name="rear_store_install_type_not_supported">当前版本暂不支持%1$s安装模式</string>
+    <string name="rear_store_install_version_not_supported">当前模块版本不支持安装该组件</string>
     <string name="rear_store_install_missing_business_setup">缺失组件配置文件</string>
     <string name="rear_store_install_conflict_title">安装提示</string>
     <string name="rear_store_install_conflict_same_widget">组件 %1$s 已经安装，是否继续覆盖当前安装？</string>

@@ -101,6 +101,7 @@ import hk.uwu.reareye.repository.rearstore.RearStoreWidgetDetail
 import hk.uwu.reareye.repository.rearstore.RearStoreWidgetInfoType
 import hk.uwu.reareye.repository.rearstore.RearStoreWidgetMetadataType
 import hk.uwu.reareye.repository.rearstore.resolvedType
+import hk.uwu.reareye.repository.rearstore.supportsModuleVersion
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperMetadataOptions
 import hk.uwu.reareye.ui.components.DialogFormColumn
 import hk.uwu.reareye.ui.components.OverlayDialog
@@ -465,6 +466,9 @@ private fun resolveInstallBlockMessage(
             R.string.rear_store_install_type_not_supported,
             context.getString(widgetInfoType.labelResId()),
         )
+    }
+    if (!detail.widgetInfo.supportsModuleVersion()) {
+        return context.getString(R.string.rear_store_install_version_not_supported)
     }
     if (widgetInfoType == RearStoreWidgetInfoType.WIDGET &&
         detail.widgetInfo?.businessSetup?.id.normalizedOrNull() == null
