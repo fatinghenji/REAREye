@@ -24,4 +24,8 @@ interface IRearWallpaperApiService {
     Bundle generateWallpaperPreview(int wallpaperId);
 
     Bundle deleteWallpaper(int wallpaperId);
+
+    Bundle resolveTemplateConfigState(int wallpaperId, String currentOneConfigJson);
+
+    Bundle saveTemplateConfig(int wallpaperId, String oneConfigJson);
 }

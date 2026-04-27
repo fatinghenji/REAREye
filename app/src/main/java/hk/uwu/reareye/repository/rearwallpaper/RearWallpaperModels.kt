@@ -16,6 +16,8 @@ data class RearWallpaperInfo(
     val editable: Boolean = false,
     val thirdParties: Boolean = false,
     val supportAon: Boolean = false,
+    val templateConfigAvailable: Boolean = false,
+    val templateConfigCustomized: Boolean = false,
     val cachePath: String? = null,
 )
 

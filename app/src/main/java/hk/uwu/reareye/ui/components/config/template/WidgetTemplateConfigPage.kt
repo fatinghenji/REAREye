@@ -1,6 +1,7 @@
 package hk.uwu.reareye.ui.components.config.template
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -114,6 +115,7 @@ import hk.uwu.reareye.repository.widgettemplate.WidgetTemplateField
 import hk.uwu.reareye.repository.widgettemplate.WidgetTemplateSchema
 import hk.uwu.reareye.ui.components.OverlayDialog
 import hk.uwu.reareye.ui.components.rememberRearWidgetTemplatePreviewBitmap
+import hk.uwu.reareye.widgetapi.RearWidgetTemplateConfigState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -150,6 +152,25 @@ fun WidgetTemplateConfigScreenContent(
     currentConfigJson: String?,
     onBack: () -> Unit,
     onSave: (String?) -> Unit,
+    titleText: String? = null,
+    loadingText: String? = null,
+    unavailableText: String? = null,
+    stateResolver: suspend (Context, String, String, String?) -> RearWidgetTemplateConfigState? = { context, businessName, sourcePath, configJson ->
+        RearWidgetManagerRepository.resolveTemplateConfigState(
+            context = context,
+            business = businessName,
+            sourceFilePath = sourcePath,
+            currentOneConfigJson = configJson,
+        )
+    },
+    configNormalizer: suspend (Context, String, WidgetTemplateSchema, String) -> String? = { context, businessName, schemaForSave, encoded ->
+        RearWidgetManagerRepository.resolveTemplateConfigState(
+            context = context,
+            business = businessName,
+            sourceFilePath = schemaForSave.sourcePath,
+            currentOneConfigJson = encoded,
+        )?.oneConfigJson
+    },
 ) {
     val context = LocalContext.current
     val saveScope = rememberCoroutineScope()
@@ -164,12 +185,7 @@ fun WidgetTemplateConfigScreenContent(
     LaunchedEffect(business, sourceFilePath, currentConfigJson) {
         loading = true
         val state = withContext(Dispatchers.IO) {
-            RearWidgetManagerRepository.resolveTemplateConfigState(
-                context = context,
-                business = business,
-                sourceFilePath = sourceFilePath,
-                currentOneConfigJson = currentConfigJson,
-            )
+            stateResolver(context, business, sourceFilePath, currentConfigJson)
         }
         schema = state?.templateSchemaJson?.let(WidgetTemplateConfigRepository::decodeSchema)
         workingConfig = state?.oneConfigJson
@@ -181,13 +197,14 @@ fun WidgetTemplateConfigScreenContent(
     val resolvedSchema = schema
     val resolvedConfig = workingConfig
     TemplateVarConfigScreenScaffold(
-        title = stringResource(R.string.rear_widget_card_template_title),
+        title = titleText ?: stringResource(R.string.rear_widget_card_template_title),
         loading = loading,
         schema = resolvedSchema,
         config = resolvedConfig,
-        hasEditableItems = resolvedSchema?.editableItemCount?.let { it > 0 } == true,
-        loadingText = stringResource(R.string.rear_widget_card_template_loading),
-        unavailableText = stringResource(R.string.rear_widget_card_template_unavailable),
+        hasEditableItems = resolvedSchema?.items?.isNotEmpty() == true,
+        loadingText = loadingText ?: stringResource(R.string.rear_widget_card_template_loading),
+        unavailableText = unavailableText
+            ?: stringResource(R.string.rear_widget_card_template_unavailable),
         confirmText = stringResource(R.string.rear_widget_confirm),
         resetText = stringResource(R.string.rear_widget_card_template_use_defaults),
         onBack = onBack,
@@ -198,12 +215,7 @@ fun WidgetTemplateConfigScreenContent(
                     workingConfig ?: RearWidgetOneConfig(),
                 )
                 val normalized = withContext(Dispatchers.IO) {
-                    RearWidgetManagerRepository.resolveTemplateConfigState(
-                        context = context,
-                        business = business,
-                        sourceFilePath = schemaForSave.sourcePath,
-                        currentOneConfigJson = encoded,
-                    )?.oneConfigJson
+                    configNormalizer(context, business, schemaForSave, encoded)
                 }
                 onSave(normalized?.takeIf { it.isNotBlank() })
             }

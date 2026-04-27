@@ -152,6 +152,11 @@
     <string name="rear_wallpaper_edit_metadata">Edit Metadata</string>
     <string name="rear_wallpaper_metadata_saved">Metadata saved</string>
     <string name="rear_wallpaper_metadata_save_failed">Failed to save metadata: %1$s</string>
+    <string name="rear_wallpaper_template_title">Wallpaper Template Config</string>
+    <string name="rear_wallpaper_template_loading">Loading wallpaper template config…</string>
+    <string name="rear_wallpaper_template_unavailable">No editable template config is available for this wallpaper.</string>
+    <string name="rear_wallpaper_template_saved">Wallpaper template config saved</string>
+    <string name="rear_wallpaper_template_save_failed">Failed to save wallpaper template config: %1$s</string>
     <string name="rear_wallpaper_delete_title">Delete Wallpaper</string>
     <string name="rear_wallpaper_delete_message">Delete %1$s from the rear screen wallpaper list?</string>
     <string name="rear_wallpaper_delete_success">Wallpaper deleted</string>
@@ -181,7 +186,7 @@
     <string name="rear_widget_business_manager">Widget Template Manager</string>
     <string name="rear_widget_business_manager_desc">Manage widget-to-template mapping only, without package route injection</string>
     <string name="rear_widget_scene_route_manager">Notification Route Manager</string>
-    <string name="rear_widget_scene_route_manager_desc">Map package and scene values to widget businesses before parse this notification</string>
+    <string name="rear_widget_scene_route_manager_desc">Map application rule notifications to widgets</string>
     <string name="rear_widget_business_extra_manager">Widget Extra Settings Manager</string>
     <string name="rear_widget_business_extra_manager_desc">Manually add widgets that need extra display options</string>
     <string name="rear_widget_card_manager">Card Manager</string>
@@ -204,14 +209,14 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="rear_widget_card_dialog_hint_title">Card Display Settings</string>
     <string name="rear_widget_card_dialog_hint">Use dialogs to add or edit cards. Enabled cards can optionally stay resident on the rear screen</string>
     <string name="rear_widget_empty_business">No widget template registered</string>
-    <string name="rear_widget_empty_scene_route">No scene route configured</string>
+    <string name="rear_widget_empty_scene_route">No notification route configured</string>
     <string name="rear_widget_empty_card">No card configured</string>
     <string name="rear_widget_loading_data">Loading data…</string>
     <string name="rear_widget_form_invalid">Please complete all required fields</string>
     <string name="rear_widget_file_pick_failed">Failed to import file</string>
     <string name="rear_widget_file_pick_success">Template file imported</string>
     <string name="rear_widget_business_saved">Widget saved</string>
-    <string name="rear_widget_scene_route_saved">Scene route saved</string>
+    <string name="rear_widget_scene_route_saved">Notification route saved</string>
     <string name="rear_widget_card_saved">Card saved</string>
     <string name="rear_widget_add_business">Add Widget</string>
     <string name="rear_widget_edit_business">Edit Widget</string>

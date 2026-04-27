@@ -95,6 +95,23 @@ open class RearWallpaperApiClient(
             ?: operationFailureBundle("hook service returned empty delete result")
     }
 
+    open fun resolveTemplateConfigState(
+        wallpaperId: Int,
+        currentOneConfigJson: String?,
+    ): RearWidgetTemplateConfigState? {
+        return RearWidgetTemplateConfigState.fromBundle(
+            requireRemote().resolveTemplateConfigState(
+                wallpaperId,
+                currentOneConfigJson.orEmpty(),
+            )
+        )
+    }
+
+    open fun saveTemplateConfig(wallpaperId: Int, oneConfigJson: String?): Bundle {
+        return requireRemote().saveTemplateConfig(wallpaperId, oneConfigJson.orEmpty())
+            ?: operationFailureBundle("hook service returned empty template config save result")
+    }
+
     private fun requireRemote(): IRearWallpaperApiService {
         return remote ?: error("RearWallpaper API service is not connected")
     }

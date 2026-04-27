@@ -80,6 +80,9 @@ internal fun rearWallpaperManagementBadges(
             add(rearWallpaperSubTypeBadge(it))
         }
         if (wallpaper.editable) add(rearWallpaperEditableBadge())
+        if (wallpaper.templateConfigAvailable || wallpaper.templateConfigCustomized) {
+            add(rearWidgetTemplateStatusBadge(wallpaper.templateConfigCustomized))
+        }
         if (wallpaper.thirdParties) add(rearWallpaperThirdPartyBadge())
         if (wallpaper.supportAon) add(rearWallpaperSupportAonBadge())
     }

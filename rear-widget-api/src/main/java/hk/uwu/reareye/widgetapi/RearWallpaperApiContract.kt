@@ -32,7 +32,6 @@ object RearWallpaperApiContract {
         const val PREVIEW_SIGNATURE = "previewSignature"
         const val SUCCESS = "success"
         const val ERROR = "error"
-        const val DISPLAY_NAME = "displayName"
         const val META_TITLE_FALLBACK = "metaTitleFallback"
         const val META_TITLE_ZH_CN = "metaTitleZhCn"
         const val META_DESCRIPTION_FALLBACK = "metaDescriptionFallback"
@@ -44,5 +43,7 @@ object RearWallpaperApiContract {
         const val META_EDITABLE = "metaEditable"
         const val META_THIRD_PARTIES = "metaThirdParties"
         const val META_SUPPORT_AON = "metaSupportAon"
+        const val TEMPLATE_CONFIG_AVAILABLE = "templateConfigAvailable"
+        const val TEMPLATE_CONFIG_CUSTOMIZED = "templateConfigCustomized"
     }
 }

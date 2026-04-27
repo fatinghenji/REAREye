@@ -13,6 +13,7 @@ import hk.uwu.reareye.widgetapi.RearWallpaperApiContract
 import hk.uwu.reareye.widgetapi.RearWallpaperScheduleCodec
 import hk.uwu.reareye.widgetapi.RearWallpaperScheduleEntry
 import hk.uwu.reareye.widgetapi.RearWidgetApiContract
+import hk.uwu.reareye.widgetapi.RearWidgetTemplateConfigState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -189,6 +190,34 @@ object RearWallpaperRepository {
         }
     }
 
+    suspend fun resolveTemplateConfigState(
+        context: Context,
+        wallpaperId: Int,
+        currentOneConfigJson: String?,
+    ): RearWidgetTemplateConfigState? {
+        return withContext(Dispatchers.IO) {
+            withRemote(context) { client ->
+                client.resolveTemplateConfigState(wallpaperId, currentOneConfigJson)
+            }
+        }
+    }
+
+    suspend fun saveTemplateConfig(
+        context: Context,
+        wallpaperId: Int,
+        oneConfigJson: String?,
+    ): RearWallpaperOperationResult {
+        return withContext(Dispatchers.IO) {
+            val result = withRemote(context) { client ->
+                client.saveTemplateConfig(wallpaperId, oneConfigJson)
+            }
+            parseOperationResult(
+                result,
+                "wallpaper template config save failed without an error message"
+            )
+        }
+    }
+
     suspend fun syncSchedule(
         context: Context,
         enabled: Boolean,
@@ -300,6 +329,14 @@ object RearWallpaperRepository {
                 ),
                 supportAon = item.getBoolean(
                     RearWallpaperApiContract.BundleKeys.SUPPORT_AON,
+                    false,
+                ),
+                templateConfigAvailable = item.getBoolean(
+                    RearWallpaperApiContract.BundleKeys.TEMPLATE_CONFIG_AVAILABLE,
+                    false,
+                ),
+                templateConfigCustomized = item.getBoolean(
+                    RearWallpaperApiContract.BundleKeys.TEMPLATE_CONFIG_CUSTOMIZED,
                     false,
                 ),
             )

@@ -25,6 +25,7 @@ import android.widget.FrameLayout
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.get
+import androidx.core.net.toUri
 import androidx.core.view.isEmpty
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
@@ -36,11 +37,13 @@ import hk.uwu.reareye.hook.utils.resolveDexKitClassValue
 import hk.uwu.reareye.hook.utils.resolveDexKitFieldValue
 import hk.uwu.reareye.hook.utils.resolveDexKitMethodInjectionPoint
 import hk.uwu.reareye.hook.utils.resolveHookPackageVersionCode
+import hk.uwu.reareye.repository.widgettemplate.WidgetTemplateConfigRepository
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.widgetapi.IRearWallpaperApiConnection
 import hk.uwu.reareye.widgetapi.IRearWallpaperApiService
 import hk.uwu.reareye.widgetapi.RearWallpaperApiContract
 import hk.uwu.reareye.widgetapi.RearWallpaperScheduleCodec
+import hk.uwu.reareye.widgetapi.RearWidgetTemplateConfigState
 import org.json.JSONArray
 import org.json.JSONObject
 import org.luckypray.dexkit.DexKitBridge
@@ -74,6 +77,8 @@ class RearWallpaperHook : YukiBaseHooker() {
         private const val SELECTED_WALLPAPER_ID_CACHE_KEY = "REAR_WALLPAPER_SELECTED_ID"
         private const val MAX_IMPORT_BYTES = 200L * 1024L * 1024L
         private const val MAX_PREVIEW_BYTES = 20L * 1024L * 1024L
+        private const val ZIP_PREVIEW_PREFIX = "zip-preview://"
+        private const val ZIP_PREVIEW_SEPARATOR = "!/"
         private const val PREVIEW_CAPTURE_DELAY_MS = 700L
         private const val PREVIEW_CAPTURE_TIMEOUT_MS = 3000L
         private const val OFFSCREEN_CAPTURE_INITIAL_DELAY_MS = 450L
@@ -146,6 +151,10 @@ class RearWallpaperHook : YukiBaseHooker() {
         val editable: Boolean,
         val thirdParties: Boolean,
         val supportAon: Boolean,
+        val templatePath: String?,
+        val templateConfigPath: String?,
+        val templateConfigAvailable: Boolean,
+        val templateConfigCustomized: Boolean,
         val previewPath: String?,
         val previewSignature: String,
         val widget: Any,
@@ -159,6 +168,7 @@ class RearWallpaperHook : YukiBaseHooker() {
         val resLocalPath: String?,
         val metaPath: String?,
         val metaSnapshotPath: String?,
+        val mamlEditConfigPath: String?,
         val previewPath: String?,
         val imported: Boolean,
         val position: Int,
@@ -387,6 +397,26 @@ class RearWallpaperHook : YukiBaseHooker() {
             enforceCallerPermission()
             return deleteWallpaperInternal(wallpaperId)
         }
+
+        override fun resolveTemplateConfigState(
+            wallpaperId: Int,
+            currentOneConfigJson: String?,
+        ): Bundle {
+            enforceCallerPermission()
+            val state = resolveWallpaperTemplateConfigStateModel(
+                wallpaperId = wallpaperId,
+                currentOneConfigJson = currentOneConfigJson?.trim(),
+            )
+            return state?.toBundle() ?: Bundle()
+        }
+
+        override fun saveTemplateConfig(wallpaperId: Int, oneConfigJson: String?): Bundle {
+            enforceCallerPermission()
+            return saveWallpaperTemplateConfigInternal(
+                wallpaperId = wallpaperId,
+                oneConfigJson = oneConfigJson?.trim(),
+            )
+        }
     }
 
     private fun resolveMainPanelSaveSelectionMethod(
@@ -489,6 +519,14 @@ class RearWallpaperHook : YukiBaseHooker() {
                 putBoolean(RearWallpaperApiContract.BundleKeys.EDITABLE, entry.editable)
                 putBoolean(RearWallpaperApiContract.BundleKeys.THIRD_PARTIES, entry.thirdParties)
                 putBoolean(RearWallpaperApiContract.BundleKeys.SUPPORT_AON, entry.supportAon)
+                putBoolean(
+                    RearWallpaperApiContract.BundleKeys.TEMPLATE_CONFIG_AVAILABLE,
+                    entry.templateConfigAvailable,
+                )
+                putBoolean(
+                    RearWallpaperApiContract.BundleKeys.TEMPLATE_CONFIG_CUSTOMIZED,
+                    entry.templateConfigCustomized,
+                )
                 putBoolean(
                     RearWallpaperApiContract.BundleKeys.PREVIEW_AVAILABLE,
                     !entry.previewPath.isNullOrBlank(),
@@ -729,9 +767,23 @@ class RearWallpaperHook : YukiBaseHooker() {
                     return@forEach
                 }
                 val extras = spec.wallpaperSpecExtras()
-                val previewPath = extras.resolvePreviewPath(localeSuffix)
                 val runtimeRecord = runtimeRecords[wallpaperId]
+                val templatePath = runtimeRecord?.resLocalPath
+                    ?.takeIf { hasEditableTemplateConfig(it) }
+                    ?: extractMamlWidgetTemplatePath(spec)
+                    ?: extractMamlWidgetTemplatePath(widget)
+                val previewPath = resolveWallpaperPreviewPath(
+                    widget = widget,
+                    extras = extras,
+                    localeSuffix = localeSuffix,
+                    runtimeRecord = runtimeRecord,
+                    templatePath = templatePath,
+                )
                 val metadata = runtimeRecord?.readMetadataValues()
+                val templateConfigPath = runtimeRecord?.mamlEditConfigPath
+                    ?.takeIf { it.isNotBlank() }
+                    ?: extractMamlWidgetConfigPath(widget)
+                val templateConfigAvailable = hasEditableTemplateConfig(templatePath)
                 add(
                     WallpaperEntry(
                         wallpaperId = wallpaperId,
@@ -747,6 +799,10 @@ class RearWallpaperHook : YukiBaseHooker() {
                         editable = metadata?.editable ?: false,
                         thirdParties = metadata?.thirdParties ?: false,
                         supportAon = metadata?.supportAon ?: false,
+                        templatePath = templatePath,
+                        templateConfigPath = templateConfigPath,
+                        templateConfigAvailable = templateConfigAvailable,
+                        templateConfigCustomized = templateConfigAvailable && !templateConfigPath.isNullOrBlank(),
                         previewPath = previewPath,
                         previewSignature = buildPreviewSignature(previewPath),
                         widget = widget,
@@ -764,6 +820,115 @@ class RearWallpaperHook : YukiBaseHooker() {
                 parameterCount = 1
             }.invoke(spec)
         }.onFailure(YLog::warn).getOrNull()
+    }
+
+    private fun hasEditableTemplateConfig(templatePath: String?): Boolean {
+        val normalized = templatePath?.takeIf { it.isNotBlank() } ?: return false
+        return WidgetTemplateConfigRepository.loadSchema(normalized)
+            ?.items
+            ?.isNotEmpty()
+            ?: false
+    }
+
+    private fun resolveWallpaperPreviewPath(
+        widget: Any,
+        extras: Bundle?,
+        localeSuffix: String?,
+        runtimeRecord: RuntimeWallpaperRecord?,
+        templatePath: String?,
+    ): String? {
+        val preferredCandidates = buildList {
+            addAll(extras.previewPathCandidates(localeSuffix))
+            runtimeRecord?.previewPath?.let(::add)
+        }
+            .asSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .toList()
+
+        preferredCandidates.firstOrNull(::isReadablePreviewPath)?.let { return it }
+        extractStringFields(widget).firstOrNull(::isReadablePreviewPath)?.let { return it }
+
+        val packagePath = templatePath?.takeIf { it.isNotBlank() }
+            ?: extractMamlWidgetTemplatePath(widget)
+        if (packagePath != null) {
+            preferredCandidates.firstNotNullOfOrNull { candidate ->
+                resolvePackagePreviewPath(packagePath, candidate)
+            }?.let { return it }
+            explicitTemplatePreviewPaths(packagePath).firstNotNullOfOrNull { candidate ->
+                resolvePackagePreviewPath(packagePath, candidate)
+            }?.let { return it }
+        }
+
+        return null
+    }
+
+    private fun explicitTemplatePreviewPaths(templatePath: String): List<String> {
+        val schema = WidgetTemplateConfigRepository.loadSchema(templatePath) ?: return emptyList()
+        return WidgetTemplateConfigRepository.imagePreviewValues(schema)
+    }
+
+    private fun extractMamlWidgetTemplatePath(widget: Any): String? {
+        return extractStringFields(widget).firstOrNull { candidate ->
+            val file = File(candidate)
+            file.isFile && WidgetTemplateConfigRepository.loadSchema(file.absolutePath) != null
+        }
+    }
+
+    private fun resolveWallpaperTemplatePath(wallpaperId: Int): String? {
+        readRuntimeRecords()
+            .firstOrNull { it.wallpaperId == wallpaperId }
+            ?.resLocalPath
+            ?.takeIf { hasEditableTemplateConfig(it) }
+            ?.let { return it }
+
+        loadWallpaperSpecs().forEach { spec ->
+            if (spec.wallpaperSpecId() != wallpaperId) return@forEach
+            extractMamlWidgetTemplatePath(spec)?.let { return it }
+            createWallpaperWidget(spec)
+                ?.let(::extractMamlWidgetTemplatePath)
+                ?.let { return it }
+        }
+        return null
+    }
+
+    private fun extractMamlWidgetConfigPath(widget: Any): String? {
+        return extractStringFields(widget).firstOrNull { candidate ->
+            val file = File(candidate)
+            file.isFile && file.name.endsWith(".json", ignoreCase = true) &&
+                    readOneConfigJson(file.absolutePath) != null
+        }
+    }
+
+    private fun extractStringFields(target: Any): List<String> {
+        val values = ArrayList<String>()
+        var current: Class<*>? = target.javaClass
+        while (current != null && current != Any::class.java) {
+            current.declaredFields.forEach { field ->
+                runCatching {
+                    field.isAccessible = true
+                    (field.get(target) as? String)
+                        ?.trim()
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let(values::add)
+                }
+            }
+            current.declaredMethods.forEach { method ->
+                if (method.parameterTypes.isNotEmpty() || method.returnType != String::class.java) {
+                    return@forEach
+                }
+                runCatching {
+                    method.isAccessible = true
+                    (method.invoke(target) as? String)
+                        ?.trim()
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let(values::add)
+                }
+            }
+            current = current.superclass
+        }
+        return values.distinct()
     }
 
     private fun resolveWidgetFactoryMethod(): DexKitMethodInjectionPoint {
@@ -2035,6 +2200,129 @@ class RearWallpaperHook : YukiBaseHooker() {
         }
     }
 
+    private fun resolveWallpaperTemplateConfigStateModel(
+        wallpaperId: Int,
+        currentOneConfigJson: String?,
+    ): RearWidgetTemplateConfigState? {
+        val entry = loadWallpaperEntries().firstOrNull { it.wallpaperId == wallpaperId }
+        val templatePath = entry
+            ?.templatePath
+            ?.takeIf { hasEditableTemplateConfig(it) }
+            ?: resolveWallpaperTemplatePath(wallpaperId)
+            ?: return null
+        val schema = WidgetTemplateConfigRepository.loadSchema(templatePath) ?: return null
+        val existingConfigJson = currentOneConfigJson
+            ?.takeIf { it.isNotBlank() }
+            ?: readOneConfigJson(entry?.templateConfigPath)
+        val oneConfig = WidgetTemplateConfigRepository.buildInitialOneConfig(
+            schema = schema,
+            existingJson = existingConfigJson,
+        )
+        debugLog(
+            "resolveWallpaperTemplateConfigState wallpaperId=$wallpaperId template=$templatePath config=${entry?.templateConfigPath.orEmpty()} items=${schema.items.size} hasCurrent=${
+                currentOneConfigJson.isNullOrBlank().not()
+            }"
+        )
+        return RearWidgetTemplateConfigState(
+            templateSchemaJson = WidgetTemplateConfigRepository.encodeSchema(schema),
+            oneConfigJson = WidgetTemplateConfigRepository.encodeOneConfig(oneConfig),
+        )
+    }
+
+    private fun saveWallpaperTemplateConfigInternal(
+        wallpaperId: Int,
+        oneConfigJson: String?,
+    ): Bundle {
+        return runCatching {
+            synchronized(runtimeLock) {
+                val runtimeArray = readRuntimeArray()
+                val index = findRuntimeItemIndex(runtimeArray, wallpaperId)
+                val entry = loadWallpaperEntries().firstOrNull { it.wallpaperId == wallpaperId }
+                if (index < 0) {
+                    return@synchronized saveExistingWallpaperTemplateConfig(entry, oneConfigJson)
+                }
+
+                val item = runtimeArray.getJSONObject(index)
+                val record = item.toRuntimeRecord() ?: return@synchronized operationResult(
+                    false,
+                    error = "runtime item is invalid",
+                )
+                val normalizedJson = oneConfigJson?.trim().orEmpty()
+                if (normalizedJson.isBlank()) {
+                    item.remove("mamlEditConfigPath")
+                    writeRuntimeArray(runtimeArray)
+                    refreshRuntimePanels()
+                    debugLog("saveWallpaperTemplateConfig reset wallpaperId=$wallpaperId")
+                    return@synchronized operationResult(true, wallpaperId = wallpaperId)
+                }
+
+                val templatePath = record.resLocalPath
+                    ?.takeIf { it.isNotBlank() }
+                    ?: entry?.templatePath
+                    ?: return@synchronized operationResult(
+                        false,
+                        error = "template path is missing"
+                    )
+                val schema = WidgetTemplateConfigRepository.loadSchema(templatePath)
+                    ?: return@synchronized operationResult(
+                        false,
+                        error = "template config is unavailable"
+                    )
+                val normalizedConfig = WidgetTemplateConfigRepository.encodeOneConfig(
+                    WidgetTemplateConfigRepository.buildInitialOneConfig(
+                        schema = schema,
+                        existingJson = normalizedJson,
+                    )
+                )
+                val configFile = resolveTemplateConfigFile(record)
+                writeTextAtomically(configFile, normalizedConfig)
+                item.put("mamlEditConfigPath", configFile.absolutePath)
+                writeRuntimeArray(runtimeArray)
+                ensureReadableRecursive(configFile.parentFile ?: configFile)
+                refreshRuntimePanels()
+                debugLog(
+                    "saveWallpaperTemplateConfig success wallpaperId=$wallpaperId template=$templatePath config=${configFile.absolutePath} size=${normalizedConfig.length}"
+                )
+                operationResult(true, wallpaperId = wallpaperId)
+            }
+        }.getOrElse {
+            YLog.error(it)
+            operationResult(false, error = it.message ?: "template config save failed")
+        }
+    }
+
+    private fun saveExistingWallpaperTemplateConfig(
+        entry: WallpaperEntry?,
+        oneConfigJson: String?,
+    ): Bundle {
+        val target =
+            entry ?: return operationResult(false, error = "wallpaper is not in current list")
+        val normalizedJson = oneConfigJson?.trim().orEmpty()
+        if (normalizedJson.isBlank()) {
+            return operationResult(
+                false,
+                error = "only runtime wallpaper template config can be reset"
+            )
+        }
+        val configPath = target.templateConfigPath?.takeIf { it.isNotBlank() }
+            ?: return operationResult(false, error = "wallpaper has no writable config path")
+        val schema = WidgetTemplateConfigRepository.loadSchema(
+            target.templatePath ?: return operationResult(false, error = "template path is missing")
+        ) ?: return operationResult(false, error = "template config is unavailable")
+        val normalizedConfig = WidgetTemplateConfigRepository.encodeOneConfig(
+            WidgetTemplateConfigRepository.buildInitialOneConfig(
+                schema = schema,
+                existingJson = normalizedJson,
+            )
+        )
+        writeTextAtomically(File(configPath), normalizedConfig)
+        refreshRuntimePanels()
+        debugLog(
+            "saveWallpaperTemplateConfig existing wallpaperId=${target.wallpaperId} config=$configPath size=${normalizedConfig.length}"
+        )
+        return operationResult(true, wallpaperId = target.wallpaperId)
+    }
+
     private fun operationResult(
         success: Boolean,
         error: String? = null,
@@ -2498,60 +2786,68 @@ class RearWallpaperHook : YukiBaseHooker() {
 
     private fun extractPreviewFromPackage(packageFile: File, targetDir: File): String? {
         return runCatching {
-            ZipFile(packageFile).use { zip ->
-                val entry = findPreviewEntry(zip) ?: return null
-                if (entry.size > 20L * 1024L * 1024L) return null
-                val extension = entry.name.substringAfterLast('.', "png")
-                    .lowercase()
-                    .takeIf { it in setOf("png", "jpg", "jpeg", "webp") }
-                    ?: "png"
-                val target = File(targetDir, "preview.$extension")
-                zip.getInputStream(entry).use { input ->
-                    target.outputStream().use { output -> input.copyTo(output) }
-                }
-                if (loadPreviewBytes(target.absolutePath) == null) {
-                    target.delete()
-                    null
-                } else {
-                    ensureReadable(target)
-                    target.absolutePath
-                }
+            val previewPath = explicitTemplatePreviewPaths(packageFile.absolutePath)
+                .firstNotNullOfOrNull { resolvePackagePreviewPath(packageFile.absolutePath, it) }
+                ?: return null
+            val previewBytes = loadPreviewBytes(previewPath) ?: return null
+            val target = File(targetDir, "preview.jpg")
+            target.outputStream().use { it.write(previewBytes) }
+            if (loadPreviewBytes(target.absolutePath) == null) {
+                target.delete()
+                null
+            } else {
+                ensureReadable(target)
+                target.absolutePath
             }
         }.getOrNull()
     }
 
-    private fun findPreviewEntry(zip: ZipFile): ZipEntry? {
-        val preferred = listOf(
-            "preview.png",
-            "preview.jpg",
-            "preview.jpeg",
-            "snapshot.png",
-            "snapshot.jpg",
-            "snapshot.jpeg",
-            "snapshotPreview.png",
-            "thumbnail.png",
-            "cover.png",
-        )
-        preferred.forEach { name ->
-            zip.getEntry(name)?.takeIf { !it.isDirectory }?.let { return it }
+    private fun resolvePackagePreviewPath(packagePath: String, previewPath: String): String? {
+        val packageFile = File(packagePath)
+        if (!packageFile.exists()) return null
+
+        val rawPreview = previewPath.trim()
+        if (rawPreview.isBlank()) return null
+
+        val directPath = when {
+            rawPreview.startsWith("file://", ignoreCase = true) -> rawPreview.toUri().path
+            rawPreview.startsWith("/") -> rawPreview
+            else -> null
+        }
+        directPath?.let { path ->
+            if (isReadablePreviewPath(path)) return File(path).absolutePath
         }
 
-        val entries = zip.entries()
-        while (entries.hasMoreElements()) {
-            val entry = entries.nextElement()
-            if (entry.isDirectory) continue
-            val lower = entry.name.lowercase()
-            val looksLikeImage = lower.endsWith(".png") ||
-                    lower.endsWith(".jpg") ||
-                    lower.endsWith(".jpeg") ||
-                    lower.endsWith(".webp")
-            val looksLikePreview = lower.contains("preview") ||
-                    lower.contains("snapshot") ||
-                    lower.contains("thumbnail") ||
-                    lower.contains("cover")
-            if (looksLikeImage && looksLikePreview) return entry
+        val normalizedPreview = rawPreview
+            .removePrefix("file://")
+            .replace('\\', '/')
+            .removePrefix("/")
+            .takeIf { it.isNotBlank() }
+            ?: return null
+
+        if (packageFile.isDirectory) {
+            val child = File(packageFile, normalizedPreview)
+            return child.takeIf { isReadablePreviewPath(it.absolutePath) }?.absolutePath
         }
-        return null
+
+        return runCatching {
+            ZipFile(packageFile).use { zip ->
+                val entry = findZipEntry(zip, normalizedPreview)
+                    ?: return@use null
+                if (entry.isDirectory || entry.size > MAX_PREVIEW_BYTES) return@use null
+                encodeZipPreviewPath(packageFile.absolutePath, entry.name)
+                    .takeIf { loadPreviewBytes(it) != null }
+            }
+        }.getOrNull()
+    }
+
+    private fun findZipEntry(zip: ZipFile, name: String): ZipEntry? {
+        val normalized = name.trim().replace('\\', '/').removePrefix("/")
+        if (normalized.isBlank()) return null
+        return zip.getEntry(normalized)
+            ?: zip.entries().asSequence().firstOrNull {
+                it.name.equals(normalized, ignoreCase = true)
+            }
     }
 
     private fun readJsonFile(file: File?): JSONObject? {
@@ -2881,6 +3177,7 @@ class RearWallpaperHook : YukiBaseHooker() {
         val resLocalPath = optNonBlankString("resLocalPath")
         val metaPath = optNonBlankString("metaPath")
         val metaSnapshotPath = optNonBlankString("metaSnapshotPath")
+        val mamlEditConfigPath = optNonBlankString("mamlEditConfigPath")
         val previewPath = optNonBlankString("snapshotPreviewPath")
             ?: optNonBlankString("resPreviewPath")
         val imported = isReareyeRuntimeItem(resId, resLocalPath, metaPath)
@@ -2892,6 +3189,7 @@ class RearWallpaperHook : YukiBaseHooker() {
             resLocalPath = resLocalPath,
             metaPath = metaPath,
             metaSnapshotPath = metaSnapshotPath,
+            mamlEditConfigPath = mamlEditConfigPath,
             previewPath = previewPath,
             imported = imported,
             position = optInt("position", -1),
@@ -3009,8 +3307,21 @@ class RearWallpaperHook : YukiBaseHooker() {
         return File(resolveRuntimeRoot(), "runtime.json")
     }
 
+    private fun resolveTemplateConfigFile(record: RuntimeWallpaperRecord): File {
+        return File(File(resolveRuntimeRoot(), "${record.resId}_${record.applyId}"), "editConfig")
+    }
+
     private fun currentUserId(): Int {
         return (Process.myUid() / 100000).coerceAtLeast(0)
+    }
+
+    private fun readOneConfigJson(path: String?): String? {
+        val file = path?.takeIf { it.isNotBlank() }?.let(::File) ?: return null
+        if (!file.isFile) return null
+        return runCatching { file.readText().trim() }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+            ?.takeIf { WidgetTemplateConfigRepository.decodeOneConfig(it) != null }
     }
 
     private fun writeTextAtomically(target: File, text: String) {
@@ -3205,6 +3516,19 @@ class RearWallpaperHook : YukiBaseHooker() {
 
     private fun loadPreviewBytes(previewPath: String?): ByteArray? {
         val path = previewPath?.takeIf { it.isNotBlank() } ?: return null
+        decodeZipPreviewPath(path)?.let { (packagePath, entryName) ->
+            val packageFile = File(packagePath)
+            if (!packageFile.isFile) return null
+            return runCatching {
+                ZipFile(packageFile).use { zip ->
+                    val entry = findZipEntry(zip, entryName) ?: return@use null
+                    if (entry.isDirectory || entry.size > MAX_PREVIEW_BYTES) return@use null
+                    val bytes = zip.getInputStream(entry).use { it.readBytes() }
+                    compressPreviewBytes(bytes)
+                }
+            }.getOrNull()
+        }
+
         val file = File(path)
         if (!file.isFile) return null
 
@@ -3219,11 +3543,48 @@ class RearWallpaperHook : YukiBaseHooker() {
             inPreferredConfig = Bitmap.Config.ARGB_8888
         }
         val bitmap = BitmapFactory.decodeFile(path, decodeOptions) ?: return null
+        return bitmap.toCompressedPreviewBytes(Bitmap.CompressFormat.JPEG, 90)
+    }
+
+    private fun compressPreviewBytes(bytes: ByteArray): ByteArray? {
+        if (bytes.isEmpty() || bytes.size > MAX_PREVIEW_BYTES) return null
+        val bounds = BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        val bitmap = BitmapFactory.decodeByteArray(
+            bytes,
+            0,
+            bytes.size,
+            BitmapFactory.Options().apply {
+                inSampleSize = computeInSampleSize(bounds.outWidth, bounds.outHeight, 640)
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            },
+        ) ?: return null
+        return bitmap.toCompressedPreviewBytes(Bitmap.CompressFormat.JPEG, 90)
+    }
+
+    private fun Bitmap.toCompressedPreviewBytes(
+        format: Bitmap.CompressFormat,
+        quality: Int,
+    ): ByteArray? {
         return ByteArrayOutputStream().use { output ->
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output)
-            bitmap.recycle()
+            val ok = compress(format, quality, output)
+            recycle()
+            if (!ok) return null
             output.toByteArray()
         }
+    }
+
+    private fun isReadablePreviewPath(path: String): Boolean {
+        val file = File(path)
+        if (!file.isFile || file.length() <= 0L) return false
+        val bounds = BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+        BitmapFactory.decodeFile(path, bounds)
+        return bounds.outWidth > 0 && bounds.outHeight > 0
     }
 
     private fun computeInSampleSize(width: Int, height: Int, maxSize: Int): Int {
@@ -3239,11 +3600,32 @@ class RearWallpaperHook : YukiBaseHooker() {
     }
 
     private fun buildPreviewSignature(previewPath: String?): String {
+        decodeZipPreviewPath(previewPath.orEmpty())?.let { (packagePath, entryName) ->
+            val file = File(packagePath)
+            if (file.isFile) {
+                return "zip_${file.absolutePath.hashCode()}_${entryName.hashCode()}_${file.length()}_${file.lastModified()}"
+            }
+        }
         val file = previewPath?.let(::File)
         if (file != null && file.isFile) {
             return "${file.absolutePath.hashCode()}_${file.length()}_${file.lastModified()}"
         }
         return "missing"
+    }
+
+    private fun encodeZipPreviewPath(packagePath: String, entryName: String): String {
+        return ZIP_PREVIEW_PREFIX + packagePath + ZIP_PREVIEW_SEPARATOR + entryName
+    }
+
+    private fun decodeZipPreviewPath(path: String): Pair<String, String>? {
+        if (!path.startsWith(ZIP_PREVIEW_PREFIX)) return null
+        val payload = path.removePrefix(ZIP_PREVIEW_PREFIX)
+        val separatorIndex = payload.lastIndexOf(ZIP_PREVIEW_SEPARATOR)
+        if (separatorIndex <= 0) return null
+        val packagePath = payload.substring(0, separatorIndex)
+        val entryName = payload.substring(separatorIndex + ZIP_PREVIEW_SEPARATOR.length)
+        if (packagePath.isBlank() || entryName.isBlank()) return null
+        return packagePath to entryName
     }
 
     private fun readLocalePreviewSuffix(): String? {
@@ -3255,11 +3637,18 @@ class RearWallpaperHook : YukiBaseHooker() {
         }.getOrNull()?.takeIf { it.isNotBlank() }
     }
 
-    private fun Bundle?.resolvePreviewPath(localeSuffix: String?): String? {
-        if (this == null) return null
-        val localized = localeSuffix?.let { getString("snapshotPath_$it") }
-        return localized?.takeIf { it.isNotBlank() }
-            ?: getString("snapshotPath")?.takeIf { it.isNotBlank() }
+    /*private fun Bundle?.resolvePreviewPath(localeSuffix: String?): String? {
+        return previewPathCandidates(localeSuffix).firstOrNull()
+    }*/
+
+    private fun Bundle?.previewPathCandidates(localeSuffix: String?): List<String> {
+        if (this == null) return emptyList()
+        return buildList {
+            localeSuffix?.let { getString("snapshotPath_$it") }?.let(::add)
+            getString("snapshotPath")?.let(::add)
+            getString("resPreviewPath")?.let(::add)
+            getString("snapshotPreviewPath")?.let(::add)
+        }.map { it.trim() }.filter { it.isNotBlank() }.distinct()
     }
 
     private fun Int.floorMod(size: Int): Int {

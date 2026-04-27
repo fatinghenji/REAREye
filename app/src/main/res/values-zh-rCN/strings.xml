@@ -152,6 +152,11 @@
     <string name="rear_wallpaper_edit_metadata">编辑 Metadata</string>
     <string name="rear_wallpaper_metadata_saved">Metadata 已保存</string>
     <string name="rear_wallpaper_metadata_save_failed">保存 Metadata 失败：%1$s</string>
+    <string name="rear_wallpaper_template_title">壁纸模板配置</string>
+    <string name="rear_wallpaper_template_loading">正在加载壁纸模板配置…</string>
+    <string name="rear_wallpaper_template_unavailable">当前壁纸没有可编辑的模板配置项。</string>
+    <string name="rear_wallpaper_template_saved">壁纸模板配置已保存</string>
+    <string name="rear_wallpaper_template_save_failed">保存壁纸模板配置失败：%1$s</string>
     <string name="rear_wallpaper_delete_title">删除壁纸</string>
     <string name="rear_wallpaper_delete_message">要从背屏壁纸列表中删除 %1$s 吗？</string>
     <string name="rear_wallpaper_delete_success">壁纸已删除</string>
@@ -181,7 +186,7 @@
     <string name="rear_widget_business_manager">组件模板管理器</string>
     <string name="rear_widget_business_manager_desc">管理 组件 到模板文件的映射</string>
     <string name="rear_widget_scene_route_manager">通知路由管理器</string>
-    <string name="rear_widget_scene_route_manager_desc">在通知解析前，将指定应用的 scene 值映射到组件</string>
+    <string name="rear_widget_scene_route_manager_desc">根据规则把应用通知映射到组件</string>
     <string name="rear_widget_business_extra_manager">组件额外设置管理器</string>
     <string name="rear_widget_business_extra_manager_desc">手动添加需要额外显示选项的组件</string>
     <string name="rear_widget_card_manager">卡片管理器</string>
@@ -204,14 +209,14 @@
     <string name="rear_widget_card_dialog_hint_title">卡片显示设置</string>
     <string name="rear_widget_card_dialog_hint">通过对话框新增或编辑卡片，启用后可选择是否常驻显示在背屏</string>
     <string name="rear_widget_empty_business">暂无已注册组件模板</string>
-    <string name="rear_widget_empty_scene_route">暂无 Scene 路由</string>
+    <string name="rear_widget_empty_scene_route">暂无 通知 路由</string>
     <string name="rear_widget_empty_card">暂无已配置卡片</string>
     <string name="rear_widget_loading_data">正在加载数据…</string>
     <string name="rear_widget_form_invalid">请填写完整必填项</string>
     <string name="rear_widget_file_pick_failed">导入文件失败</string>
     <string name="rear_widget_file_pick_success">模板文件已导入</string>
     <string name="rear_widget_business_saved">组件已保存</string>
-    <string name="rear_widget_scene_route_saved">Scene 路由已保存</string>
+    <string name="rear_widget_scene_route_saved">通知路由已保存</string>
     <string name="rear_widget_card_saved">卡片已保存</string>
     <string name="rear_widget_add_business">新增组件</string>
     <string name="rear_widget_edit_business">编辑组件</string>

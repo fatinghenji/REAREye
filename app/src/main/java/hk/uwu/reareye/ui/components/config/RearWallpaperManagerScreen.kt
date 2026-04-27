@@ -92,6 +92,8 @@ import hk.uwu.reareye.ui.components.card.ModuleStyleDeleteAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleIconAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleManagerCard
 import hk.uwu.reareye.ui.components.card.SuperCard
+import hk.uwu.reareye.ui.components.config.template.RearWallpaperTemplateConfigScreen
+import hk.uwu.reareye.ui.components.config.template.TemplateConfigRouteTransition
 import hk.uwu.reareye.ui.components.rememberRearWallpaperPreviewBitmap
 import hk.uwu.reareye.ui.config.PrefsManager
 import hk.uwu.reareye.ui.theme.rearAcrylicEffect
@@ -179,6 +181,7 @@ fun RearWallpaperManagerScreen(
     var refreshing by remember { mutableStateOf(false) }
     var scheduleEnabled by remember { mutableStateOf(false) }
     var activePage by remember { mutableStateOf(RearWallpaperPage.ROTATION) }
+    var activeTemplateWallpaperId by remember { mutableStateOf<Int?>(null) }
     val pickerMode = remember { mutableStateOf<WallpaperPickerMode?>(null) }
 
     val editTargetId = remember { mutableStateOf<Int?>(null) }
@@ -444,11 +447,28 @@ fun RearWallpaperManagerScreen(
         scheduleEnabled = scheduleEnabled,
     )
 
-    BackHandler(enabled = activePage == RearWallpaperPage.MANAGEMENT) {
+    val activeTemplateWallpaper = activeTemplateWallpaperId
+        ?.let { id -> wallpapers.firstOrNull { it.wallpaperId == id } }
+
+    BackHandler(enabled = activeTemplateWallpaper == null && activePage == RearWallpaperPage.MANAGEMENT) {
         activePage = RearWallpaperPage.ROTATION
     }
 
-    Scaffold(
+    TemplateConfigRouteTransition(
+        target = activeTemplateWallpaper,
+        contentKey = { it?.wallpaperId ?: -1 },
+        templateContent = { wallpaper ->
+            RearWallpaperTemplateConfigScreen(
+                wallpaper = wallpaper,
+                onBack = { activeTemplateWallpaperId = null },
+                onSaved = {
+                    activeTemplateWallpaperId = null
+                    refreshCatalog(showSuccessToast = false)
+                },
+            )
+        },
+    ) {
+        Scaffold(
         topBar = {
             TopAppBar(
                 modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
@@ -556,6 +576,7 @@ fun RearWallpaperManagerScreen(
                         onSetCurrent = ::switchWallpaper,
                         onImport = ::importWallpaperPackage,
                         onUpdateMetadata = ::updateWallpaperMetadata,
+                        onEditTemplate = { activeTemplateWallpaperId = it.wallpaperId },
                         onGeneratePreview = ::generateWallpaperPreview,
                         onDelete = ::deleteWallpaper,
                     )
@@ -986,6 +1007,8 @@ fun RearWallpaperManagerScreen(
                 Text(stringResource(R.string.rear_widget_cancel))
             }
         }
+    }
+
     }
 }
 

@@ -66,6 +66,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -1663,9 +1664,19 @@ private fun RearStoreUninstallCard(
     installedWidget: RearStoreInstalledWidget,
     onClick: () -> Unit,
 ) {
-    val backgroundColor = MiuixTheme.colorScheme.error.copy(alpha = 0.92f)
-    val titleColor = MiuixTheme.colorScheme.errorContainer
-    val summaryColor = MiuixTheme.colorScheme.errorContainer.copy(alpha = 0.9f)
+    val colorScheme = MiuixTheme.colorScheme
+    val darkTheme = colorScheme.surface.luminance() < 0.5f
+    val backgroundColor = if (darkTheme) {
+        lerp(colorScheme.surface, colorScheme.error, 0.36f)
+    } else {
+        colorScheme.error.copy(alpha = 0.92f)
+    }
+    val titleColor = if (darkTheme) {
+        lerp(colorScheme.errorContainer, Color.White, 0.12f)
+    } else {
+        colorScheme.errorContainer
+    }
+    val summaryColor = titleColor.copy(alpha = if (darkTheme) 0.84f else 0.9f)
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.defaultColors(
@@ -1706,7 +1717,7 @@ private fun RearStoreUninstallCard(
             ModuleStyleDeleteAction(
                 icon = MiuixIcons.Delete,
                 text = stringResource(R.string.rear_store_uninstall_action),
-                backgroundColor = MiuixTheme.colorScheme.errorContainer.copy(alpha = 0.14f),
+                backgroundColor = titleColor.copy(alpha = if (darkTheme) 0.12f else 0.14f),
                 contentColor = titleColor,
                 onClick = onClick,
             )

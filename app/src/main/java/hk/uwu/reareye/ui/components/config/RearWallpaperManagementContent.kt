@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.Image
@@ -86,6 +87,7 @@ fun RearWallpaperManagementContent(
     onSetCurrent: (Int) -> Unit,
     onImport: (Uri, Uri?, Uri?, RearWallpaperMetadataOptions) -> Unit,
     onUpdateMetadata: (RearWallpaperInfo, RearWallpaperMetadataOptions, Uri?) -> Unit,
+    onEditTemplate: (RearWallpaperInfo) -> Unit,
     onGeneratePreview: (RearWallpaperInfo) -> Unit,
     onDelete: (RearWallpaperInfo) -> Unit,
 ) {
@@ -206,6 +208,7 @@ fun RearWallpaperManagementContent(
         },
         onSetCurrent = onSetCurrent,
         onEditMetadata = { editTarget = it },
+        onEditTemplate = onEditTemplate,
         onGeneratePreview = onGeneratePreview,
         onDelete = { deleteTarget = it },
     )
@@ -411,6 +414,7 @@ private fun RearWallpaperManagementList(
     onImportClick: () -> Unit,
     onSetCurrent: (Int) -> Unit,
     onEditMetadata: (RearWallpaperInfo) -> Unit,
+    onEditTemplate: (RearWallpaperInfo) -> Unit,
     onGeneratePreview: (RearWallpaperInfo) -> Unit,
     onDelete: (RearWallpaperInfo) -> Unit,
 ) {
@@ -506,6 +510,7 @@ private fun RearWallpaperManagementList(
                 isCurrent = wallpaper.wallpaperId == currentWallpaperId,
                 onSetCurrent = { onSetCurrent(wallpaper.wallpaperId) },
                 onEditMetadata = { onEditMetadata(wallpaper) },
+                onEditTemplate = { onEditTemplate(wallpaper) },
                 onGeneratePreview = { onGeneratePreview(wallpaper) },
                 onDelete = { onDelete(wallpaper) },
             )
@@ -519,6 +524,7 @@ private fun WallpaperManageCard(
     isCurrent: Boolean,
     onSetCurrent: () -> Unit,
     onEditMetadata: () -> Unit,
+    onEditTemplate: () -> Unit,
     onGeneratePreview: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -560,6 +566,13 @@ private fun WallpaperManageCard(
                     ModuleStyleIconAction(
                         icon = Icons.Rounded.EditNote,
                         onClick = onEditMetadata,
+                    )
+                }
+                if (wallpaper.templateConfigAvailable) {
+                    ModuleStyleTextAction(
+                        icon = Icons.Filled.Tune,
+                        text = stringResource(R.string.rear_widget_action_config),
+                        onClick = onEditTemplate,
                     )
                 }
             }

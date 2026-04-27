@@ -7,6 +7,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -31,17 +32,72 @@ data class RearBadgeItem(
 @Composable
 fun rememberRearAccentBadgePalette(accent: Color): RearBadgePalette {
     val colorScheme = MiuixTheme.colorScheme
-    val harmonizedAccent = lerp(accent, colorScheme.primary, 0.18f)
+    val darkTheme = colorScheme.surface.luminance() < 0.5f
+    val harmonizedAccent = if (darkTheme) {
+        lerp(lerp(accent, Color.White, 0.28f), colorScheme.primary, 0.08f)
+    } else {
+        lerp(accent, colorScheme.primary, 0.18f)
+    }
     return remember(
         accent,
+        darkTheme,
         colorScheme.surface,
         colorScheme.onSurface,
         harmonizedAccent,
     ) {
-        RearBadgePalette(
-            background = lerp(colorScheme.surface, harmonizedAccent, 0.24f),
-            text = lerp(colorScheme.onSurface, harmonizedAccent, 0.72f),
-        )
+        if (darkTheme) {
+            RearBadgePalette(
+                background = lerp(colorScheme.surface, harmonizedAccent, 0.46f),
+                text = lerp(Color.White, harmonizedAccent, 0.34f),
+            )
+        } else {
+            RearBadgePalette(
+                background = lerp(colorScheme.surface, harmonizedAccent, 0.24f),
+                text = lerp(colorScheme.onSurface, harmonizedAccent, 0.72f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun rememberRearDefaultBadgePalette(emphasized: Boolean): RearBadgePalette {
+    val colorScheme = MiuixTheme.colorScheme
+    val darkTheme = colorScheme.surface.luminance() < 0.5f
+    return remember(
+        emphasized,
+        darkTheme,
+        colorScheme.surface,
+        colorScheme.onSurface,
+        colorScheme.primary,
+        colorScheme.secondaryContainer,
+    ) {
+        if (emphasized) {
+            RearBadgePalette(
+                background = if (darkTheme) {
+                    lerp(colorScheme.surface, colorScheme.primary, 0.48f)
+                } else {
+                    colorScheme.primary.copy(alpha = 0.18f)
+                },
+                text = if (darkTheme) {
+                    lerp(Color.White, colorScheme.primary, 0.30f)
+                } else {
+                    colorScheme.primary
+                },
+            )
+        } else {
+            RearBadgePalette(
+                background = if (darkTheme) {
+                    lerp(
+                        colorScheme.surface,
+                        lerp(colorScheme.secondaryContainer, Color.White, 0.16f),
+                        0.72f,
+                    )
+                } else {
+                    colorScheme.secondaryContainer.copy(alpha = 0.8f)
+                },
+                text = colorScheme.onSurface.copy(alpha = if (darkTheme) 0.90f else 0.82f),
+            )
+        }
     }
 }
 
@@ -56,18 +112,8 @@ fun RearBadgePill(
     val pillFontSize = (13f / fontScale).sp
     val horizontalPadding = (10f / fontScale).dp.coerceAtLeast(7.dp)
     val verticalPadding = (7f / fontScale).dp.coerceAtLeast(5.dp)
-    val resolvedPalette = palette ?: RearBadgePalette(
-        background = if (emphasized) {
-            MiuixTheme.colorScheme.primary.copy(alpha = 0.18f)
-        } else {
-            MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f)
-        },
-        text = if (emphasized) {
-            MiuixTheme.colorScheme.primary
-        } else {
-            MiuixTheme.colorScheme.onSurface.copy(alpha = 0.82f)
-        },
-    )
+    val defaultPalette = rememberRearDefaultBadgePalette(emphasized)
+    val resolvedPalette = palette ?: defaultPalette
 
     Surface(
         color = resolvedPalette.background,

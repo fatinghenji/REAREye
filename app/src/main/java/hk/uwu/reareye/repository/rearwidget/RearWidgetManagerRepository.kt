@@ -172,7 +172,7 @@ object RearWidgetManagerRepository {
         val normalizedBusiness = business.trim()
         val normalizedSource = sourceFilePath.trim()
         val normalizedValue = imageValue.trim()
-        if (normalizedBusiness.isBlank() || normalizedValue.isBlank()) {
+        if (normalizedValue.isBlank() || (normalizedBusiness.isBlank() && normalizedSource.isBlank())) {
             return null
         }
         debugLog(

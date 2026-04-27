@@ -56,6 +56,7 @@ import hk.uwu.reareye.ui.components.card.ModuleStyleDeleteAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleIconAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleManagerCard
 import hk.uwu.reareye.ui.components.card.SuperCard
+import hk.uwu.reareye.ui.components.config.template.TemplateConfigRouteTransition
 import hk.uwu.reareye.ui.components.config.template.WidgetTemplateConfigScreen
 import hk.uwu.reareye.ui.components.motion.ArtRevealItem
 import hk.uwu.reareye.ui.config.ConfigKeys
@@ -196,31 +197,6 @@ fun CardManagerScreen(
 
     val activeTemplateCard =
         activeTemplateCardId.value?.let { id -> cards.firstOrNull { it.id == id } }
-    if (activeTemplateCard != null) {
-        val normalizedBusiness = normalizeTemplateBusinessName(activeTemplateCard.business)
-        val sourceFilePath = businesses.firstOrNull {
-            it.business == activeTemplateCard.business || normalizeTemplateBusinessName(it.business) == normalizedBusiness
-        }?.filePath.orEmpty()
-        WidgetTemplateConfigScreen(
-            business = activeTemplateCard.business,
-            sourceFilePath = sourceFilePath,
-            cardStorageKey = activeTemplateCard.id,
-            currentConfigJson = activeTemplateCard.oneConfigJson,
-            onBack = { activeTemplateCardId.value = null },
-            onSave = { normalizedJson ->
-                val index = cards.indexOfFirst { it.id == activeTemplateCard.id }
-                if (index >= 0) {
-                    cards[index] =
-                        cards[index].copy(oneConfigJson = normalizedJson?.takeIf { it.isNotBlank() })
-                    persist()
-                    activeTemplateCardId.value = null
-                } else {
-                    activeTemplateCardId.value = null
-                }
-            },
-        )
-        return
-    }
 
     val normalizedBusinessSourceByName by remember {
         derivedStateOf {
@@ -336,7 +312,33 @@ fun CardManagerScreen(
         ).show()
     }
 
-    Scaffold(
+    TemplateConfigRouteTransition(
+        target = activeTemplateCard,
+        contentKey = { it?.id ?: "card-manager" },
+        templateContent = { card ->
+            val normalizedBusiness = normalizeTemplateBusinessName(card.business)
+            val sourceFilePath = businesses.firstOrNull {
+                it.business == card.business || normalizeTemplateBusinessName(it.business) == normalizedBusiness
+            }?.filePath.orEmpty()
+            WidgetTemplateConfigScreen(
+                business = card.business,
+                sourceFilePath = sourceFilePath,
+                cardStorageKey = card.id,
+                currentConfigJson = card.oneConfigJson,
+                onBack = { activeTemplateCardId.value = null },
+                onSave = { normalizedJson ->
+                    val index = cards.indexOfFirst { it.id == card.id }
+                    if (index >= 0) {
+                        cards[index] =
+                            cards[index].copy(oneConfigJson = normalizedJson?.takeIf { it.isNotBlank() })
+                        persist()
+                    }
+                    activeTemplateCardId.value = null
+                },
+            )
+        },
+    ) {
+        Scaffold(
         topBar = {
             TopAppBar(
                 modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
@@ -655,6 +657,8 @@ fun CardManagerScreen(
                 }
             }
         }
+    }
+
     }
 
 }

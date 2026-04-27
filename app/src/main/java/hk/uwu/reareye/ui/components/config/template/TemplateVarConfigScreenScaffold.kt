@@ -1,5 +1,6 @@
 package hk.uwu.reareye.ui.components.config.template
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +57,8 @@ fun <TSchema, TConfig> TemplateVarConfigScreenScaffold(
     val scrollBehavior = MiuixScrollBehavior()
     val hazeState = rememberAcrylicHazeState()
     val hazeStyle = rememberAcrylicHazeStyle()
+
+    BackHandler(onBack = onBack)
 
     Scaffold(
         topBar = {
