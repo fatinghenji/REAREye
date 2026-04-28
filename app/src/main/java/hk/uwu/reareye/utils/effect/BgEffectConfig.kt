@@ -8,24 +8,38 @@ internal object BgEffectConfig {
     internal class Config(
         val points: FloatArray,
         val colors: FloatArray,
+        val translateY: Float,
+        val alphaMulti: Float,
+        val noiseScale: Float,
+        val pointOffset: Float,
+        val pointRadiusMulti: Float,
         val lightOffset: Float,
         val saturateOffset: Float,
+    )
+
+    private val HYPERCEILER_POINTS = floatArrayOf(
+        0.8f, 0.2f, 1.0f,
+        0.8f, 0.9f, 1.0f,
+        0.2f, 0.9f, 1.0f,
+        0.2f, 0.2f, 1.0f,
     )
 
     /*
      * PHONE LIGHT
      */
     private val PHONE_LIGHT = Config(
-        points = floatArrayOf(
-            0.67f, 0.42f, 1.0f, 0.69f, 0.75f, 1.0f,
-            0.14f, 0.71f, 0.95f, 0.14f, 0.27f, 0.8f,
-        ),
+        points = HYPERCEILER_POINTS,
         colors = floatArrayOf(
-            0.57f, 0.76f, 0.98f, 1.0f,
-            0.98f, 0.85f, 0.68f, 1.0f,
-            0.98f, 0.75f, 0.93f, 1.0f,
-            0.73f, 0.70f, 0.98f, 1.0f,
+            0.58f, 0.74f, 1.0f, 1.0f,
+            1.0f, 0.90f, 0.93f, 1.0f,
+            0.74f, 0.76f, 1.0f, 1.0f,
+            0.97f, 0.77f, 0.84f, 1.0f,
         ),
+        translateY = 0f,
+        alphaMulti = 1f,
+        noiseScale = 1.5f,
+        pointOffset = 0.2f,
+        pointRadiusMulti = 1f,
         lightOffset = 0.1f,
         saturateOffset = 0.2f,
     )
@@ -34,54 +48,60 @@ internal object BgEffectConfig {
      * PHONE DARK
      */
     private val PHONE_DARK = Config(
-        points = floatArrayOf(
-            0.63f, 0.50f, 0.88f, 0.69f, 0.75f, 0.80f,
-            0.17f, 0.66f, 0.81f, 0.14f, 0.24f, 0.72f,
-        ),
+        points = HYPERCEILER_POINTS,
         colors = floatArrayOf(
-            0.0f, 0.31f, 0.58f, 1.0f,
-            0.53f, 0.29f, 0.15f, 1.0f,
-            0.46f, 0.06f, 0.27f, 1.0f,
-            0.16f, 0.12f, 0.45f, 1.0f,
+            0.07f, 0.15f, 0.79f, 0.5f,
+            0.62f, 0.21f, 0.67f, 0.5f,
+            0.06f, 0.25f, 0.84f, 0.5f,
+            0.00f, 0.20f, 0.78f, 0.5f,
         ),
-        lightOffset = -0.1f,
-        saturateOffset = 0.2f,
+        translateY = 0f,
+        alphaMulti = 1f,
+        noiseScale = 1.5f,
+        pointOffset = 0.4f,
+        pointRadiusMulti = 1f,
+        lightOffset = 0f,
+        saturateOffset = 0.17f,
     )
 
     /*
      * PAD LIGHT
      */
     private val PAD_LIGHT = Config(
-        points = floatArrayOf(
-            0.67f, 0.37f, 0.88f, 0.54f, 0.66f, 1.0f,
-            0.37f, 0.71f, 0.68f, 0.28f, 0.26f, 0.62f,
-        ),
+        points = HYPERCEILER_POINTS,
         colors = floatArrayOf(
-            0.57f, 0.76f, 0.98f, 1.0f,
-            0.98f, 0.85f, 0.68f, 1.0f,
-            0.98f, 0.75f, 0.93f, 0.95f,
-            0.73f, 0.70f, 0.98f, 0.90f,
+            0.66f, 0.75f, 1.0f, 1.0f,
+            1.0f, 0.86f, 0.91f, 1.0f,
+            0.74f, 0.76f, 1.0f, 1.0f,
+            0.97f, 0.77f, 0.84f, 1.0f,
         ),
+        translateY = 0f,
+        alphaMulti = 1f,
+        noiseScale = 1.5f,
+        pointOffset = 0.2f,
+        pointRadiusMulti = 1f,
         lightOffset = 0.1f,
-        saturateOffset = 0f,
+        saturateOffset = 0.2f,
     )
 
     /*
      * PAD DARK
      */
     private val PAD_DARK = Config(
-        points = floatArrayOf(
-            0.55f, 0.42f, 1.0f, 0.56f, 0.75f, 1.0f,
-            0.40f, 0.59f, 0.71f, 0.43f, 0.09f, 0.75f,
-        ),
+        points = HYPERCEILER_POINTS,
         colors = floatArrayOf(
-            0.0f, 0.31f, 0.58f, 1.0f,
-            0.53f, 0.29f, 0.15f, 1.0f,
-            0.46f, 0.06f, 0.27f, 1.0f,
-            0.16f, 0.12f, 0.45f, 1.0f,
+            0.07f, 0.15f, 0.79f, 0.5f,
+            0.11f, 0.16f, 0.83f, 0.5f,
+            0.06f, 0.25f, 0.84f, 0.5f,
+            0.66f, 0.26f, 0.62f, 0.5f,
         ),
-        lightOffset = -0.1f,
-        saturateOffset = 0.2f,
+        translateY = 0f,
+        alphaMulti = 1f,
+        noiseScale = 1.5f,
+        pointOffset = 0.2f,
+        pointRadiusMulti = 1f,
+        lightOffset = 0f,
+        saturateOffset = 0f,
     )
 
     /**

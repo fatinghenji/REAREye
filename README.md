@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://reareye-gh.uwu.hk/logo.svg" alt="REAREye logo" width="160" style="border-radius: 1.5rem;" />
+  <img src="https://reareye-gh.uwu.hk/favicon-32.png" alt="REAREye logo" width="160" />
 </p>
 
 <h1 align="center">REAREye</h1>

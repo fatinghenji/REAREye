@@ -2,8 +2,6 @@ package hk.uwu.reareye.ui.screen
 
 import android.content.Intent
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.drawable.BitmapDrawable
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutLinearInEasing
@@ -21,7 +19,6 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,10 +38,8 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Apps
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -64,6 +59,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
@@ -79,7 +75,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.graphics.createBitmap
 import androidx.core.net.toUri
 import dev.chrisbanes.haze.HazeState
 import hk.uwu.reareye.R
@@ -131,18 +126,6 @@ import utils.pageContentPadding
 import java.util.concurrent.ConcurrentHashMap
 
 private val contributorAvatarHttpClient = OkHttpClient()
-
-private object AppLogoCache {
-    @Volatile
-    private var cachedImage: ImageBitmap? = null
-
-    fun peek(): ImageBitmap? = cachedImage
-
-    fun store(image: ImageBitmap) {
-        cachedImage = image
-    }
-}
-
 private object ContributorAvatarCache {
     private val cache = ConcurrentHashMap<String, ImageBitmap>()
 
@@ -190,6 +173,52 @@ private data class CreditEntry(
     val summaryRes: Int,
     val url: String,
 )
+
+private data class AboutVisualTokens(
+    val isDarkTheme: Boolean,
+    val backgroundColor: Color,
+    val cardBlendColors: List<BlendColorEntry>,
+    val logoBlendColors: List<BlendColorEntry>,
+)
+
+@Composable
+private fun rememberAboutVisualTokens(): AboutVisualTokens {
+    val surface = colorScheme.surface
+    val isDarkTheme = surface.luminance() < 0.5f
+
+    return remember(surface, isDarkTheme) {
+        AboutVisualTokens(
+            isDarkTheme = isDarkTheme,
+            backgroundColor = surface,
+            cardBlendColors = aboutCardBlendColors(isDarkTheme),
+            logoBlendColors = aboutLogoBlendColors(isDarkTheme),
+        )
+    }
+}
+
+private fun aboutCardBlendColors(isDarkTheme: Boolean): List<BlendColorEntry> {
+    return if (isDarkTheme) {
+        ColorBlendToken.Overlay_Thin_Light
+    } else {
+        ColorBlendToken.Pured_Regular_Light
+    }
+}
+
+private fun aboutLogoBlendColors(isDarkTheme: Boolean): List<BlendColorEntry> {
+    return if (isDarkTheme) {
+        listOf(
+            BlendColorEntry(Color(0xe6a1a1a1), BlurBlendMode.ColorDodge),
+            BlendColorEntry(Color(0x4de6e6e6), BlurBlendMode.LinearLight),
+            BlendColorEntry(Color(0xff1af500), BlurBlendMode.Lab),
+        )
+    } else {
+        listOf(
+            BlendColorEntry(Color(0xcc4a4a4a), BlurBlendMode.ColorBurn),
+            BlendColorEntry(Color(0xff4f4f4f), BlurBlendMode.LinearLight),
+            BlendColorEntry(Color(0xff1af200), BlurBlendMode.Lab),
+        )
+    }
+}
 
 @Composable
 private fun rememberSkeletonPulseAlpha(label: String): Float {
@@ -320,6 +349,7 @@ fun AboutScreen(bottomInnerPadding: Dp = 0.dp) {
         AnimatedContent(
             modifier = Modifier
                 .fillMaxSize()
+                .background(colorScheme.surface)
                 .graphicsLayer { clip = true },
             targetState = route,
             contentKey = { it },
@@ -397,11 +427,9 @@ private fun AboutRootContent(
     lazyListState: LazyListState,
 ) {
     val context = LocalContext.current
-    val isDarkTheme = isSystemInDarkTheme()
+    val visualTokens = rememberAboutVisualTokens()
 
     val backdrop = rememberLayerBackdrop()
-
-    val cardBlendColor = if (isDarkTheme)  ColorBlendToken.Overlay_Thin_Light else ColorBlendToken.Pured_Regular_Light
 
     val scrollPadding = pageContentPadding(
         paddingValues,
@@ -430,24 +458,7 @@ private fun AboutRootContent(
     var projectNameProgress by remember { mutableFloatStateOf(0f) }
     var versionCodeProgress by remember { mutableFloatStateOf(0f) }
     var initialLogoAreaY by remember { mutableFloatStateOf(0f) }
-    val dynamicBackground = remember { mutableStateOf(isRuntimeShaderSupported()) }
-    val effectBackground = remember { mutableStateOf(isRuntimeShaderSupported()) }
-
-    val logoBlend = remember(isDarkTheme) {
-        if (isDarkTheme) {
-            listOf(
-                BlendColorEntry(Color(0xe6a1a1a1), BlurBlendMode.ColorDodge),
-                BlendColorEntry(Color(0x4de6e6e6), BlurBlendMode.LinearLight),
-                BlendColorEntry(Color(0xff1af500), BlurBlendMode.Lab),
-            )
-        } else {
-            listOf(
-                BlendColorEntry(Color(0xcc4a4a4a), BlurBlendMode.ColorBurn),
-                BlendColorEntry(Color(0xff4f4f4f), BlurBlendMode.LinearLight),
-                BlendColorEntry(Color(0xff1af200), BlurBlendMode.Lab),
-            )
-        }
-    }
+    val runtimeShaderSupported = remember { isRuntimeShaderSupported() }
 
 
     LaunchedEffect(lazyListState) {
@@ -456,7 +467,6 @@ private fun AboutRootContent(
                 if (lazyListState.firstVisibleItemIndex > 0) {
                     if (iconProgress != 1f) iconProgress = 1f
                     if (projectNameProgress != 1f) projectNameProgress = 1f
-                    if (iconProgress != 1f) iconProgress = 1f
                     return@onEach
                 }
 
@@ -480,10 +490,12 @@ private fun AboutRootContent(
             .collect { }
     }
     BgEffectBackground(
-        dynamicBackground = dynamicBackground.value,
+        dynamicBackground = runtimeShaderSupported,
         modifier = Modifier.fillMaxSize(),
         bgModifier = Modifier.layerBackdrop(backdrop),
-        effectBackground = effectBackground.value,
+        backgroundColor = visualTokens.backgroundColor,
+        isDarkTheme = visualTokens.isDarkTheme,
+        effectBackground = runtimeShaderSupported,
         alpha = { 1f - scrollProgress },
     ) {
         // ── 修改：Logo 固定悬浮在 LazyColumn 下方，与 AboutPage 结构一致 ──
@@ -504,15 +516,12 @@ private fun AboutRootContent(
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .size(88.dp)
+                    .size(90.dp)
                     .graphicsLayer {
-                        clip = true
-                        shape = RoundedCornerShape(24.dp)
                         alpha = 1 - iconProgress
                         scaleX = 1 - (iconProgress * 0.05f)
                         scaleY = 1 - (iconProgress * 0.05f)
                     }
-                    .background(Color(0xffa8e0ff))
                     .onGloballyPositioned { coordinates ->
                         if (iconY != 0f) return@onGloballyPositioned
                         val y = coordinates.positionInWindow().y
@@ -521,8 +530,19 @@ private fun AboutRootContent(
                     },
             ) {
                 Image(
-                    modifier = Modifier.size(94.dp),
-                    painter = painterResource(R.drawable.ic_launcher_nobg),
+                    modifier = Modifier
+                        .size(90.dp)
+                        .textureBlur(
+                            backdrop = backdrop,
+                            shape = SmoothRoundedCornerShape(24.dp),
+                            blurRadius = 150f,
+                            colors = BlurColors(
+                                blendColors = visualTokens.logoBlendColors,
+                            ),
+                            contentBlendMode = BlendMode.DstIn,
+                            enabled = true,
+                        ),
+                    painter = painterResource(R.drawable.ic_about_logo_hollow),
                     contentDescription = null,
                 )
             }
@@ -547,7 +567,7 @@ private fun AboutRootContent(
                         shape = SmoothRoundedCornerShape(16.dp),
                         blurRadius = 150f,
                         colors = BlurColors(
-                            blendColors = logoBlend,
+                            blendColors = visualTokens.logoBlendColors,
                         ),
                         contentBlendMode = BlendMode.DstIn,
                         enabled = true,
@@ -627,14 +647,15 @@ private fun AboutRootContent(
                         delayMillis = 36,
                     ) {
                         Card(
-                            modifier = Modifier.padding(horizontal = 8.dp)
+                            modifier = Modifier
+                                .padding(horizontal = 8.dp)
                                 .textureBlur(
                                     backdrop = backdrop,
                                     shape = SmoothRoundedCornerShape(16.dp),
                                     blurRadius = 60f,
                                     noiseCoefficient = 0.001f,
                                     colors = BlurColors(
-                                        blendColors = cardBlendColor,
+                                        blendColors = visualTokens.cardBlendColors,
                                         brightness = 0f,
                                         contrast = 1f,
                                         saturation = 1f,
@@ -678,7 +699,7 @@ private fun AboutRootContent(
                                         blurRadius = 60f,
                                         noiseCoefficient = 0.001f,
                                         colors = BlurColors(
-                                            blendColors = cardBlendColor,
+                                            blendColors = visualTokens.cardBlendColors,
                                             brightness = 0f,
                                             contrast = 1f,
                                             saturation = 1f,

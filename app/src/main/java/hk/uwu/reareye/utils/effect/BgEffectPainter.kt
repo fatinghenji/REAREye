@@ -3,11 +3,8 @@
 
 package hk.uwu.reareye.utils.effect
 
-import android.os.Build
-import androidx.annotation.RequiresApi
 import top.yukonga.miuix.kmp.blur.RuntimeShader
 
-@RequiresApi(Build.VERSION_CODES.TIRAMISU)
 class BgEffectPainter {
 
     val runtimeShader by lazy {
@@ -20,6 +17,9 @@ class BgEffectPainter {
     private val bound = FloatArray(4)
 
     private var animTime = Float.NaN
+    private var boundLogoHeight = Float.NaN
+    private var boundHeight = Float.NaN
+    private var boundWidth = Float.NaN
     private var isDarkCached: Boolean? = null
     private var deviceTypeCached: DeviceType? = null
 
@@ -44,12 +44,12 @@ class BgEffectPainter {
         shader.setFloatUniform("uAlphaMulti", U_ALPHA_MULTI)
     }
 
-    fun setDeviceType(type: DeviceType) {
+    /*fun setDeviceType(type: DeviceType) {
         if (deviceType == type) return
 
         deviceType = type
         presetApplied = false
-    }
+    }*/
 
     fun updateResolution(width: Float, height: Float) {
         if (
@@ -88,7 +88,10 @@ class BgEffectPainter {
         if (
             presetApplied &&
             isDarkCached == isDark &&
-            deviceTypeCached == deviceType
+            deviceTypeCached == deviceType &&
+            boundLogoHeight == logoHeight &&
+            boundHeight == height &&
+            boundWidth == width
         ) {
             return
         }
@@ -103,6 +106,9 @@ class BgEffectPainter {
 
         isDarkCached = isDark
         deviceTypeCached = deviceType
+        boundLogoHeight = logoHeight
+        boundHeight = height
+        boundWidth = width
         presetApplied = true
     }
 
@@ -117,6 +123,31 @@ class BgEffectPainter {
         runtimeShader.setFloatUniform(
             "uColors",
             preset.colors,
+        )
+
+        runtimeShader.setFloatUniform(
+            "uTranslateY",
+            preset.translateY,
+        )
+
+        runtimeShader.setFloatUniform(
+            "uAlphaMulti",
+            preset.alphaMulti,
+        )
+
+        runtimeShader.setFloatUniform(
+            "uNoiseScale",
+            preset.noiseScale,
+        )
+
+        runtimeShader.setFloatUniform(
+            "uPointOffset",
+            preset.pointOffset,
+        )
+
+        runtimeShader.setFloatUniform(
+            "uPointRadiusMulti",
+            preset.pointRadiusMulti,
         )
 
         runtimeShader.setFloatUniform(
@@ -140,6 +171,8 @@ class BgEffectPainter {
         totalHeight: Float,
         totalWidth: Float,
     ) {
+        if (totalHeight <= 0f || totalWidth <= 0f) return
+
         val heightRatio = logoHeight / totalHeight
         if (totalWidth <= totalHeight) {
             bound[0] = 0f
