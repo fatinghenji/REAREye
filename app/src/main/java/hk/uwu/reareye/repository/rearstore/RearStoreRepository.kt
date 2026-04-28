@@ -7,6 +7,7 @@ import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import hk.uwu.reareye.BuildConfig
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperMetadataOptions
+import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperOperationResult
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperRepository
 import hk.uwu.reareye.repository.rearwidget.RearBusinessConfig
 import hk.uwu.reareye.repository.rearwidget.RearCardConfig
@@ -21,6 +22,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -439,6 +442,8 @@ data class RearStorePreparedInstallAsset(
     val asset: RearStoreReleaseAsset,
     val assetBytes: ByteArray,
     val embeddedMetadataBytes: ByteArray? = null,
+    val wallpaperMetadataEditable: Boolean = true,
+    val embeddedWallpaperMetadataOptions: RearWallpaperMetadataOptions? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -450,6 +455,8 @@ data class RearStorePreparedInstallAsset(
         if (asset != other.asset) return false
         if (!assetBytes.contentEquals(other.assetBytes)) return false
         if (!embeddedMetadataBytes.contentEquals(other.embeddedMetadataBytes)) return false
+        if (wallpaperMetadataEditable != other.wallpaperMetadataEditable) return false
+        if (embeddedWallpaperMetadataOptions != other.embeddedWallpaperMetadataOptions) return false
 
         return true
     }
@@ -459,6 +466,8 @@ data class RearStorePreparedInstallAsset(
         result = 31 * result + asset.hashCode()
         result = 31 * result + assetBytes.contentHashCode()
         result = 31 * result + (embeddedMetadataBytes?.contentHashCode() ?: 0)
+        result = 31 * result + wallpaperMetadataEditable.hashCode()
+        result = 31 * result + (embeddedWallpaperMetadataOptions?.hashCode() ?: 0)
         return result
     }
 }
@@ -489,7 +498,7 @@ private data class RearStoreSelectedAsset(
     val asset: RearStoreReleaseAsset,
 )
 
-private data class RearStoreInstalledWallpaperRecord(
+data class RearStoreInstalledWallpaper(
     val widgetId: String,
     val widgetName: String,
     val wallpaperId: Int,
@@ -499,6 +508,7 @@ private data class RearStoreInstalledWallpaperRecord(
 )
 
 object RearStoreRepository {
+    private val wallpaperInstallMutex = Mutex()
     private val httpClient = OkHttpClient.Builder()
         .apply {
             if (BuildConfig.DEBUG) {
@@ -683,6 +693,35 @@ object RearStoreRepository {
         }
     }
 
+    fun loadInstalledWallpaperSources(
+        prefsManager: PrefsManager,
+    ): Map<Int, RearStoreInstalledWallpaper> {
+        return loadInstalledWallpaperRecords(prefsManager)
+            .associateBy { it.wallpaperId }
+    }
+
+    fun removeInstalledWallpaperRecord(
+        prefsManager: PrefsManager,
+        wallpaperId: Int,
+    ): Boolean {
+        val records = loadInstalledWallpaperRecords(prefsManager)
+        val nextRecords = records.filterNot { it.wallpaperId == wallpaperId }
+        if (nextRecords.size == records.size) return false
+        saveInstalledWallpaperRecords(prefsManager, nextRecords)
+        return true
+    }
+
+    fun pruneInstalledWallpaperRecords(
+        prefsManager: PrefsManager,
+        installedWallpaperIds: Set<Int>,
+    ): Boolean {
+        val records = loadInstalledWallpaperRecords(prefsManager)
+        val nextRecords = records.filter { it.wallpaperId in installedWallpaperIds }
+        if (nextRecords.size == records.size) return false
+        saveInstalledWallpaperRecords(prefsManager, nextRecords)
+        return true
+    }
+
     fun resolveInstallConflict(
         prefsManager: PrefsManager,
         detail: RearStoreWidgetDetail,
@@ -741,7 +780,7 @@ object RearStoreRepository {
 
         removedWallpaper?.let { wallpaper ->
             val result = RearWallpaperRepository.deleteWallpaper(context, wallpaper.wallpaperId)
-            if (!result.success) {
+            if (!result.success && !isMissingWallpaperError(result.error)) {
                 error(result.error ?: "Failed to delete wallpaper")
             }
         }
@@ -823,15 +862,27 @@ object RearStoreRepository {
             onProgress = onProgress,
         )
             ?: error("Failed to download widget asset")
+        val isWallpaper = detail.widgetInfo.resolvedType() == RearStoreWidgetInfoType.WALLPAPER
+        val embeddedMetadataBytes = if (isWallpaper) extractRootMetadataMrm(assetBytes) else null
+        val defaultWallpaperOptions = if (isWallpaper) {
+            detail.toWallpaperMetadataOptions(detail.defaultWallpaperName())
+        } else {
+            null
+        }
         RearStorePreparedInstallAsset(
             release = selectedAsset.release,
             asset = selectedAsset.asset,
             assetBytes = assetBytes,
-            embeddedMetadataBytes = if (detail.widgetInfo.resolvedType() == RearStoreWidgetInfoType.WALLPAPER) {
-                extractRootMetadataMrm(assetBytes)
-            } else {
-                null
-            },
+            embeddedMetadataBytes = embeddedMetadataBytes,
+            wallpaperMetadataEditable = !isWallpaper || !containsNotEditableMarker(assetBytes),
+            embeddedWallpaperMetadataOptions = defaultWallpaperOptions
+                ?.let { fallback ->
+                    val metadataBytes = embeddedMetadataBytes ?: return@let null
+                    parseWallpaperMetadataOptions(
+                        bytes = metadataBytes,
+                        fallback = fallback,
+                    )
+                },
         )
     }
 
@@ -907,6 +958,14 @@ object RearStoreRepository {
                 "Component '${conflict.businessId}' is already registered by '$widgetName'"
             }
         }
+    }
+
+    private fun isMissingWallpaperError(error: String?): Boolean {
+        val normalized = error?.trim()?.lowercase(Locale.ROOT).orEmpty()
+        return normalized.contains("not in runtime list") ||
+                normalized.contains("not in current list") ||
+                normalized.contains("not found") ||
+                normalized.contains("找不到")
     }
 
     private fun installWidgetAsset(
@@ -1102,31 +1161,48 @@ object RearStoreRepository {
         assetBytes: ByteArray,
         metadataBytes: ByteArray?,
         wallpaperMetadataOptions: RearWallpaperMetadataOptions?,
-    ): RearStoreQuickInstallResult {
-        val widgetName = detail.widgetInfo?.name.normalizedOrNull()
-            ?: detail.name.normalizedOrNull()
-            ?: detail.widgetId
+    ): RearStoreQuickInstallResult = wallpaperInstallMutex.withLock {
+        val widgetName = detail.defaultWallpaperName()
         val oldRecords = loadInstalledWallpaperRecords(prefsManager)
-        val previousRecord = oldRecords.firstOrNull { it.widgetId == detail.widgetId }
+        val previousRecords = oldRecords.filter { it.widgetId == detail.widgetId }
+        val retainedRecords = oldRecords.filterNot { it.widgetId == detail.widgetId }
+
+        val effectiveMetadataBytes = metadataBytes.takeIf { wallpaperMetadataOptions == null }
         val options = when {
             wallpaperMetadataOptions != null -> wallpaperMetadataOptions
-            metadataBytes != null && metadataBytes.isNotEmpty() -> null
+            effectiveMetadataBytes != null && effectiveMetadataBytes.isNotEmpty() -> null
+            previousRecords.isNotEmpty() -> null
             else -> detail.toWallpaperMetadataOptions(widgetName)
         }
-        val result = RearWallpaperRepository.importWallpaperBytes(
+        var result: RearWallpaperOperationResult? = null
+        previousRecords.distinctBy { it.wallpaperId }.forEach { previousRecord ->
+            if (result != null) return@forEach
+            val updateResult = RearWallpaperRepository.updateWallpaperBytes(
+                context = context,
+                wallpaperId = previousRecord.wallpaperId,
+                bytes = assetBytes,
+                displayNameHint = selectedAsset.asset.name,
+                metadataBytes = effectiveMetadataBytes,
+                options = options,
+            )
+            if (updateResult.success || !isMissingWallpaperError(updateResult.error)) {
+                result = updateResult
+            }
+        }
+        val installResult = result ?: RearWallpaperRepository.importWallpaperBytes(
             context = context,
             bytes = assetBytes,
             displayNameHint = selectedAsset.asset.name,
-            metadataBytes = metadataBytes,
+            metadataBytes = effectiveMetadataBytes,
             options = options,
         )
-        if (!result.success) {
-            error(result.error ?: "Failed to import wallpaper")
+        if (!installResult.success) {
+            error(installResult.error ?: "Failed to install wallpaper")
         }
         val wallpaperId =
-            result.wallpaperId ?: error("Wallpaper import finished without wallpaper id")
+            installResult.wallpaperId ?: error("Wallpaper install finished without wallpaper id")
         val installedAt = currentUtcTimestamp()
-        val record = RearStoreInstalledWallpaperRecord(
+        val record = RearStoreInstalledWallpaper(
             widgetId = detail.widgetId,
             widgetName = widgetName,
             wallpaperId = wallpaperId,
@@ -1137,21 +1213,22 @@ object RearStoreRepository {
         )
         saveInstalledWallpaperRecords(
             prefsManager,
-            oldRecords.filterNot { it.widgetId == detail.widgetId } + record,
+            retainedRecords + record,
         )
-        if (previousRecord != null && previousRecord.wallpaperId != wallpaperId) {
-            runCatching {
-                RearWallpaperRepository.deleteWallpaper(context, previousRecord.wallpaperId)
-            }
-        }
         return RearStoreQuickInstallResult(
             widgetId = detail.widgetId,
             widgetName = widgetName,
             releaseTag = record.releaseTag,
             cardInstalled = false,
             fallbackUsed = false,
-            updatedExistingInstall = previousRecord != null,
+            updatedExistingInstall = previousRecords.isNotEmpty(),
         )
+    }
+
+    private fun RearStoreWidgetDetail.defaultWallpaperName(): String {
+        return widgetInfo?.name.normalizedOrNull()
+            ?: name.normalizedOrNull()
+            ?: widgetId
     }
 
     private fun RearStoreWidgetDetail.toWallpaperMetadataOptions(widgetName: String): RearWallpaperMetadataOptions {
@@ -1178,7 +1255,7 @@ object RearStoreRepository {
 
     private fun loadInstalledWallpaperRecords(
         prefsManager: PrefsManager,
-    ): List<RearStoreInstalledWallpaperRecord> {
+    ): List<RearStoreInstalledWallpaper> {
         val raw = prefsManager.getString(
             ConfigKeys.REAR_STORE_WALLPAPER_INSTALL_DATA,
             RearWidgetConfigCodec.EMPTY_ARRAY,
@@ -1190,10 +1267,10 @@ object RearStoreRepository {
                 val item = array.optJSONObject(i) ?: continue
                 val widgetId = item.optString("widgetId").trim()
                 if (widgetId.isBlank()) continue
-                val wallpaperId = item.optInt("wallpaperId", -1)
-                if (wallpaperId < 0) continue
+                if (!item.has("wallpaperId")) continue
+                val wallpaperId = item.optInt("wallpaperId")
                 add(
-                    RearStoreInstalledWallpaperRecord(
+                    RearStoreInstalledWallpaper(
                         widgetId = widgetId,
                         widgetName = item.optString("widgetName").trim().ifBlank { widgetId },
                         wallpaperId = wallpaperId,
@@ -1209,7 +1286,7 @@ object RearStoreRepository {
 
     private fun saveInstalledWallpaperRecords(
         prefsManager: PrefsManager,
-        records: List<RearStoreInstalledWallpaperRecord>,
+        records: List<RearStoreInstalledWallpaper>,
     ) {
         val encoded = JSONArray().apply {
             records.forEach { item ->
@@ -1241,6 +1318,76 @@ object RearStoreRepository {
                 null
             }
         }.getOrNull()
+    }
+
+    private fun containsNotEditableMarker(bytes: ByteArray): Boolean {
+        return runCatching {
+            ZipInputStream(bytes.inputStream()).use { zipInput ->
+                while (true) {
+                    val entry = zipInput.nextEntry ?: break
+                    val normalizedName = entry.name.replace('\\', '/').trimStart('/')
+                    if (entry.isDirectory) continue
+                    if (normalizedName == "not_editable" || normalizedName.endsWith("/not_editable")) {
+                        return@runCatching true
+                    }
+                }
+                false
+            }
+        }.getOrDefault(false)
+    }
+
+    private fun parseWallpaperMetadataOptions(
+        bytes: ByteArray,
+        fallback: RearWallpaperMetadataOptions,
+    ): RearWallpaperMetadataOptions? {
+        return runCatching {
+            val json = JSONObject(bytes.toString(Charsets.UTF_8))
+            val titles = json.optLocaleObject("titles")
+            val descriptions = json.optLocaleObject("descriptions")
+            val authors = json.optLocaleObject("authors")
+            val designers = json.optLocaleObject("designers")
+            val titleFallback = titles["fallback"] ?: titles["zh_CN"] ?: fallback.titleFallback
+            val descriptionFallback = descriptions["fallback"]
+                ?: descriptions["zh_CN"]
+                ?: fallback.descriptionFallback
+
+            RearWallpaperMetadataOptions(
+                titleFallback = titleFallback,
+                titleZhCn = titles["zh_CN"] ?: titleFallback,
+                descriptionFallback = descriptionFallback,
+                descriptionZhCn = descriptions["zh_CN"] ?: descriptionFallback,
+                author = authors["fallback"] ?: authors["zh_CN"] ?: fallback.author,
+                designer = designers["fallback"] ?: designers["zh_CN"] ?: fallback.designer,
+                category = json.optNonBlankString("subResourceType")
+                    ?: json.optNonBlankString("widgetCategory")
+                    ?: fallback.category,
+                resSubType = json.optNonBlankString("resSubType") ?: fallback.resSubType,
+                editable = json.optBoolean("isRearScreenEditable", fallback.editable),
+                thirdParties = json.optBoolean("isThirdParties", fallback.thirdParties),
+                supportAon = json.optBoolean("supportAon", fallback.supportAon),
+            )
+        }.getOrNull()
+    }
+
+    private fun JSONObject.optLocaleObject(key: String): Map<String, String> {
+        val json = when (val value = opt(key)) {
+            is JSONObject -> value
+            is String -> runCatching { JSONObject(value) }.getOrNull()
+            else -> null
+        } ?: return emptyMap()
+
+        return buildMap {
+            val keys = json.keys()
+            while (keys.hasNext()) {
+                val locale = keys.next()
+                val text = json.optString(locale).trim()
+                if (locale.isNotBlank() && text.isNotBlank()) put(locale, text)
+            }
+        }
+    }
+
+    private fun JSONObject.optNonBlankString(key: String): String? {
+        return optString(key).trim().takeIf { it.isNotBlank() }
     }
 
     private suspend fun fetchBytes(

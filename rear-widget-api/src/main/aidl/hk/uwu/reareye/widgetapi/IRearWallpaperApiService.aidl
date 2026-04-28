@@ -21,6 +21,14 @@ interface IRearWallpaperApiService {
 
     Bundle updateWallpaperMetadata(int wallpaperId, String previewUri, in Bundle options);
 
+    Bundle updateWallpaperPackage(
+        int wallpaperId,
+        in ParcelFileDescriptor packageFd,
+        String displayNameHint,
+        String previewUri,
+        in Bundle options
+    );
+
     Bundle generateWallpaperPreview(int wallpaperId);
 
     Bundle deleteWallpaper(int wallpaperId);

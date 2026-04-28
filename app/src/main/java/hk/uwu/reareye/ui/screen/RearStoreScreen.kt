@@ -31,6 +31,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -104,6 +105,7 @@ import hk.uwu.reareye.repository.rearstore.RearStoreWidgetMetadataType
 import hk.uwu.reareye.repository.rearstore.resolvedType
 import hk.uwu.reareye.repository.rearstore.supportsModuleVersion
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperMetadataOptions
+import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperRepository
 import hk.uwu.reareye.ui.components.DialogFormColumn
 import hk.uwu.reareye.ui.components.OverlayDialog
 import hk.uwu.reareye.ui.components.RearBadgeGroup
@@ -677,6 +679,13 @@ fun RearStoreScreen(bottomInnerPadding: Dp = 0.dp) {
 
     suspend fun reloadInstalledWidgets() {
         installedWidgets = withContext(Dispatchers.IO) {
+            runCatching {
+                val catalog = RearWallpaperRepository.loadCatalog(context)
+                RearStoreRepository.pruneInstalledWallpaperRecords(
+                    prefsManager = prefsManager,
+                    installedWallpaperIds = catalog.wallpapers.mapTo(HashSet()) { it.wallpaperId },
+                )
+            }
             RearStoreRepository.loadInstalledWidgetSummaries(prefsManager)
         }
     }
@@ -1157,9 +1166,13 @@ private fun RearStoreDetailContent(
             ).show()
             return
         }
-        if (preparedAsset.embeddedMetadataBytes == null) {
+        val isUpdatingWallpaper = installedWidget != null
+        val shouldEditMetadata = preparedAsset.wallpaperMetadataEditable &&
+                (!isUpdatingWallpaper || preparedAsset.embeddedMetadataBytes != null)
+        if (shouldEditMetadata) {
             activeInstall = null
-            wallpaperMetadataDraft = defaultWallpaperMetadataOptions(widgetDetail)
+            wallpaperMetadataDraft = preparedAsset.embeddedWallpaperMetadataOptions
+                ?: defaultWallpaperMetadataOptions(widgetDetail)
             pendingWallpaperInstall =
                 RearStorePendingWallpaperInstall(preparedAsset = preparedAsset)
             return
@@ -1667,18 +1680,36 @@ private fun RearStoreUninstallCard(
     val colorScheme = MiuixTheme.colorScheme
     val darkTheme = colorScheme.surface.luminance() < 0.5f
     val backgroundColor = if (darkTheme) {
-        lerp(colorScheme.surface, colorScheme.error, 0.36f)
+        lerp(colorScheme.error, Color.White, 0.12f).copy(alpha = 0.94f)
     } else {
-        colorScheme.error.copy(alpha = 0.92f)
+        lerp(colorScheme.surface, colorScheme.error, 0.12f)
     }
     val titleColor = if (darkTheme) {
-        lerp(colorScheme.errorContainer, Color.White, 0.12f)
+        Color.White.copy(alpha = 0.94f)
     } else {
-        colorScheme.errorContainer
+        colorScheme.error
     }
-    val summaryColor = titleColor.copy(alpha = if (darkTheme) 0.84f else 0.9f)
+    val summaryColor = titleColor.copy(alpha = if (darkTheme) 0.78f else 0.9f)
+    val actionBackgroundColor = if (darkTheme) {
+        Color.White.copy(alpha = 0.16f)
+    } else {
+        titleColor.copy(alpha = 0.14f)
+    }
+    val actionContentColor = if (darkTheme) Color.White else titleColor
+    val cardShape = RoundedCornerShape(18.dp)
+    val cardModifier = if (darkTheme) {
+        Modifier.fillMaxWidth()
+    } else {
+        Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = colorScheme.error.copy(alpha = 0.92f),
+                shape = cardShape,
+            )
+    }
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = cardModifier,
         colors = CardDefaults.defaultColors(
             color = backgroundColor,
             contentColor = titleColor,
@@ -1717,8 +1748,8 @@ private fun RearStoreUninstallCard(
             ModuleStyleDeleteAction(
                 icon = MiuixIcons.Delete,
                 text = stringResource(R.string.rear_store_uninstall_action),
-                backgroundColor = titleColor.copy(alpha = if (darkTheme) 0.12f else 0.14f),
-                contentColor = titleColor,
+                backgroundColor = actionBackgroundColor,
+                contentColor = actionContentColor,
                 onClick = onClick,
             )
         }

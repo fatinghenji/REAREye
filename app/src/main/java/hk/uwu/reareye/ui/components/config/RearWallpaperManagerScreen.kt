@@ -81,7 +81,8 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import hk.uwu.reareye.R
-import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperCatalog
+import hk.uwu.reareye.repository.rearstore.RearStoreInstalledWallpaper
+import hk.uwu.reareye.repository.rearstore.RearStoreRepository
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperInfo
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperMetadataOptions
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperRepository
@@ -175,6 +176,7 @@ fun RearWallpaperManagerScreen(
 
     val wallpapers = remember { mutableStateListOf<RearWallpaperInfo>() }
     val schedule = remember { mutableStateListOf<RearWallpaperScheduleEntry>() }
+    val storeWallpaperSources = remember { mutableStateMapOf<Int, RearStoreInstalledWallpaper>() }
 
     var currentWallpaperId by remember { mutableStateOf<Int?>(null) }
     var loading by remember { mutableStateOf(true) }
@@ -225,12 +227,20 @@ fun RearWallpaperManagerScreen(
             refreshing = true
             val result = runCatching {
                 withContext(Dispatchers.IO) {
-                    RearWallpaperRepository.loadCatalog(context)
+                    val catalog = RearWallpaperRepository.loadCatalog(context)
+                    RearStoreRepository.pruneInstalledWallpaperRecords(
+                        prefsManager = prefsManager,
+                        installedWallpaperIds = catalog.wallpapers.mapTo(HashSet()) { it.wallpaperId },
+                    )
+                    catalog to RearStoreRepository.loadInstalledWallpaperSources(prefsManager)
                 }
             }
-            result.onSuccess { catalog: RearWallpaperCatalog ->
+            result.onSuccess { loaded ->
+                val (catalog, sources) = loaded
                 wallpapers.clear()
                 wallpapers.addAll(catalog.wallpapers)
+                storeWallpaperSources.clear()
+                storeWallpaperSources.putAll(sources)
                 currentWallpaperId = catalog.currentWallpaperId
                 if (showSuccessToast) toast(R.string.rear_wallpaper_refresh_success)
             }.onFailure {
@@ -360,10 +370,19 @@ fun RearWallpaperManagerScreen(
             refreshing = true
             val result = withContext(Dispatchers.IO) {
                 RearWallpaperRepository.deleteWallpaper(context, wallpaper.wallpaperId)
+                    .also { result ->
+                        if (result.success) {
+                            RearStoreRepository.removeInstalledWallpaperRecord(
+                                prefsManager = prefsManager,
+                                wallpaperId = wallpaper.wallpaperId,
+                            )
+                        }
+                    }
             }
             refreshing = false
             if (result.success) {
                 schedule.removeAll { it.wallpaperId == wallpaper.wallpaperId }
+                storeWallpaperSources.remove(wallpaper.wallpaperId)
                 persistSchedule()
                 toast(R.string.rear_wallpaper_delete_success)
                 refreshCatalog(showSuccessToast = false)
@@ -569,6 +588,7 @@ fun RearWallpaperManagerScreen(
                         scrollBehavior = scrollBehavior,
                         hazeState = hazeState,
                         wallpapers = wallpapers,
+                        storeWallpaperSources = storeWallpaperSources,
                         currentWallpaperId = currentWallpaperId,
                         loading = loading,
                         refreshing = refreshing,

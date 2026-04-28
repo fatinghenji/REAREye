@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import hk.uwu.reareye.R
+import hk.uwu.reareye.repository.rearstore.RearStoreInstalledWallpaper
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperInfo
 import hk.uwu.reareye.ui.components.RearBadgeItem
 import hk.uwu.reareye.ui.components.rememberRearAccentBadgePalette
@@ -71,9 +72,16 @@ internal fun rearWallpaperManagementOverviewBadges(
 @Composable
 internal fun rearWallpaperManagementBadges(
     wallpaper: RearWallpaperInfo,
+    storeSource: RearStoreInstalledWallpaper?,
     isCurrent: Boolean,
 ): List<RearBadgeItem> {
     return buildList {
+        addAll(
+            rearWidgetSourceBadges(
+                downloadedFromStore = storeSource != null,
+                storeWidgetId = storeSource?.widgetId,
+            )
+        )
         if (wallpaper.imported) add(rearWallpaperImportedBadge())
         if (isCurrent) add(rearWallpaperCurrentBadge())
         wallpaper.resSubType.trim().takeIf { it.isNotBlank() }?.let {

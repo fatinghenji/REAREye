@@ -163,6 +163,46 @@ object RearWallpaperRepository {
         }
     }
 
+    suspend fun updateWallpaperBytes(
+        context: Context,
+        wallpaperId: Int,
+        bytes: ByteArray,
+        displayNameHint: String,
+        metadataBytes: ByteArray? = null,
+        previewUri: Uri? = null,
+        options: RearWallpaperMetadataOptions? = null,
+    ): RearWallpaperOperationResult {
+        return withContext(Dispatchers.IO) {
+            val cacheFile = createImportCacheFile(context, displayNameHint)
+            writeImportPackageToFile(
+                targetFile = cacheFile,
+                metadataBytes = metadataBytes ?: options?.toMetadataJsonBytes(),
+                source = { bytes.inputStream() },
+            )
+            try {
+                previewUri?.let { grantReadAccess(context, it) }
+                val result = withRemote(context) { client ->
+                    ParcelFileDescriptor.open(cacheFile, ParcelFileDescriptor.MODE_READ_ONLY)
+                        .use { packageFd ->
+                            client.updateWallpaperPackage(
+                                wallpaperId = wallpaperId,
+                                packageFd = packageFd,
+                                displayNameHint = displayNameHint.trim().ifBlank { cacheFile.name },
+                                previewUri = previewUri?.toString(),
+                                options = options?.toBundle() ?: Bundle(),
+                            )
+                        }
+                }
+                parseOperationResult(
+                    result,
+                    "wallpaper package update failed without an error message"
+                )
+            } finally {
+                runCatching { cacheFile.delete() }
+            }
+        }
+    }
+
     suspend fun generateWallpaperPreview(
         context: Context,
         wallpaperId: Int,

@@ -324,11 +324,6 @@ class RearWallpaperHook : YukiBaseHooker() {
                         mainHandler = null
                     }
 
-                    // Decompiled source: .tmp-ref/decompiled-jadx/sources/com/xiaomi/subscreencenter/MainPanel.java:331
-                    // MainPanel.F() persists the selected index to Z1.S with key "user_select".
-                    // The hook mirrors that index as a stable wallpaper id so injected imports at
-                    // the top of the list do not shift the selected wallpaper on import/restart.
-                    // DexKit anchor: the same method contains string "Save user select, new index = ".
                     saveSelectionPoint.className.toClass().resolve().firstMethod {
                         name = saveSelectionPoint.methodName
                         parameterCount = 0
@@ -386,6 +381,23 @@ class RearWallpaperHook : YukiBaseHooker() {
         ): Bundle {
             enforceCallerPermission()
             return updateWallpaperMetadataInternal(wallpaperId, previewUri, options)
+        }
+
+        override fun updateWallpaperPackage(
+            wallpaperId: Int,
+            packageFd: ParcelFileDescriptor?,
+            displayNameHint: String?,
+            previewUri: String?,
+            options: Bundle?,
+        ): Bundle {
+            enforceCallerPermission()
+            return updateWallpaperPackageInternal(
+                wallpaperId = wallpaperId,
+                packageFd = packageFd,
+                displayNameHint = displayNameHint,
+                previewUri = previewUri,
+                options = options,
+            )
         }
 
         override fun generateWallpaperPreview(wallpaperId: Int): Bundle {
@@ -2092,6 +2104,125 @@ class RearWallpaperHook : YukiBaseHooker() {
         }
     }
 
+    private fun updateWallpaperPackageInternal(
+        wallpaperId: Int,
+        packageFd: ParcelFileDescriptor?,
+        displayNameHint: String?,
+        previewUri: String?,
+        options: Bundle?,
+    ): Bundle {
+        val context =
+            hostContext ?: return operationResult(false, error = "host context is not ready")
+        val sourceFd = packageFd ?: return operationResult(false, error = "package fd is empty")
+        val sourceName = displayNameHint?.takeIf { it.isNotBlank() } ?: "wallpaper.mrc"
+        if (!sourceName.endsWith(".mrc", ignoreCase = true) &&
+            !sourceName.endsWith(".zip", ignoreCase = true)
+        ) {
+            return operationResult(false, error = "only .mrc or .zip packages are supported")
+        }
+
+        return runCatching {
+            synchronized(runtimeLock) {
+                val runtimeArray = readRuntimeArray()
+                val index = findRuntimeItemIndex(runtimeArray, wallpaperId)
+                if (index < 0) {
+                    return@synchronized operationResult(
+                        false,
+                        error = "wallpaper is not in runtime list"
+                    )
+                }
+                val item = runtimeArray.getJSONObject(index)
+                val record = item.toRuntimeRecord() ?: return@synchronized operationResult(
+                    false,
+                    error = "runtime item is invalid",
+                )
+                if (!record.imported) {
+                    return@synchronized operationResult(
+                        false,
+                        error = "only REAREye imported wallpapers can be updated",
+                    )
+                }
+
+                val packageFile = record.resLocalPath?.let(::File)
+                    ?: return@synchronized operationResult(false, error = "package path is missing")
+                val metadataFile = record.metaPath
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let(::File)
+                    ?: File(packageFile.parentFile, "${record.resId}.mrm")
+                val targetDir = metadataFile.parentFile
+                    ?: packageFile.parentFile
+                    ?: return@synchronized operationResult(false, error = "runtime dir is missing")
+                val updatePackageFile = File(targetDir, "${packageFile.name}.update")
+
+                try {
+                    val now = System.currentTimeMillis()
+                    val packageSize = copyParcelFileDescriptorToFileLimited(
+                        descriptor = sourceFd,
+                        target = updatePackageFile,
+                    )
+                    validateMamlPackage(updatePackageFile)
+                    if (packageFile.exists()) packageFile.delete()
+                    if (!updatePackageFile.renameTo(packageFile)) {
+                        updatePackageFile.copyTo(packageFile, overwrite = true)
+                        updatePackageFile.delete()
+                    }
+                    ensureReadable(packageFile)
+
+                    val extractedPreviewPath = extractPreviewFromPackage(packageFile, targetDir)
+                    val previewPath = previewUri
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let(Uri::parse)
+                        ?.let {
+                            copyPreviewImageFromUri(
+                                context,
+                                it,
+                                targetDir,
+                                "preview_imported_${now}"
+                            )
+                        }
+                        ?: extractedPreviewPath
+                        ?: record.previewPath
+                    val sourceMetadata = readJsonFile(metadataFile)
+                    val currentValues = record.readMetadataValues()
+                    val packageMetadata = readEmbeddedMetadata(packageFile)
+                    val values = resolveMetadataValues(
+                        options = options,
+                        source = packageMetadata ?: currentValues,
+                        displayNameHint = sourceName,
+                    )
+                    val metadataJson = buildMetadataJson(
+                        base = if (packageMetadata == null) sourceMetadata else null,
+                        resId = record.resId,
+                        packageFile = packageFile,
+                        metadataFile = metadataFile,
+                        previewPath = previewPath,
+                        packageSize = packageSize,
+                        updatedAt = now,
+                        values = values,
+                    )
+                    writeTextAtomically(metadataFile, metadataJson.toString(2))
+                    applyMetadataToRuntimeItem(
+                        item = item,
+                        metadataPath = metadataFile.absolutePath,
+                        previewPath = previewPath,
+                        values = values,
+                    )
+                    item.put("resLocalPath", packageFile.absolutePath)
+                    item.put("resSnapshotPath", packageFile.absolutePath)
+                    writeRuntimeArray(runtimeArray)
+                    ensureReadableRecursive(targetDir)
+                    refreshRuntimePanels()
+                    operationResult(true, wallpaperId = wallpaperId)
+                } finally {
+                    runCatching { updatePackageFile.delete() }
+                }
+            }
+        }.getOrElse {
+            YLog.error(it)
+            operationResult(false, error = it.message ?: "package update failed")
+        }
+    }
+
     private fun generateWallpaperPreviewInternal(wallpaperId: Int): Bundle {
         return runCatching {
             synchronized(runtimeLock) {
@@ -2447,14 +2578,10 @@ class RearWallpaperHook : YukiBaseHooker() {
 
         handler.post {
             runCatching {
-                // Decompiled source: .tmp-ref/decompiled-jadx/sources/com/xiaomi/subscreencenter/MainPanel.java:410
-                // MainPanel.q(int, int, boolean, int, Runnable) clones r.g(spec), assigns r.p,
-                // calls r.z(Context), r.y(aod), and r.D() without doing extra parsing.
-                // This offscreen path follows that creation chain but never calls MainPanel.d
-                // and never writes "user_select", so it does not change the selected wallpaper.
                 val size = resolvePreviewRenderSize(panel)
                 val panelEditMode = readMainPanelEditMode(panel)
                 val panelInAod = readMainPanelAodState(panel)
+                val renderInAod = false
                 val panelResumed = readMainPanelResumedState(panel)
                 val renderOverlay = FrameLayout(context).apply {
                     layoutParams = ViewGroup.LayoutParams(size.x, size.y)
@@ -2517,7 +2644,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                     panelContainer.addView(renderOverlay)
                     layoutRenderTree()
                     debugLog(
-                        "offscreen preview start wallpaperId=$wallpaperId size=${size.x}x${size.y} states(edit=$panelEditMode,aod=$panelInAod,resumed=$panelResumed) panel=${
+                        "offscreen preview start wallpaperId=$wallpaperId size=${size.x}x${size.y} states(edit=$panelEditMode,panelAod=$panelInAod,renderAod=$renderInAod,resumed=$panelResumed) panel=${
                             describeViewState(
                                 panel
                             )
@@ -2561,7 +2688,8 @@ class RearWallpaperHook : YukiBaseHooker() {
                             )
                         } host=${describeViewState(renderHost)} hostChildren=${renderHost.childCount}"
                     )
-                    invokeWidgetSetAodState(targetWidget, panelInAod)
+                    // Preview rendering should use the normal rear-screen state even if the panel is in AOD.
+                    invokeWidgetSetAodState(targetWidget, renderInAod)
                     invokeWidgetResume(targetWidget)
 
                     val startedAt = System.currentTimeMillis()

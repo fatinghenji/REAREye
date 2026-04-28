@@ -44,6 +44,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeState
 import hk.uwu.reareye.R
+import hk.uwu.reareye.repository.rearstore.RearStoreInstalledWallpaper
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperInfo
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperMetadataOptions
 import hk.uwu.reareye.ui.components.DialogFormColumn
@@ -80,6 +81,7 @@ fun RearWallpaperManagementContent(
     scrollBehavior: ScrollBehavior,
     hazeState: HazeState,
     wallpapers: List<RearWallpaperInfo>,
+    storeWallpaperSources: Map<Int, RearStoreInstalledWallpaper>,
     currentWallpaperId: Int?,
     loading: Boolean,
     refreshing: Boolean,
@@ -198,6 +200,7 @@ fun RearWallpaperManagementContent(
         scrollBehavior = scrollBehavior,
         hazeState = hazeState,
         wallpapers = wallpapers,
+        storeWallpaperSources = storeWallpaperSources,
         currentWallpaperId = currentWallpaperId,
         loading = loading,
         refreshing = refreshing,
@@ -407,6 +410,7 @@ private fun RearWallpaperManagementList(
     scrollBehavior: ScrollBehavior,
     hazeState: HazeState,
     wallpapers: List<RearWallpaperInfo>,
+    storeWallpaperSources: Map<Int, RearStoreInstalledWallpaper>,
     currentWallpaperId: Int?,
     loading: Boolean,
     refreshing: Boolean,
@@ -507,6 +511,7 @@ private fun RearWallpaperManagementList(
         items(wallpapers, key = { it.wallpaperId }) { wallpaper ->
             WallpaperManageCard(
                 wallpaper = wallpaper,
+                storeSource = storeWallpaperSources[wallpaper.wallpaperId],
                 isCurrent = wallpaper.wallpaperId == currentWallpaperId,
                 onSetCurrent = { onSetCurrent(wallpaper.wallpaperId) },
                 onEditMetadata = { onEditMetadata(wallpaper) },
@@ -521,6 +526,7 @@ private fun RearWallpaperManagementList(
 @Composable
 private fun WallpaperManageCard(
     wallpaper: RearWallpaperInfo,
+    storeSource: RearStoreInstalledWallpaper?,
     isCurrent: Boolean,
     onSetCurrent: () -> Unit,
     onEditMetadata: () -> Unit,
@@ -533,6 +539,7 @@ private fun WallpaperManageCard(
         summaryLines = emptyList(),
         badges = rearWallpaperManagementBadges(
             wallpaper = wallpaper,
+            storeSource = storeSource,
             isCurrent = isCurrent,
         ),
         headerVerticalAlignment = Alignment.Top,

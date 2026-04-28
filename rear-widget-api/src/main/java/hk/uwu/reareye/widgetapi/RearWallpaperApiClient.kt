@@ -85,6 +85,22 @@ open class RearWallpaperApiClient(
             ?: operationFailureBundle("hook service returned empty metadata update result")
     }
 
+    open fun updateWallpaperPackage(
+        wallpaperId: Int,
+        packageFd: ParcelFileDescriptor,
+        displayNameHint: String,
+        previewUri: String?,
+        options: Bundle,
+    ): Bundle {
+        return requireRemote().updateWallpaperPackage(
+            wallpaperId,
+            packageFd,
+            displayNameHint,
+            previewUri,
+            options,
+        ) ?: operationFailureBundle("hook service returned empty package update result")
+    }
+
     open fun generateWallpaperPreview(wallpaperId: Int): Bundle {
         return requireRemote().generateWallpaperPreview(wallpaperId)
             ?: operationFailureBundle("hook service returned empty preview generation result")
