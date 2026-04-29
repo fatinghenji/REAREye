@@ -17,6 +17,7 @@ object ConfigKeys {
     const val MODULE_STORE_API_CUSTOM_DOMAIN = "module_store_api_custom_domain"
     const val MODULE_STORE_WEBVIEW_HARDWARE_ACCELERATION =
         "module_store_webview_hardware_acceleration"
+    const val REAR_STORE_WALLPAPER_INSTALL_DATA = "rear_store_wallpaper_install_data"
 
     const val HOOK_ACTIVITIES_WHITELIST = "enable_activities_whitelist_hook"
     const val ACTIVITIES_WHITELIST_APPS = "activities_whitelist_apps"
@@ -34,9 +35,11 @@ object ConfigKeys {
     const val REAR_WALLPAPER_SCHEDULE_NEXT_AT = "rear_wallpaper_schedule_next_at"
 
     const val CFG_REAR_WIDGET_BUSINESS_MANAGER = "cfg_rear_widget_business_manager"
+    const val CFG_REAR_WIDGET_SCENE_ROUTE_MANAGER = "cfg_rear_widget_scene_route_manager"
     const val CFG_REAR_WIDGET_CARD_MANAGER = "cfg_rear_widget_card_manager"
     const val CFG_REAR_WIDGET_BUSINESS_EXTRA_MANAGER = "cfg_rear_widget_business_extra_manager"
     const val REAR_WIDGET_BUSINESS_DATA = "rear_widget_business_data"
+    const val REAR_WIDGET_SCENE_ROUTE_DATA = "rear_widget_scene_route_data"
     const val REAR_WIDGET_CARD_DATA = "rear_widget_card_data"
     const val REAR_WIDGET_BUSINESS_EXTRA_CONFIG_DATA = "rear_widget_business_extra_config_data"
     const val HOOK_ALLOW_REAR_FOCUS_NOTICES = "enable_allow_rear_focus_notices"
@@ -307,6 +310,12 @@ val REAREyeConfig = listOf(
                         titleRes = R.string.rear_widget_business_manager,
                         descriptionRes = R.string.rear_widget_business_manager_desc,
                         type = ConfigType.Manager(ConfigType.ManagerType.BUSINESS),
+                    ),
+                    ConfigItem(
+                        key = ConfigKeys.CFG_REAR_WIDGET_SCENE_ROUTE_MANAGER,
+                        titleRes = R.string.rear_widget_scene_route_manager,
+                        descriptionRes = R.string.rear_widget_scene_route_manager_desc,
+                        type = ConfigType.Manager(ConfigType.ManagerType.SCENE_ROUTE),
                     ),
                     ConfigItem(
                         key = ConfigKeys.CFG_REAR_WIDGET_CARD_MANAGER,

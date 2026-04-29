@@ -24,6 +24,10 @@ interface IRearWidgetApiService {
 
     void unregisterBusiness(String targetPackage, String business);
 
+    void registerSceneRoute(String targetPackage, String scene, String business);
+
+    void unregisterSceneRoute(String targetPackage, String scene);
+
     void disableBusinessDisplay(String targetPackage, String business);
 
     void postNotice(String targetPackage, String business, in Bundle payload, in Bundle options);

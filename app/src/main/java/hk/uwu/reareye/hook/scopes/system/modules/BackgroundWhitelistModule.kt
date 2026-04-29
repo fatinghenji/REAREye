@@ -18,7 +18,7 @@ class BackgroundWhitelistModule : YukiBaseHooker() {
             }.hook().after {
                 if (prefs.getBoolean(ConfigKeys.HOOK_BACKGROUND_WHITELIST, true)) {
                     val r = result<HashMap<String, Boolean>>() ?: return@after
-                    prefs.getStringSet(ConfigKeys.HOOK_BACKGROUND_WHITELIST).forEach {
+                    prefs.getStringSet(ConfigKeys.BACKGROUND_WHITELIST_APPS).forEach {
                         r[it] = true
                     }
                     result = r

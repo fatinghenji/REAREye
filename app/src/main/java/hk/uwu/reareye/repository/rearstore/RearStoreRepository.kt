@@ -6,27 +6,39 @@ import androidx.annotation.Keep
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import hk.uwu.reareye.BuildConfig
+import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperMetadataOptions
+import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperOperationResult
+import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperRepository
 import hk.uwu.reareye.repository.rearwidget.RearBusinessConfig
 import hk.uwu.reareye.repository.rearwidget.RearCardConfig
 import hk.uwu.reareye.repository.rearwidget.RearWidgetConfigCodec
 import hk.uwu.reareye.repository.rearwidget.RearWidgetManagerRepository
+import hk.uwu.reareye.repository.rearwidget.RearWidgetSceneRouteConfig
+import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.PrefsManager
 import hk.uwu.reareye.ui.config.resolveRearStoreApiBaseUrl
+import hk.uwu.reareye.widgetapi.RearWidgetSceneRouteSpec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.logging.HttpLoggingInterceptor
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import java.util.zip.ZipInputStream
 
 private const val DEFAULT_COMPONENT_ROUTE_PACKAGE = "com.xiaomi.subscreencenter"
+private const val WIDGET_VERSION_CHECK_DISABLED = -1L
 
 private fun String?.normalizedOrNull(): String? {
     return this?.trim()?.takeIf { it.isNotEmpty() }
@@ -37,7 +49,7 @@ enum class RearStoreWidgetInfoType(val rawValue: String) {
     WALLPAPER("wallpaper");
 
     val supportedInCurrentVersion: Boolean
-        get() = this == WIDGET
+        get() = true
 
     companion object {
         fun fromRaw(raw: String?): RearStoreWidgetInfoType {
@@ -73,8 +85,80 @@ fun RearStoreWidgetInfo?.resolvedType(): RearStoreWidgetInfoType {
     return RearStoreWidgetInfoType.fromRaw(this?.type)
 }
 
+fun RearStoreWidgetInfo?.supportsModuleVersion(
+    versionCode: Long = BuildConfig.VERSION_CODE.toLong(),
+): Boolean {
+    val minVersion = this?.minVersion ?: WIDGET_VERSION_CHECK_DISABLED
+    val maxVersion = this?.maxVersion ?: WIDGET_VERSION_CHECK_DISABLED
+    return (minVersion == WIDGET_VERSION_CHECK_DISABLED || versionCode >= minVersion) &&
+            (maxVersion == WIDGET_VERSION_CHECK_DISABLED || versionCode <= maxVersion)
+}
+
 fun RearStoreWidgetMetadata?.resolvedType(): RearStoreWidgetMetadataType {
     return RearStoreWidgetMetadataType.fromRaw(this?.type)
+}
+
+private fun parseMetadataType(rawType: String?): RearStoreWidgetMetadataType {
+    val raw = rawType?.trim().orEmpty()
+    if (raw.contains("壁纸")) return RearStoreWidgetMetadataType.WALLPAPER
+    if (raw.contains("通知")) return RearStoreWidgetMetadataType.NOTIFICATION
+    if (raw.contains("增强")) return RearStoreWidgetMetadataType.ENHANCED
+    if (raw.contains("卡片") || raw.contains("组件")) return RearStoreWidgetMetadataType.CARD
+
+    val normalized = rawType
+        ?.trim()
+        ?.lowercase(Locale.ROOT)
+        ?.replace('-', '_')
+        ?.replace(' ', '_')
+        .orEmpty()
+    if (normalized.isBlank()) return RearStoreWidgetMetadataType.UNKNOWN
+    return when {
+        normalized.contains("wallpaper") -> RearStoreWidgetMetadataType.WALLPAPER
+        normalized.contains("notification") || normalized.contains("notify") -> {
+            RearStoreWidgetMetadataType.NOTIFICATION
+        }
+
+        normalized.contains("enhanced") || normalized.contains("enhance") -> {
+            RearStoreWidgetMetadataType.ENHANCED
+        }
+
+        normalized.contains("card") || normalized.contains("widget") -> {
+            RearStoreWidgetMetadataType.CARD
+        }
+
+        else -> RearStoreWidgetMetadataType.UNKNOWN
+    }
+}
+
+private fun RearStoreWidgetDetail.resolvedMetadataTypeForInstall(): RearStoreWidgetMetadataType {
+    parseMetadataType(type).takeIf {
+        it != RearStoreWidgetMetadataType.UNKNOWN
+    }?.let { return it }
+
+    parseMetadataType(metadata?.type).takeIf {
+        it != RearStoreWidgetMetadataType.UNKNOWN
+    }?.let { return it }
+
+    metadata.resolvedType().takeIf {
+        it != RearStoreWidgetMetadataType.UNKNOWN
+    }?.let { return it }
+
+    parseMetadataType(widgetInfo?.type).takeIf {
+        it != RearStoreWidgetMetadataType.UNKNOWN
+    }?.let { return it }
+
+    return when (widgetInfo.resolvedType()) {
+        RearStoreWidgetInfoType.WALLPAPER -> RearStoreWidgetMetadataType.WALLPAPER
+        RearStoreWidgetInfoType.WIDGET -> RearStoreWidgetMetadataType.CARD
+    }
+}
+
+private fun RearStoreWidgetDetail.notificationSceneSetupOrNull(): RearStoreSceneSetup? {
+    if (resolvedMetadataTypeForInstall() != RearStoreWidgetMetadataType.NOTIFICATION) return null
+    val sceneSetup = widgetInfo?.sceneSetup ?: return null
+    val scene = sceneSetup.scene.normalizedOrNull() ?: return null
+    val packageName = sceneSetup.packageName.normalizedOrNull() ?: return null
+    return sceneSetup.copy(scene = scene, packageName = packageName)
 }
 
 @Keep
@@ -198,13 +282,6 @@ private data class RearStoreWidgetInfoResponse(
     val widgetInfo: RearStoreWidgetInfo? = null,
 )
 
-private data class RearStoreWidgetMetadataResponse(
-    @SerializedName("id")
-    val id: String = "",
-    @SerializedName("metadata")
-    val metadata: RearStoreWidgetMetadata? = null,
-)
-
 @Keep
 data class RearStoreWidgetInfo(
     @SerializedName("type")
@@ -215,6 +292,12 @@ data class RearStoreWidgetInfo(
     val businessSetup: RearStoreBusinessSetup? = null,
     @SerializedName(value = "card_setup", alternate = ["cardSetup"])
     val cardSetup: RearStoreCardSetup? = null,
+    @SerializedName(value = "scene_setup", alternate = ["sceneSetup"])
+    val sceneSetup: RearStoreSceneSetup? = null,
+    @SerializedName(value = "minVersion", alternate = ["min_version"])
+    val minVersion: Long = WIDGET_VERSION_CHECK_DISABLED,
+    @SerializedName(value = "maxVersion", alternate = ["max_version"])
+    val maxVersion: Long = WIDGET_VERSION_CHECK_DISABLED,
 )
 
 @Keep
@@ -243,6 +326,14 @@ data class RearStoreCardSetup(
     val sticky: Boolean = true,
     @SerializedName("renameable")
     val renameable: Boolean = true,
+)
+
+@Keep
+data class RearStoreSceneSetup(
+    @SerializedName("scene")
+    val scene: String = "",
+    @SerializedName(value = "pkg", alternate = ["package", "packageName"])
+    val packageName: String = "",
 )
 
 private data class RearStoreReadmeResponse(
@@ -323,6 +414,20 @@ data class RearStoreInstalledWidget(
     val renameable: Boolean,
 )
 
+enum class RearStoreInstallConflictSource {
+    SAME_WIDGET,
+    MANUAL_BUSINESS,
+    OTHER_STORE_WIDGET,
+}
+
+data class RearStoreInstallConflict(
+    val businessId: String,
+    val businessName: String,
+    val source: RearStoreInstallConflictSource,
+    val existingWidgetId: String? = null,
+    val existingWidgetName: String? = null,
+)
+
 data class RearStoreQuickInstallResult(
     val widgetId: String,
     val widgetName: String,
@@ -330,6 +435,50 @@ data class RearStoreQuickInstallResult(
     val cardInstalled: Boolean,
     val fallbackUsed: Boolean,
     val updatedExistingInstall: Boolean,
+)
+
+data class RearStorePreparedInstallAsset(
+    val release: RearStoreRelease,
+    val asset: RearStoreReleaseAsset,
+    val assetBytes: ByteArray,
+    val embeddedMetadataBytes: ByteArray? = null,
+    val wallpaperMetadataEditable: Boolean = true,
+    val embeddedWallpaperMetadataOptions: RearWallpaperMetadataOptions? = null,
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as RearStorePreparedInstallAsset
+
+        if (release != other.release) return false
+        if (asset != other.asset) return false
+        if (!assetBytes.contentEquals(other.assetBytes)) return false
+        if (!embeddedMetadataBytes.contentEquals(other.embeddedMetadataBytes)) return false
+        if (wallpaperMetadataEditable != other.wallpaperMetadataEditable) return false
+        if (embeddedWallpaperMetadataOptions != other.embeddedWallpaperMetadataOptions) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = release.hashCode()
+        result = 31 * result + asset.hashCode()
+        result = 31 * result + assetBytes.contentHashCode()
+        result = 31 * result + (embeddedMetadataBytes?.contentHashCode() ?: 0)
+        result = 31 * result + wallpaperMetadataEditable.hashCode()
+        result = 31 * result + (embeddedWallpaperMetadataOptions?.hashCode() ?: 0)
+        return result
+    }
+}
+
+data class RearStoreUninstallResult(
+    val widgetId: String,
+    val widgetName: String,
+    val removedBusinessCount: Int,
+    val removedCardCount: Int,
+    val removedSceneRouteCount: Int,
+    val removedWallpaperCount: Int,
 )
 
 enum class RearStoreInstallProgressStage {
@@ -349,7 +498,17 @@ private data class RearStoreSelectedAsset(
     val asset: RearStoreReleaseAsset,
 )
 
+data class RearStoreInstalledWallpaper(
+    val widgetId: String,
+    val widgetName: String,
+    val wallpaperId: Int,
+    val releaseTag: String?,
+    val releasePublishedAt: String?,
+    val installedAt: String?,
+)
+
 object RearStoreRepository {
+    private val wallpaperInstallMutex = Mutex()
     private val httpClient = OkHttpClient.Builder()
         .apply {
             if (BuildConfig.DEBUG) {
@@ -371,8 +530,6 @@ object RearStoreRepository {
         java.util.concurrent.ConcurrentHashMap<String, RearStoreWidgetInfo>()
     private val widgetTypeCache =
         java.util.concurrent.ConcurrentHashMap<String, String>()
-    private val metadataCache =
-        java.util.concurrent.ConcurrentHashMap<String, RearStoreWidgetMetadata>()
     private val releasesCache =
         java.util.concurrent.ConcurrentHashMap<String, List<RearStoreRelease>>()
     private val detailCache =
@@ -440,7 +597,6 @@ object RearStoreRepository {
                     async { loadDescriptionCached(baseUrl, normalizedWidgetId) }
                 val authorDeferred = async { loadAuthorCached(baseUrl, normalizedWidgetId) }
                 val infoDeferred = async { loadWidgetInfoCached(baseUrl, normalizedWidgetId) }
-                val metadataDeferred = async { loadMetadataCached(baseUrl, normalizedWidgetId) }
                 val releasesDeferred = async { loadReleasesCached(baseUrl, normalizedWidgetId) }
 
                 val description = descriptionDeferred.await()
@@ -452,7 +608,7 @@ object RearStoreRepository {
                     ?: return@coroutineScope null
                 val repository = description.repository
                 val widgetInfo = infoDeferred.await()
-                val metadata = description.metadata ?: metadataDeferred.await()
+                val metadata = description.metadata
                 val widgetType = loadWidgetTypeFromInfoCached(baseUrl, normalizedWidgetId)
                 val resolvedAuthor = resolveAuthor(authorDeferred.await(), repository)
                 val detail = RearStoreWidgetDetail(
@@ -497,46 +653,202 @@ object RearStoreRepository {
     }
 
     fun loadInstalledWidgetSummaries(prefsManager: PrefsManager): Map<String, RearStoreInstalledWidget> {
-        return RearWidgetManagerRepository.loadBusinesses(prefsManager)
-            .asSequence()
-            .filter { it.downloadedFromStore }
-            .mapNotNull { business ->
-                val widgetId = business.storeWidgetId.normalizedOrNull() ?: return@mapNotNull null
-                widgetId to RearStoreInstalledWidget(
-                    widgetId = widgetId,
-                    widgetName = business.storeWidgetName.normalizedOrNull()
-                        ?: business.business.normalizedOrNull()
-                        ?: widgetId,
-                    businessId = business.business,
-                    releaseTag = business.storeReleaseTag.normalizedOrNull(),
-                    releasePublishedAt = business.storeReleasePublishedAt.normalizedOrNull(),
-                    installedAt = business.storeInstalledAt.normalizedOrNull()
-                        ?: business.storeReleasePublishedAt.normalizedOrNull(),
-                    renameable = business.renameable,
+        return LinkedHashMap<String, RearStoreInstalledWidget>().apply {
+            RearWidgetManagerRepository.loadBusinesses(prefsManager)
+                .asSequence()
+                .filter { it.downloadedFromStore }
+                .forEach { business ->
+                    val widgetId = business.storeWidgetId.normalizedOrNull() ?: return@forEach
+                    put(
+                        widgetId,
+                        RearStoreInstalledWidget(
+                            widgetId = widgetId,
+                            widgetName = business.storeWidgetName.normalizedOrNull()
+                                ?: business.business.normalizedOrNull()
+                                ?: widgetId,
+                            businessId = business.business,
+                            releaseTag = business.storeReleaseTag.normalizedOrNull(),
+                            releasePublishedAt = business.storeReleasePublishedAt.normalizedOrNull(),
+                            installedAt = business.storeInstalledAt.normalizedOrNull()
+                                ?: business.storeReleasePublishedAt.normalizedOrNull(),
+                            renameable = business.renameable,
+                        )
+                    )
+                }
+
+            loadInstalledWallpaperRecords(prefsManager).forEach { wallpaper ->
+                put(
+                    wallpaper.widgetId,
+                    RearStoreInstalledWidget(
+                        widgetId = wallpaper.widgetId,
+                        widgetName = wallpaper.widgetName,
+                        businessId = wallpaper.wallpaperId.toString(),
+                        releaseTag = wallpaper.releaseTag,
+                        releasePublishedAt = wallpaper.releasePublishedAt,
+                        installedAt = wallpaper.installedAt ?: wallpaper.releasePublishedAt,
+                        renameable = false,
+                    )
                 )
             }
-            .toMap(LinkedHashMap())
+        }
     }
 
-    suspend fun quickInstallWidget(
+    fun loadInstalledWallpaperSources(
+        prefsManager: PrefsManager,
+    ): Map<Int, RearStoreInstalledWallpaper> {
+        return loadInstalledWallpaperRecords(prefsManager)
+            .associateBy { it.wallpaperId }
+    }
+
+    fun removeInstalledWallpaperRecord(
+        prefsManager: PrefsManager,
+        wallpaperId: Int,
+    ): Boolean {
+        val records = loadInstalledWallpaperRecords(prefsManager)
+        val nextRecords = records.filterNot { it.wallpaperId == wallpaperId }
+        if (nextRecords.size == records.size) return false
+        saveInstalledWallpaperRecords(prefsManager, nextRecords)
+        return true
+    }
+
+    fun pruneInstalledWallpaperRecords(
+        prefsManager: PrefsManager,
+        installedWallpaperIds: Set<Int>,
+    ): Boolean {
+        val records = loadInstalledWallpaperRecords(prefsManager)
+        val nextRecords = records.filter { it.wallpaperId in installedWallpaperIds }
+        if (nextRecords.size == records.size) return false
+        saveInstalledWallpaperRecords(prefsManager, nextRecords)
+        return true
+    }
+
+    fun resolveInstallConflict(
+        prefsManager: PrefsManager,
+        detail: RearStoreWidgetDetail,
+    ): RearStoreInstallConflict? {
+        if (detail.widgetInfo.resolvedType() != RearStoreWidgetInfoType.WIDGET) return null
+
+        val businessId = detail.widgetInfo?.businessSetup?.id.normalizedOrNull() ?: return null
+        val existingBusiness = RearWidgetManagerRepository.loadBusinesses(prefsManager)
+            .firstOrNull { it.business == businessId }
+            ?: return null
+        val existingWidgetId = existingBusiness.storeWidgetId.normalizedOrNull()
+        if (existingWidgetId == detail.widgetId) return null
+        val source = when {
+            existingBusiness.downloadedFromStore && existingWidgetId != null -> {
+                RearStoreInstallConflictSource.OTHER_STORE_WIDGET
+            }
+
+            else -> RearStoreInstallConflictSource.MANUAL_BUSINESS
+        }
+        return RearStoreInstallConflict(
+            businessId = businessId,
+            businessName = existingBusiness.business,
+            source = source,
+            existingWidgetId = existingWidgetId,
+            existingWidgetName = existingBusiness.storeWidgetName.normalizedOrNull(),
+        )
+    }
+
+    suspend fun uninstallWidget(
         context: Context,
         prefsManager: PrefsManager,
         widgetId: String,
+    ): RearStoreUninstallResult = withContext(Dispatchers.IO) {
+        val normalizedWidgetId = widgetId.normalizedOrNull() ?: error("Missing widget id")
+        val businesses = RearWidgetManagerRepository.loadBusinesses(prefsManager)
+        val cards = RearWidgetManagerRepository.loadCards(prefsManager)
+        val sceneRoutes = RearWidgetManagerRepository.loadSceneRoutes(prefsManager)
+        val wallpaperRecords = loadInstalledWallpaperRecords(prefsManager)
+
+        val removedBusinesses =
+            businesses.filter { it.storeWidgetId.normalizedOrNull() == normalizedWidgetId }
+        val removedCards =
+            cards.filter { it.storeWidgetId.normalizedOrNull() == normalizedWidgetId }
+        val removedSceneRoutes = sceneRoutes.filter {
+            it.storeWidgetId.normalizedOrNull() == normalizedWidgetId
+        }
+        val removedWallpaper = wallpaperRecords.firstOrNull { it.widgetId == normalizedWidgetId }
+
+        if (removedBusinesses.isEmpty() &&
+            removedCards.isEmpty() &&
+            removedSceneRoutes.isEmpty() &&
+            removedWallpaper == null
+        ) {
+            error("Widget is not installed")
+        }
+
+        removedWallpaper?.let { wallpaper ->
+            val result = RearWallpaperRepository.deleteWallpaper(context, wallpaper.wallpaperId)
+            if (!result.success && !isMissingWallpaperError(result.error)) {
+                error(result.error ?: "Failed to delete wallpaper")
+            }
+        }
+
+        val nextCards =
+            cards.filterNot { it.storeWidgetId.normalizedOrNull() == normalizedWidgetId }
+        val nextSceneRoutes = sceneRoutes.filterNot {
+            it.storeWidgetId.normalizedOrNull() == normalizedWidgetId
+        }
+        val nextBusinesses = businesses.filterNot {
+            it.storeWidgetId.normalizedOrNull() == normalizedWidgetId
+        }
+
+        if (nextCards != cards) {
+            RearWidgetManagerRepository.saveCards(
+                context = context,
+                prefsManager = prefsManager,
+                cards = nextCards,
+                allowLockedEdits = true,
+            )
+        }
+        if (nextSceneRoutes != sceneRoutes) {
+            RearWidgetManagerRepository.saveSceneRoutes(
+                context = context,
+                prefsManager = prefsManager,
+                sceneRoutes = nextSceneRoutes,
+            )
+        }
+        if (nextBusinesses != businesses) {
+            RearWidgetManagerRepository.saveBusinesses(
+                context = context,
+                prefsManager = prefsManager,
+                businesses = nextBusinesses,
+                allowLockedEdits = true,
+            )
+        }
+        if (removedWallpaper != null) {
+            saveInstalledWallpaperRecords(
+                prefsManager,
+                wallpaperRecords.filterNot { it.widgetId == normalizedWidgetId },
+            )
+        }
+
+        RearStoreUninstallResult(
+            widgetId = normalizedWidgetId,
+            widgetName = removedBusinesses.firstOrNull()?.storeWidgetName.normalizedOrNull()
+                ?: removedWallpaper?.widgetName
+                ?: removedCards.firstOrNull()?.storeWidgetName.normalizedOrNull()
+                ?: normalizedWidgetId,
+            removedBusinessCount = removedBusinesses.size,
+            removedCardCount = removedCards.size,
+            removedSceneRouteCount = removedSceneRoutes.size,
+            removedWallpaperCount = if (removedWallpaper != null) 1 else 0,
+        )
+    }
+
+    suspend fun prepareInstallAsset(
+        prefsManager: PrefsManager,
+        detail: RearStoreWidgetDetail,
         releaseTag: String? = null,
         assetName: String? = null,
         onProgress: (RearStoreInstallProgress) -> Unit = {},
-    ): RearStoreQuickInstallResult = withContext(Dispatchers.IO) {
+    ): RearStorePreparedInstallAsset = withContext(Dispatchers.IO) {
         val baseUrl = resolveRearStoreApiBaseUrl(prefsManager)
         emitInstallProgress(
             onProgress,
             RearStoreInstallProgress(stage = RearStoreInstallProgressStage.CONNECTING),
         )
-        val detail = loadWidgetDetail(prefsManager, widgetId)
-            ?: error("Unable to load widget detail")
-        val widgetInfoType = detail.widgetInfo.resolvedType()
-        if (!widgetInfoType.supportedInCurrentVersion) {
-            error("Install mode '${widgetInfoType.rawValue}' is not supported by current version")
-        }
         val selectedAsset = selectAsset(
             releases = detail.releases,
             preferredReleaseTag = releaseTag,
@@ -550,20 +862,123 @@ object RearStoreRepository {
             onProgress = onProgress,
         )
             ?: error("Failed to download widget asset")
+        val isWallpaper = detail.widgetInfo.resolvedType() == RearStoreWidgetInfoType.WALLPAPER
+        val embeddedMetadataBytes = if (isWallpaper) extractRootMetadataMrm(assetBytes) else null
+        val defaultWallpaperOptions = if (isWallpaper) {
+            detail.toWallpaperMetadataOptions(detail.defaultWallpaperName())
+        } else {
+            null
+        }
+        RearStorePreparedInstallAsset(
+            release = selectedAsset.release,
+            asset = selectedAsset.asset,
+            assetBytes = assetBytes,
+            embeddedMetadataBytes = embeddedMetadataBytes,
+            wallpaperMetadataEditable = !isWallpaper || !containsNotEditableMarker(assetBytes),
+            embeddedWallpaperMetadataOptions = defaultWallpaperOptions
+                ?.let { fallback ->
+                    val metadataBytes = embeddedMetadataBytes ?: return@let null
+                    parseWallpaperMetadataOptions(
+                        bytes = metadataBytes,
+                        fallback = fallback,
+                    )
+                },
+        )
+    }
+
+    suspend fun quickInstallWidget(
+        context: Context,
+        prefsManager: PrefsManager,
+        detail: RearStoreWidgetDetail,
+        releaseTag: String? = null,
+        assetName: String? = null,
+        forceOverwrite: Boolean = false,
+        preparedAsset: RearStorePreparedInstallAsset? = null,
+        wallpaperMetadataOptions: RearWallpaperMetadataOptions? = null,
+        onProgress: (RearStoreInstallProgress) -> Unit = {},
+    ): RearStoreQuickInstallResult = withContext(Dispatchers.IO) {
+        val widgetInfoType = detail.widgetInfo.resolvedType()
+        if (!widgetInfoType.supportedInCurrentVersion) {
+            error("Install mode '${widgetInfoType.rawValue}' is not supported by current version")
+        }
+        if (!detail.widgetInfo.supportsModuleVersion()) {
+            error("Current module version does not support installing this component")
+        }
+        val conflict = resolveInstallConflict(prefsManager, detail)
+        if (conflict != null && !forceOverwrite) {
+            error(buildInstallConflictMessage(conflict))
+        }
+        val prepared = preparedAsset ?: prepareInstallAsset(
+            prefsManager = prefsManager,
+            detail = detail,
+            releaseTag = releaseTag,
+            assetName = assetName,
+            onProgress = onProgress,
+        )
         emitInstallProgress(
             onProgress,
             RearStoreInstallProgress(stage = RearStoreInstallProgressStage.INSTALLING),
         )
 
-        val businessSetup = detail.widgetInfo?.businessSetup
-        val businessId = when (widgetInfoType) {
-            RearStoreWidgetInfoType.WIDGET -> {
-                businessSetup?.id.normalizedOrNull()
-                    ?: error("Missing required widget_info.business_setup.id for type='widget'")
+        when (widgetInfoType) {
+            RearStoreWidgetInfoType.WIDGET -> installWidgetAsset(
+                context = context,
+                prefsManager = prefsManager,
+                detail = detail,
+                selectedAsset = RearStoreSelectedAsset(prepared.release, prepared.asset),
+                assetBytes = prepared.assetBytes,
+                conflict = conflict,
+            )
+
+            RearStoreWidgetInfoType.WALLPAPER -> installWallpaperAsset(
+                context = context,
+                prefsManager = prefsManager,
+                detail = detail,
+                selectedAsset = RearStoreSelectedAsset(prepared.release, prepared.asset),
+                assetBytes = prepared.assetBytes,
+                metadataBytes = prepared.embeddedMetadataBytes,
+                wallpaperMetadataOptions = wallpaperMetadataOptions,
+            )
+        }
+    }
+
+    private fun buildInstallConflictMessage(conflict: RearStoreInstallConflict): String {
+        return when (conflict.source) {
+            RearStoreInstallConflictSource.SAME_WIDGET -> {
+                "Component '${conflict.businessId}' is already installed"
             }
 
-            RearStoreWidgetInfoType.WALLPAPER -> error("Not support operation")
+            RearStoreInstallConflictSource.MANUAL_BUSINESS -> {
+                "Component '${conflict.businessId}' already exists"
+            }
+
+            RearStoreInstallConflictSource.OTHER_STORE_WIDGET -> {
+                val widgetName =
+                    conflict.existingWidgetName ?: conflict.existingWidgetId ?: "unknown"
+                "Component '${conflict.businessId}' is already registered by '$widgetName'"
+            }
         }
+    }
+
+    private fun isMissingWallpaperError(error: String?): Boolean {
+        val normalized = error?.trim()?.lowercase(Locale.ROOT).orEmpty()
+        return normalized.contains("not in runtime list") ||
+                normalized.contains("not in current list") ||
+                normalized.contains("not found") ||
+                normalized.contains("找不到")
+    }
+
+    private fun installWidgetAsset(
+        context: Context,
+        prefsManager: PrefsManager,
+        detail: RearStoreWidgetDetail,
+        selectedAsset: RearStoreSelectedAsset,
+        assetBytes: ByteArray,
+        conflict: RearStoreInstallConflict?,
+    ): RearStoreQuickInstallResult {
+        val businessSetup = detail.widgetInfo?.businessSetup
+        val businessId = businessSetup?.id.normalizedOrNull()
+            ?: error("Missing required widget_info.business_setup.id for type='widget'")
         val businessName = detail.widgetInfo?.name.normalizedOrNull() ?: detail.name
         val targetPath = RearWidgetManagerRepository.saveTemplateBytesToManagedPath(
             context = context,
@@ -571,20 +986,33 @@ object RearStoreRepository {
             businessNameHint = businessId,
             fileNameHint = selectedAsset.asset.name,
         ) ?: error("Failed to save widget asset")
+        val installedAt = currentUtcTimestamp()
+        val storeReleaseTag = selectedAsset.release.tagName.normalizedOrNull()
+        val storeReleaseAssetName = selectedAsset.asset.name.normalizedOrNull()
+        val storeReleasePublishedAt = selectedAsset.release.publishedAt.normalizedOrNull()
+            ?: selectedAsset.release.createdAt.normalizedOrNull()
+        val conflictingStoreWidgetId = conflict
+            ?.takeIf { it.source == RearStoreInstallConflictSource.OTHER_STORE_WIDGET }
+            ?.existingWidgetId
 
         val businesses = RearWidgetManagerRepository.loadBusinesses(prefsManager)
         val previousBusiness = businesses.firstOrNull {
-            it.matchesStoreBusiness(detail.widgetId, businessId)
+            it.matchesStoreBusiness(detail.widgetId, businessId) ||
+                    (conflictingStoreWidgetId != null &&
+                            it.storeWidgetId.normalizedOrNull() == conflictingStoreWidgetId)
         }
-        val installedAt = currentUtcTimestamp()
         val nextBusinesses = businesses
-            .filterNot { it.matchesStoreBusiness(detail.widgetId, businessId) }
+            .filterNot {
+                it.matchesStoreBusiness(detail.widgetId, businessId) ||
+                        (conflictingStoreWidgetId != null &&
+                                it.storeWidgetId.normalizedOrNull() == conflictingStoreWidgetId)
+            }
             .plus(
                 RearBusinessConfig(
                     id = previousBusiness?.id
                         ?: RearWidgetConfigCodec.newBusinessId(
                             DEFAULT_COMPONENT_ROUTE_PACKAGE,
-                            businessId
+                            businessId,
                         ),
                     packageName = DEFAULT_COMPONENT_ROUTE_PACKAGE,
                     business = businessId,
@@ -595,10 +1023,9 @@ object RearStoreRepository {
                     downloadedFromStore = true,
                     storeWidgetId = detail.widgetId,
                     storeWidgetName = businessName,
-                    storeReleaseTag = selectedAsset.release.tagName.normalizedOrNull(),
-                    storeReleaseAssetName = selectedAsset.asset.name.normalizedOrNull(),
-                    storeReleasePublishedAt = selectedAsset.release.publishedAt.normalizedOrNull()
-                        ?: selectedAsset.release.createdAt.normalizedOrNull(),
+                    storeReleaseTag = storeReleaseTag,
+                    storeReleaseAssetName = storeReleaseAssetName,
+                    storeReleasePublishedAt = storeReleasePublishedAt,
                     storeInstalledAt = installedAt,
                 )
             )
@@ -609,54 +1036,358 @@ object RearStoreRepository {
             allowLockedEdits = true,
         )
 
-        var cardInstalled = false
-        detail.widgetInfo?.cardSetup?.let { cardSetup ->
-            val cardPackage = cardSetup.packageName.normalizedOrNull()
-            if (cardPackage != null) {
-                val cards = RearWidgetManagerRepository.loadCards(prefsManager)
-                val previousCard = cards.firstOrNull {
-                    it.matchesStoreCard(detail.widgetId, businessId, cardPackage)
-                }
-                val nextCards = cards
-                    .filterNot { it.matchesStoreCard(detail.widgetId, businessId, cardPackage) }
-                    .plus(
-                        RearCardConfig(
-                            id = previousCard?.id ?: RearWidgetConfigCodec.newCardId(),
-                            title = cardSetup.name.normalizedOrNull() ?: businessName,
-                            packageName = cardPackage,
-                            business = businessId,
-                            oneConfigJson = previousCard?.oneConfigJson,
-                            enabled = previousCard?.enabled ?: true,
-                            sticky = cardSetup.sticky,
-                            priority = previousCard?.priority ?: cardSetup.priority,
-                            renameable = cardSetup.renameable,
-                            downloadedFromStore = true,
-                            storeWidgetId = detail.widgetId,
-                            storeWidgetName = businessName,
-                            storeReleaseTag = selectedAsset.release.tagName.normalizedOrNull(),
-                            storeReleaseAssetName = selectedAsset.asset.name.normalizedOrNull(),
-                            storeReleasePublishedAt = selectedAsset.release.publishedAt.normalizedOrNull()
-                                ?: selectedAsset.release.createdAt.normalizedOrNull(),
-                        )
-                    )
-                RearWidgetManagerRepository.saveCards(
-                    context = context,
-                    prefsManager = prefsManager,
-                    cards = nextCards,
-                    allowLockedEdits = true,
-                )
-                cardInstalled = true
+        val sceneSetup = detail.notificationSceneSetupOrNull()
+        val sceneRoutes = RearWidgetManagerRepository.loadSceneRoutes(prefsManager)
+        val previousSceneRoute = sceneSetup?.let { setup ->
+            sceneRoutes.firstOrNull {
+                it.matchesStoreSceneRoute(
+                    widgetId = detail.widgetId,
+                    packageName = setup.packageName,
+                    scene = setup.scene,
+                    businessId = businessId,
+                ) || (conflictingStoreWidgetId != null &&
+                        it.storeWidgetId.normalizedOrNull() == conflictingStoreWidgetId)
             }
         }
+        val nextSceneRoutes = sceneRoutes
+            .filterNot {
+                it.matchesStoreSceneRoute(
+                    widgetId = detail.widgetId,
+                    packageName = sceneSetup?.packageName,
+                    scene = sceneSetup?.scene,
+                    businessId = businessId,
+                ) || (conflictingStoreWidgetId != null &&
+                        it.storeWidgetId.normalizedOrNull() == conflictingStoreWidgetId)
+            }
+            .let { existingRoutes ->
+                sceneSetup?.let { setup ->
+                    existingRoutes + RearWidgetSceneRouteConfig(
+                        id = previousSceneRoute?.id
+                            ?: RearWidgetConfigCodec.newSceneRouteId(
+                                setup.packageName,
+                                setup.scene,
+                            ),
+                        packageName = setup.packageName,
+                        scene = setup.scene,
+                        business = businessId,
+                        downloadedFromStore = true,
+                        storeWidgetId = detail.widgetId,
+                        storeWidgetName = businessName,
+                        storeReleaseTag = storeReleaseTag,
+                        storeReleaseAssetName = storeReleaseAssetName,
+                        storeReleasePublishedAt = storeReleasePublishedAt,
+                    )
+                } ?: existingRoutes
+            }
+        if (nextSceneRoutes != sceneRoutes) {
+            RearWidgetManagerRepository.saveSceneRoutes(
+                context = context,
+                prefsManager = prefsManager,
+                sceneRoutes = nextSceneRoutes,
+            )
+        }
 
-        RearStoreQuickInstallResult(
+        val cards = RearWidgetManagerRepository.loadCards(prefsManager)
+        val cardPackage = detail.widgetInfo?.cardSetup?.packageName.normalizedOrNull()
+        val previousCard = cardPackage?.let { targetPackage ->
+            cards.firstOrNull {
+                it.matchesStoreCard(detail.widgetId, businessId, targetPackage) ||
+                        (conflictingStoreWidgetId != null &&
+                                it.storeWidgetId.normalizedOrNull() == conflictingStoreWidgetId)
+            }
+        }
+        var cardInstalled = false
+        val nextCards = cards
+            .filterNot {
+                (cardPackage != null && it.matchesStoreCard(
+                    detail.widgetId,
+                    businessId,
+                    cardPackage
+                )) ||
+                        (conflictingStoreWidgetId != null &&
+                                it.storeWidgetId.normalizedOrNull() == conflictingStoreWidgetId)
+            }
+            .let { existingCards ->
+                val cardSetup = detail.widgetInfo?.cardSetup ?: return@let existingCards
+                val normalizedCardPackage = cardPackage ?: return@let existingCards
+                cardInstalled = true
+                existingCards + RearCardConfig(
+                    id = previousCard?.id ?: RearWidgetConfigCodec.newCardId(),
+                    title = cardSetup.name.normalizedOrNull() ?: businessName,
+                    packageName = normalizedCardPackage,
+                    business = businessId,
+                    oneConfigJson = previousCard
+                        ?.takeIf { it.storeWidgetId.normalizedOrNull() == detail.widgetId }
+                        ?.oneConfigJson,
+                    enabled = previousCard
+                        ?.takeIf { it.storeWidgetId.normalizedOrNull() == detail.widgetId }
+                        ?.enabled
+                        ?: true,
+                    sticky = cardSetup.sticky,
+                    priority = previousCard?.priority ?: cardSetup.priority,
+                    renameable = cardSetup.renameable,
+                    downloadedFromStore = true,
+                    storeWidgetId = detail.widgetId,
+                    storeWidgetName = businessName,
+                    storeReleaseTag = storeReleaseTag,
+                    storeReleaseAssetName = storeReleaseAssetName,
+                    storeReleasePublishedAt = storeReleasePublishedAt,
+                )
+            }
+        if (nextCards != cards) {
+            RearWidgetManagerRepository.saveCards(
+                context = context,
+                prefsManager = prefsManager,
+                cards = nextCards,
+                allowLockedEdits = true,
+            )
+        }
+
+        return RearStoreQuickInstallResult(
             widgetId = detail.widgetId,
             widgetName = businessName,
-            releaseTag = selectedAsset.release.tagName.normalizedOrNull(),
+            releaseTag = storeReleaseTag,
             cardInstalled = cardInstalled,
             fallbackUsed = false,
-            updatedExistingInstall = previousBusiness != null,
+            updatedExistingInstall = previousBusiness != null || conflict != null,
         )
+    }
+
+    private suspend fun installWallpaperAsset(
+        context: Context,
+        prefsManager: PrefsManager,
+        detail: RearStoreWidgetDetail,
+        selectedAsset: RearStoreSelectedAsset,
+        assetBytes: ByteArray,
+        metadataBytes: ByteArray?,
+        wallpaperMetadataOptions: RearWallpaperMetadataOptions?,
+    ): RearStoreQuickInstallResult = wallpaperInstallMutex.withLock {
+        val widgetName = detail.defaultWallpaperName()
+        val oldRecords = loadInstalledWallpaperRecords(prefsManager)
+        val previousRecords = oldRecords.filter { it.widgetId == detail.widgetId }
+        val retainedRecords = oldRecords.filterNot { it.widgetId == detail.widgetId }
+
+        val effectiveMetadataBytes = metadataBytes.takeIf { wallpaperMetadataOptions == null }
+        val options = when {
+            wallpaperMetadataOptions != null -> wallpaperMetadataOptions
+            effectiveMetadataBytes != null && effectiveMetadataBytes.isNotEmpty() -> null
+            previousRecords.isNotEmpty() -> null
+            else -> detail.toWallpaperMetadataOptions(widgetName)
+        }
+        var result: RearWallpaperOperationResult? = null
+        previousRecords.distinctBy { it.wallpaperId }.forEach { previousRecord ->
+            if (result != null) return@forEach
+            val updateResult = RearWallpaperRepository.updateWallpaperBytes(
+                context = context,
+                wallpaperId = previousRecord.wallpaperId,
+                bytes = assetBytes,
+                displayNameHint = selectedAsset.asset.name,
+                metadataBytes = effectiveMetadataBytes,
+                options = options,
+            )
+            if (updateResult.success || !isMissingWallpaperError(updateResult.error)) {
+                result = updateResult
+            }
+        }
+        val installResult = result ?: RearWallpaperRepository.importWallpaperBytes(
+            context = context,
+            bytes = assetBytes,
+            displayNameHint = selectedAsset.asset.name,
+            metadataBytes = effectiveMetadataBytes,
+            options = options,
+        )
+        if (!installResult.success) {
+            error(installResult.error ?: "Failed to install wallpaper")
+        }
+        val wallpaperId =
+            installResult.wallpaperId ?: error("Wallpaper install finished without wallpaper id")
+        val installedAt = currentUtcTimestamp()
+        val record = RearStoreInstalledWallpaper(
+            widgetId = detail.widgetId,
+            widgetName = widgetName,
+            wallpaperId = wallpaperId,
+            releaseTag = selectedAsset.release.tagName.normalizedOrNull(),
+            releasePublishedAt = selectedAsset.release.publishedAt.normalizedOrNull()
+                ?: selectedAsset.release.createdAt.normalizedOrNull(),
+            installedAt = installedAt,
+        )
+        saveInstalledWallpaperRecords(
+            prefsManager,
+            retainedRecords + record,
+        )
+        return RearStoreQuickInstallResult(
+            widgetId = detail.widgetId,
+            widgetName = widgetName,
+            releaseTag = record.releaseTag,
+            cardInstalled = false,
+            fallbackUsed = false,
+            updatedExistingInstall = previousRecords.isNotEmpty(),
+        )
+    }
+
+    private fun RearStoreWidgetDetail.defaultWallpaperName(): String {
+        return widgetInfo?.name.normalizedOrNull()
+            ?: name.normalizedOrNull()
+            ?: widgetId
+    }
+
+    private fun RearStoreWidgetDetail.toWallpaperMetadataOptions(widgetName: String): RearWallpaperMetadataOptions {
+        val descriptionText = description.normalizedOrNull().orEmpty()
+        val authorName = author.displayName.normalizedOrNull().orEmpty()
+        return RearWallpaperMetadataOptions(
+            titleFallback = widgetName,
+            titleZhCn = widgetName,
+            descriptionFallback = descriptionText,
+            descriptionZhCn = descriptionText,
+            author = authorName,
+            designer = authorName,
+            category = "REAREye",
+            resSubType = buildWallpaperResSubType(widgetId),
+            editable = false,
+            thirdParties = true,
+            supportAon = false,
+        )
+    }
+
+    private fun buildWallpaperResSubType(widgetId: String): String {
+        return "rearstore_" + widgetId.lowercase(Locale.ROOT).replace(Regex("[^a-z0-9._-]"), "_")
+    }
+
+    private fun loadInstalledWallpaperRecords(
+        prefsManager: PrefsManager,
+    ): List<RearStoreInstalledWallpaper> {
+        val raw = prefsManager.getString(
+            ConfigKeys.REAR_STORE_WALLPAPER_INSTALL_DATA,
+            RearWidgetConfigCodec.EMPTY_ARRAY,
+        )
+        if (raw.isBlank()) return emptyList()
+        val array = runCatching { JSONArray(raw) }.getOrNull() ?: return emptyList()
+        return buildList {
+            for (i in 0 until array.length()) {
+                val item = array.optJSONObject(i) ?: continue
+                val widgetId = item.optString("widgetId").trim()
+                if (widgetId.isBlank()) continue
+                if (!item.has("wallpaperId")) continue
+                val wallpaperId = item.optInt("wallpaperId")
+                add(
+                    RearStoreInstalledWallpaper(
+                        widgetId = widgetId,
+                        widgetName = item.optString("widgetName").trim().ifBlank { widgetId },
+                        wallpaperId = wallpaperId,
+                        releaseTag = item.optString("releaseTag").trim().ifBlank { null },
+                        releasePublishedAt = item.optString("releasePublishedAt").trim()
+                            .ifBlank { null },
+                        installedAt = item.optString("installedAt").trim().ifBlank { null },
+                    )
+                )
+            }
+        }
+    }
+
+    private fun saveInstalledWallpaperRecords(
+        prefsManager: PrefsManager,
+        records: List<RearStoreInstalledWallpaper>,
+    ) {
+        val encoded = JSONArray().apply {
+            records.forEach { item ->
+                put(
+                    JSONObject()
+                        .put("widgetId", item.widgetId)
+                        .put("widgetName", item.widgetName)
+                        .put("wallpaperId", item.wallpaperId)
+                        .put("releaseTag", item.releaseTag)
+                        .put("releasePublishedAt", item.releasePublishedAt)
+                        .put("installedAt", item.installedAt)
+                )
+            }
+        }.toString()
+        prefsManager.putString(ConfigKeys.REAR_STORE_WALLPAPER_INSTALL_DATA, encoded)
+    }
+
+    private fun extractRootMetadataMrm(bytes: ByteArray): ByteArray? {
+        return runCatching {
+            ZipInputStream(bytes.inputStream()).use { zipInput ->
+                while (true) {
+                    val entry = zipInput.nextEntry ?: break
+                    val normalizedName = entry.name.replace('\\', '/').trimStart('/')
+                    if (entry.isDirectory) continue
+                    if (normalizedName == "metadata.mrm") {
+                        return@runCatching zipInput.readBytes()
+                    }
+                }
+                null
+            }
+        }.getOrNull()
+    }
+
+    private fun containsNotEditableMarker(bytes: ByteArray): Boolean {
+        return runCatching {
+            ZipInputStream(bytes.inputStream()).use { zipInput ->
+                while (true) {
+                    val entry = zipInput.nextEntry ?: break
+                    val normalizedName = entry.name.replace('\\', '/').trimStart('/')
+                    if (entry.isDirectory) continue
+                    if (normalizedName == "not_editable" || normalizedName.endsWith("/not_editable")) {
+                        return@runCatching true
+                    }
+                }
+                false
+            }
+        }.getOrDefault(false)
+    }
+
+    private fun parseWallpaperMetadataOptions(
+        bytes: ByteArray,
+        fallback: RearWallpaperMetadataOptions,
+    ): RearWallpaperMetadataOptions? {
+        return runCatching {
+            val json = JSONObject(bytes.toString(Charsets.UTF_8))
+            val titles = json.optLocaleObject("titles")
+            val descriptions = json.optLocaleObject("descriptions")
+            val authors = json.optLocaleObject("authors")
+            val designers = json.optLocaleObject("designers")
+            val titleFallback = titles["fallback"] ?: titles["zh_CN"] ?: fallback.titleFallback
+            val descriptionFallback = descriptions["fallback"]
+                ?: descriptions["zh_CN"]
+                ?: fallback.descriptionFallback
+
+            RearWallpaperMetadataOptions(
+                titleFallback = titleFallback,
+                titleZhCn = titles["zh_CN"] ?: titleFallback,
+                descriptionFallback = descriptionFallback,
+                descriptionZhCn = descriptions["zh_CN"] ?: descriptionFallback,
+                author = authors["fallback"] ?: authors["zh_CN"] ?: fallback.author,
+                designer = designers["fallback"] ?: designers["zh_CN"] ?: fallback.designer,
+                category = json.optNonBlankString("subResourceType")
+                    ?: json.optNonBlankString("widgetCategory")
+                    ?: fallback.category,
+                resSubType = json.optNonBlankString("resSubType") ?: fallback.resSubType,
+                editable = json.optBoolean("isRearScreenEditable", fallback.editable),
+                thirdParties = json.optBoolean("isThirdParties", fallback.thirdParties),
+                supportAon = json.optBoolean("supportAon", fallback.supportAon),
+            )
+        }.getOrNull()
+    }
+
+    private fun JSONObject.optLocaleObject(key: String): Map<String, String> {
+        val json = when (val value = opt(key)) {
+            is JSONObject -> value
+            is String -> runCatching { JSONObject(value) }.getOrNull()
+            else -> null
+        } ?: return emptyMap()
+
+        return buildMap {
+            val keys = json.keys()
+            while (keys.hasNext()) {
+                val locale = keys.next()
+                val text = json.optString(locale).trim()
+                if (locale.isNotBlank() && text.isNotBlank()) put(locale, text)
+            }
+        }
+    }
+
+    private fun JSONObject.optNonBlankString(key: String): String? {
+        return optString(key).trim().takeIf { it.isNotBlank() }
     }
 
     private suspend fun fetchBytes(
@@ -792,17 +1523,6 @@ object RearStoreRepository {
         return widgetTypeCache[cacheKey]
     }
 
-    private fun loadMetadataCached(baseUrl: String, widgetId: String): RearStoreWidgetMetadata? {
-        val cacheKey = cacheKey(baseUrl, widgetId)
-        metadataCache[cacheKey]?.let { return it }
-        val loaded = fetchJson<RearStoreWidgetMetadataResponse>(
-            baseUrl,
-            "/widget/${Uri.encode(widgetId)}/metadata"
-        )?.metadata
-        if (loaded != null) metadataCache[cacheKey] = loaded
-        return loaded ?: metadataCache[cacheKey]
-    }
-
     private fun loadReleasesCached(baseUrl: String, widgetId: String): List<RearStoreRelease>? {
         val cacheKey = cacheKey(baseUrl, widgetId)
         releasesCache[cacheKey]?.let { return it }
@@ -911,6 +1631,23 @@ object RearStoreRepository {
     ): Boolean {
         return (downloadedFromStore && storeWidgetId.normalizedOrNull() == widgetId) ||
                 (this.packageName == packageName && business == businessId)
+    }
+
+    private fun RearWidgetSceneRouteConfig.matchesStoreSceneRoute(
+        widgetId: String,
+        packageName: String?,
+        scene: String?,
+        businessId: String,
+    ): Boolean {
+        if (downloadedFromStore && storeWidgetId.normalizedOrNull() == widgetId) {
+            return true
+        }
+        val normalizedPackageName = packageName.normalizedOrNull() ?: return false
+        val normalizedScene = scene.normalizedOrNull() ?: return false
+        return this.packageName == normalizedPackageName &&
+                RearWidgetSceneRouteSpec.normalizeScenePattern(this.scene) ==
+                RearWidgetSceneRouteSpec.normalizeScenePattern(normalizedScene) &&
+                business == businessId
     }
 
 }

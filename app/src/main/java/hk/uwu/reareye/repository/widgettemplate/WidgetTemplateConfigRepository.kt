@@ -94,6 +94,38 @@ object WidgetTemplateConfigRepository {
 
     fun encodeSchema(schema: WidgetTemplateSchema): String = gson.toJson(schema)
 
+    fun imagePreviewValues(schema: WidgetTemplateSchema): List<String> {
+        return buildList {
+            schema.items.forEach { item ->
+                when (item) {
+                    is RearWidgetImageSelectField -> item.values.forEach { add(it.value) }
+                    is RearWidgetImagePickField -> item.options.forEach { add(it.value) }
+                    is RearWidgetMultiImageSelectField -> item.items.forEach {
+                        add(it.value)
+                        it.valueDark?.let(::add)
+                    }
+
+                    is RearWidgetBackgroundModeField -> {
+                        add(item.uri)
+                        add(item.videoUri)
+                        add(item.foregroundUri)
+                    }
+
+                    is RearWidgetMultiModeImageListField -> item.items.forEach {
+                        add(it.uri)
+                        add(it.videoUri)
+                        add(it.foregroundUri)
+                    }
+
+                    else -> Unit
+                }
+            }
+        }
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+    }
+
     fun buildInitialOneConfig(
         schema: WidgetTemplateSchema,
         existingJson: String?,

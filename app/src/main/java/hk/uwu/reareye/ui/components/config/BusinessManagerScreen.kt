@@ -12,12 +12,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -30,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,6 +44,9 @@ import hk.uwu.reareye.repository.rearwidget.RearBusinessConfig
 import hk.uwu.reareye.repository.rearwidget.RearCardConfig
 import hk.uwu.reareye.repository.rearwidget.RearWidgetConfigCodec
 import hk.uwu.reareye.repository.rearwidget.RearWidgetManagerRepository
+import hk.uwu.reareye.ui.components.DialogFormColumn
+import hk.uwu.reareye.ui.components.OverlayDialog
+import hk.uwu.reareye.ui.components.RearBadgeGroup
 import hk.uwu.reareye.ui.components.card.ModuleStyleDeleteAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleIconAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleManagerCard
@@ -59,6 +60,7 @@ import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
 import hk.uwu.reareye.ui.theme.rememberAcrylicHazeStyle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -73,7 +75,6 @@ import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
@@ -93,6 +94,7 @@ fun BusinessManagerScreen(
     val scrollBehavior = MiuixScrollBehavior()
     val hazeState = rememberAcrylicHazeState()
     val hazeStyle = rememberAcrylicHazeStyle()
+    val scope = rememberCoroutineScope()
     val widgets = remember { mutableStateListOf<RearBusinessConfig>() }
     var widgetsLoaded by remember { mutableStateOf(false) }
     var dataCardsVisible by remember { mutableStateOf(false) }
@@ -132,7 +134,10 @@ fun BusinessManagerScreen(
     }
 
     fun persist() {
-        RearWidgetManagerRepository.saveBusinesses(context, prefsManager, widgets.toList())
+        val nextWidgets = widgets.toList()
+        scope.launch(Dispatchers.IO) {
+            RearWidgetManagerRepository.saveBusinesses(context, prefsManager, nextWidgets)
+        }
     }
 
     fun openCreateDialog() {
@@ -275,7 +280,9 @@ fun BusinessManagerScreen(
                     )
                 )
             }
-        RearWidgetManagerRepository.saveCards(context, prefsManager, nextCards)
+        scope.launch(Dispatchers.IO) {
+            RearWidgetManagerRepository.saveCards(context, prefsManager, nextCards)
+        }
         showRegisterCardDialog.value = false
         Toast.makeText(
             context,
@@ -362,31 +369,27 @@ fun BusinessManagerScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         SuperCard(
                             title = stringResource(R.string.rear_widget_business_file_mode_title),
-                            summary = buildString {
-                                if (widgetsLoaded) {
-                                    append(
-                                        context.getString(
-                                            R.string.rear_widget_component_count,
-                                            widgets.size,
-                                        )
-                                    )
-                                    append('\n')
-                                }
-                                append(context.getString(R.string.rear_widget_business_file_mode_hint))
-                            },
+                            summary = stringResource(R.string.rear_widget_business_file_mode_hint),
                             onClick = {},
                             bottomAction = {
-                                Button(
-                                    onClick = { openCreateDialog() },
-                                    colors = ButtonDefaults.buttonColorsPrimary(),
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Add,
-                                        contentDescription = null,
-                                        modifier = Modifier.padding(end = 6.dp),
-                                    )
-                                    Text(text = stringResource(R.string.rear_widget_add_business))
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    if (widgetsLoaded) {
+                                        RearBadgeGroup(
+                                            badges = listOf(rearWidgetComponentCountBadge(widgets.size)),
+                                        )
+                                    }
+                                    Button(
+                                        onClick = { openCreateDialog() },
+                                        colors = ButtonDefaults.buttonColorsPrimary(),
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Add,
+                                            contentDescription = null,
+                                            modifier = Modifier.padding(end = 6.dp),
+                                        )
+                                        Text(text = stringResource(R.string.rear_widget_add_business))
+                                    }
                                 }
                             }
                         )
@@ -424,18 +427,16 @@ fun BusinessManagerScreen(
                 ) { _, item ->
                     ModuleStyleManagerCard(
                         title = item.business,
-                        summaryLines = buildList {
-                            add(item.filePath)
-                            item.storeWidgetId?.takeIf { it.isNotBlank() }?.let {
-                                add(
-                                    context.getString(
-                                        R.string.rear_widget_store_source_summary,
-                                        it,
-                                    )
+                        summaryLines = listOf(item.filePath),
+                        badges = buildList {
+                            addAll(
+                                rearWidgetSourceBadges(
+                                    downloadedFromStore = item.downloadedFromStore,
+                                    storeWidgetId = item.storeWidgetId,
                                 )
-                            }
+                            )
                             if (!item.renameable) {
-                                add(context.getString(R.string.rear_widget_business_locked_summary))
+                                add(rearWidgetLockedBadge())
                             }
                         },
                         onCardClick = if (item.renameable) {
@@ -520,13 +521,7 @@ fun BusinessManagerScreen(
         onDismissRequest = { showDialog.value = false },
     ) {
         val lockedBusiness = dialogEditingBusiness?.takeIf { !it.renameable }
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .imePadding(),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
+        DialogFormColumn {
             TextField(
                 value = draftWidget,
                 onValueChange = { draftWidget = it },
@@ -579,13 +574,7 @@ fun BusinessManagerScreen(
         title = stringResource(R.string.rear_widget_add_card),
         onDismissRequest = { showRegisterCardDialog.value = false },
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .imePadding(),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
+        DialogFormColumn {
             TextField(
                 value = draftCardTitle,
                 onValueChange = { draftCardTitle = it },

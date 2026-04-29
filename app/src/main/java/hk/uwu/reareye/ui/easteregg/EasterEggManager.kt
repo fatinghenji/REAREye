@@ -9,7 +9,8 @@ enum class EasterEggType {
     NEW_YEAR,
     APRIL_FOOLS,
     EASTER,
-    MI_FANS
+    MI_FANS,
+    HUAWEI_ULTIMATE_DESIGN
 }
 
 enum class EasterEggDisableScope {
@@ -55,6 +56,10 @@ object EasterEggManager {
         EasterEggDefinition(
             EasterEggType.MI_FANS,
             EasterEggTrigger.Annual(month = 4, day = 6)
+        ),
+        EasterEggDefinition(
+            EasterEggType.HUAWEI_ULTIMATE_DESIGN,
+            EasterEggTrigger.ExactDate(year = 2026, month = 4, day = 20)
         )
     )
 

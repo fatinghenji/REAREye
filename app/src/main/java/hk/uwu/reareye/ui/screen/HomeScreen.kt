@@ -241,6 +241,7 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
             EasterEggType.APRIL_FOOLS -> androidx.compose.ui.res.stringResource(R.string.home_easter_egg_april_fools_working)
             EasterEggType.EASTER -> androidx.compose.ui.res.stringResource(R.string.home_easter_egg_easter_working)
             EasterEggType.MI_FANS -> androidx.compose.ui.res.stringResource(R.string.home_easter_egg_mifans_working)
+            EasterEggType.HUAWEI_ULTIMATE_DESIGN -> androidx.compose.ui.res.stringResource(R.string.home_easter_egg_huawei_ultimate_design_working)
             else -> androidx.compose.ui.res.stringResource(R.string.home_status_working)
         }
     } else {
@@ -257,18 +258,21 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
         EasterEggType.APRIL_FOOLS -> "FOOLEye"
         EasterEggType.EASTER -> "BUNNYEgg"
         EasterEggType.MI_FANS -> "JINFan"
+        EasterEggType.HUAWEI_ULTIMATE_DESIGN -> "Rate XT 非凡大师"
         else -> "REAREye"
     }
     val moduleVersion = when (easterEggType) {
         EasterEggType.APRIL_FOOLS -> "4.1.0-41f001u-r${AppProperties.BUILD_NUMBER}-fool"
         EasterEggType.EASTER -> "7.7.7-holyegg-r${AppProperties.BUILD_NUMBER}-rebirth"
         EasterEggType.MI_FANS -> "本彩蛋仅为娱乐用途\n不代表开发者或任何组织的立场或观点"
+        EasterEggType.HUAWEI_ULTIMATE_DESIGN -> "38.0-harmony-r${AppProperties.BUILD_NUMBER}-ultimate"
         else -> "${AppProperties.PROJECT_APP_VERSION_NAME}-${AppProperties.GIT_HASH}-r${AppProperties.BUILD_NUMBER}-${AppProperties.BUILD_CHANNEL}"
     }
     val releaseChannel = when (easterEggType) {
         EasterEggType.APRIL_FOOLS -> "Oops"
         EasterEggType.EASTER -> "Respawn Entertainment"
         EasterEggType.MI_FANS -> "HyperOS Beta"
+        EasterEggType.HUAWEI_ULTIMATE_DESIGN -> "ULTIMATE DESIGN"
         else -> AppProperties.BUILD_CHANNEL
     }
 
@@ -465,12 +469,14 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
                                 EasterEggType.APRIL_FOOLS -> "41f001u"
                                 EasterEggType.EASTER -> "holyegg"
                                 EasterEggType.MI_FANS -> "leijun"
+                                EasterEggType.HUAWEI_ULTIMATE_DESIGN -> "ultimate"
                                 else -> AppProperties.GIT_HASH
                             },
                             latestHash = when (easterEggType) {
                                 EasterEggType.APRIL_FOOLS if AppProperties.GIT_HASH == latestCommitHash -> "41f001u"
                                 EasterEggType.EASTER if AppProperties.GIT_HASH == latestCommitHash -> "candies"
                                 EasterEggType.MI_FANS if AppProperties.GIT_HASH == latestCommitHash -> "jinfan"
+                                EasterEggType.HUAWEI_ULTIMATE_DESIGN if AppProperties.GIT_HASH == latestCommitHash -> "design"
                                 else -> latestCommitHash
                             },
                             checking = isCheckingUpdate,
@@ -602,6 +608,13 @@ private fun WorkingStatusCard(
             summary = Color(0xFF8C6239),
         )
 
+        easterEggType == EasterEggType.HUAWEI_ULTIMATE_DESIGN -> customStatusCardPalette(
+            container = Color(0xFF5C2325),
+            icon = Color(0xFFE3B86A),
+            title = Color(0xFFF8E2B3),
+            summary = Color(0xFFD7B08F),
+        )
+
         useMonetColors -> rememberStatusCardPalette(
             accent = MiuixTheme.colorScheme.primary,
             containerStrength = 0.22f,
@@ -675,6 +688,7 @@ private fun EasterEggType.toTitleRes(): Int {
         EasterEggType.APRIL_FOOLS -> R.string.home_easter_egg_april_fools
         EasterEggType.EASTER -> R.string.home_easter_egg_easter
         EasterEggType.MI_FANS -> R.string.home_easter_egg_mifans
+        EasterEggType.HUAWEI_ULTIMATE_DESIGN -> R.string.home_easter_egg_huawei_ultimate_design
     }
 }
 
@@ -755,10 +769,12 @@ private fun UpdateWarningCard(currentHash: String, latestHash: String, useMonetC
         colors = CardDefaults.defaultColors(color = palette.container),
         insideMargin = PaddingValues(14.dp),
         onClick = {
+            @Suppress("KotlinConstantConditions", "SimplifyBooleanWithConstants")
             context.startActivity(
                 Intent(
                     Intent.ACTION_VIEW,
-                    "https://github.com/killerprojecte/REAREye/actions".toUri()
+                    (if (AppProperties.BUILD_CHANNEL == "canary") "https://updates.uwu.hk" else "https://github.com/killerprojecte/REAREye/releases")
+                        .toUri()
                 )
             )
         },
@@ -823,6 +839,10 @@ private fun ModuleInfoCard(
 
                 easterEggType == EasterEggType.MI_FANS -> androidx.compose.ui.res.stringResource(
                     R.string.home_easter_egg_mifans_activated
+                )
+
+                easterEggType == EasterEggType.HUAWEI_ULTIMATE_DESIGN -> androidx.compose.ui.res.stringResource(
+                    R.string.home_easter_egg_huawei_ultimate_design_activated
                 )
 
                 else -> androidx.compose.ui.res.stringResource(R.string.module_is_activated)

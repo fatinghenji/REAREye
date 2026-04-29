@@ -10,12 +10,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -24,6 +21,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -51,10 +49,14 @@ import hk.uwu.reareye.repository.rearwidget.RearCardConfig
 import hk.uwu.reareye.repository.rearwidget.RearWidgetConfigCodec
 import hk.uwu.reareye.repository.rearwidget.RearWidgetManagerRepository
 import hk.uwu.reareye.repository.widgettemplate.WidgetTemplateConfigRepository
+import hk.uwu.reareye.ui.components.DialogFormColumn
+import hk.uwu.reareye.ui.components.OverlayDialog
+import hk.uwu.reareye.ui.components.RearBadgeGroup
 import hk.uwu.reareye.ui.components.card.ModuleStyleDeleteAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleIconAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleManagerCard
 import hk.uwu.reareye.ui.components.card.SuperCard
+import hk.uwu.reareye.ui.components.config.template.TemplateConfigRouteTransition
 import hk.uwu.reareye.ui.components.config.template.WidgetTemplateConfigScreen
 import hk.uwu.reareye.ui.components.motion.ArtRevealItem
 import hk.uwu.reareye.ui.config.ConfigKeys
@@ -81,7 +83,6 @@ import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
@@ -155,7 +156,10 @@ fun CardManagerScreen(
     }
 
     fun persist() {
-        RearWidgetManagerRepository.saveCards(context, prefsManager, cards.toList())
+        val nextCards = cards.toList()
+        scope.launch(Dispatchers.IO) {
+            RearWidgetManagerRepository.saveCards(context, prefsManager, nextCards)
+        }
     }
 
     fun openCreateDialog() {
@@ -193,44 +197,30 @@ fun CardManagerScreen(
 
     val activeTemplateCard =
         activeTemplateCardId.value?.let { id -> cards.firstOrNull { it.id == id } }
-    if (activeTemplateCard != null) {
-        val normalizedBusiness = normalizeTemplateBusinessName(activeTemplateCard.business)
-        val sourceFilePath = businesses.firstOrNull {
-            it.business == activeTemplateCard.business || normalizeTemplateBusinessName(it.business) == normalizedBusiness
-        }?.filePath.orEmpty()
-        WidgetTemplateConfigScreen(
-            business = activeTemplateCard.business,
-            sourceFilePath = sourceFilePath,
-            cardStorageKey = activeTemplateCard.id,
-            currentConfigJson = activeTemplateCard.oneConfigJson,
-            onBack = { activeTemplateCardId.value = null },
-            onSave = { normalizedJson ->
-                val index = cards.indexOfFirst { it.id == activeTemplateCard.id }
-                if (index >= 0) {
-                    cards[index] =
-                        cards[index].copy(oneConfigJson = normalizedJson?.takeIf { it.isNotBlank() })
-                    persist()
-                    activeTemplateCardId.value = null
-                } else {
-                    activeTemplateCardId.value = null
-                }
-            },
-        )
-        return
+
+    val normalizedBusinessSourceByName by remember {
+        derivedStateOf {
+            businesses.associate { normalizeTemplateBusinessName(it.business) to it.filePath }
+        }
+    }
+    val availabilityProbeBusinesses by remember {
+        derivedStateOf {
+            cards.map { normalizeTemplateBusinessName(it.business.trim()) }
+                .filter { it.isNotBlank() }
+                .distinct()
+        }
     }
 
-    LaunchedEffect(cardsLoaded, cards.toList(), businesses.toList(), runtimeRefreshTick) {
+    LaunchedEffect(
+        cardsLoaded,
+        runtimeRefreshTick,
+        availabilityProbeBusinesses,
+        normalizedBusinessSourceByName,
+    ) {
         if (!cardsLoaded) return@LaunchedEffect
-        val businessSourceByName = businesses.associate { it.business to it.filePath }
-        val uniqueBusinesses = cards.map { it.business.trim() }
-            .filter { it.isNotBlank() }
-            .map(::normalizeTemplateBusinessName)
-            .distinct()
         val availability = linkedMapOf<String, Boolean>()
-        uniqueBusinesses.forEach { business ->
-            val sourcePath = businessSourceByName.entries.firstOrNull {
-                it.key == business || normalizeTemplateBusinessName(it.key) == business
-            }?.value.orEmpty()
+        availabilityProbeBusinesses.forEach { business ->
+            val sourcePath = normalizedBusinessSourceByName[business].orEmpty()
 
             var editableCount: Int
             var available = false
@@ -322,7 +312,33 @@ fun CardManagerScreen(
         ).show()
     }
 
-    Scaffold(
+    TemplateConfigRouteTransition(
+        target = activeTemplateCard,
+        contentKey = { it?.id ?: "card-manager" },
+        templateContent = { card ->
+            val normalizedBusiness = normalizeTemplateBusinessName(card.business)
+            val sourceFilePath = businesses.firstOrNull {
+                it.business == card.business || normalizeTemplateBusinessName(it.business) == normalizedBusiness
+            }?.filePath.orEmpty()
+            WidgetTemplateConfigScreen(
+                business = card.business,
+                sourceFilePath = sourceFilePath,
+                cardStorageKey = card.id,
+                currentConfigJson = card.oneConfigJson,
+                onBack = { activeTemplateCardId.value = null },
+                onSave = { normalizedJson ->
+                    val index = cards.indexOfFirst { it.id == card.id }
+                    if (index >= 0) {
+                        cards[index] =
+                            cards[index].copy(oneConfigJson = normalizedJson?.takeIf { it.isNotBlank() })
+                        persist()
+                    }
+                    activeTemplateCardId.value = null
+                },
+            )
+        },
+    ) {
+        Scaffold(
         topBar = {
             TopAppBar(
                 modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
@@ -375,31 +391,27 @@ fun CardManagerScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         SuperCard(
                             title = stringResource(R.string.rear_widget_card_dialog_hint_title),
-                            summary = buildString {
-                                if (cardsLoaded) {
-                                    append(
-                                        stringResource(
-                                            R.string.rear_widget_card_count,
-                                            cards.size,
-                                        )
-                                    )
-                                    append('\n')
-                                }
-                                append(stringResource(R.string.rear_widget_card_dialog_hint))
-                            },
+                            summary = stringResource(R.string.rear_widget_card_dialog_hint),
                             onClick = {},
                             bottomAction = {
-                                Button(
-                                    onClick = { openCreateDialog() },
-                                    colors = ButtonDefaults.buttonColorsPrimary(),
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Add,
-                                        contentDescription = null,
-                                        modifier = Modifier.padding(end = 6.dp),
-                                    )
-                                    Text(text = stringResource(R.string.rear_widget_add_card))
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    if (cardsLoaded) {
+                                        RearBadgeGroup(
+                                            badges = listOf(rearWidgetCardCountBadge(cards.size)),
+                                        )
+                                    }
+                                    Button(
+                                        onClick = { openCreateDialog() },
+                                        colors = ButtonDefaults.buttonColorsPrimary(),
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Add,
+                                            contentDescription = null,
+                                            modifier = Modifier.padding(end = 6.dp),
+                                        )
+                                        Text(text = stringResource(R.string.rear_widget_add_card))
+                                    }
                                 }
                             }
                         )
@@ -449,48 +461,29 @@ fun CardManagerScreen(
                     }
                     ModuleStyleManagerCard(
                         title = item.title,
-                        summaryLines = buildList {
-                            add(
-                                stringResource(
-                                    R.string.rear_widget_card_summary,
-                                    item.packageName,
-                                    item.business,
-                                    item.priority,
-                                )
-                            )
-                            add(
-                                stringResource(
-                                    R.string.rear_widget_card_sticky_summary,
-                                    stringResource(
-                                        if (item.sticky) {
-                                            R.string.rear_wallpaper_schedule_on
-                                        } else {
-                                            R.string.rear_wallpaper_schedule_off
-                                        }
-                                    ),
-                                )
-                            )
-                            item.storeWidgetId?.takeIf { it.isNotBlank() }?.let {
-                                add(
-                                    stringResource(
-                                        R.string.rear_widget_store_source_summary,
-                                        it,
-                                    )
-                                )
+                        badges = buildList {
+                            add(rearWidgetPackageBadge(item.packageName))
+                            add(rearWidgetBusinessBadge(item.business))
+                            add(rearWidgetPriorityBadge(item.priority))
+                            if (item.sticky) {
+                                add(rearWidgetStickyBadge())
                             }
                             if (!item.renameable) {
-                                add(stringResource(R.string.rear_widget_card_locked_summary))
+                                add(rearWidgetLockedBadge())
                             }
                             add(
-                                stringResource(
-                                    if (item.oneConfigJson.isNullOrBlank()) {
-                                        R.string.rear_widget_card_template_status_default
-                                    } else {
-                                        R.string.rear_widget_card_template_status_custom
-                                    }
+                                rearWidgetTemplateStatusBadge(
+                                    hasCustomConfig = item.oneConfigJson.isNullOrBlank().not(),
+                                )
+                            )
+                            addAll(
+                                rearWidgetSourceBadges(
+                                    downloadedFromStore = item.downloadedFromStore,
+                                    storeWidgetId = item.storeWidgetId,
                                 )
                             )
                         },
+                        summaryLines = emptyList(),
                         trailing = {
                             if (item.renameable) {
                                 Switch(
@@ -511,20 +504,11 @@ fun CardManagerScreen(
                                     },
                                 )
                             } else {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Lock,
-                                        contentDescription = null,
-                                        tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                    )
-                                    Text(
-                                        text = stringResource(R.string.rear_store_locked),
-                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                    )
-                                }
+                                Icon(
+                                    imageVector = Icons.Outlined.Lock,
+                                    contentDescription = null,
+                                    tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                )
                             }
                         },
                         onCardClick = { openEditDialog(item) },
@@ -587,13 +571,7 @@ fun CardManagerScreen(
     ) {
         val editingCard = editingCardId?.let { id -> cards.firstOrNull { it.id == id } }
         val lockedCard = editingCard?.takeIf { !it.renameable }
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .imePadding(),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
+        DialogFormColumn {
             if (lockedCard == null) {
                 TextField(
                     value = draftTitle,
@@ -679,6 +657,8 @@ fun CardManagerScreen(
                 }
             }
         }
+    }
+
     }
 
 }

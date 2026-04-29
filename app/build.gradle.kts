@@ -1,16 +1,19 @@
+import com.android.build.api.artifact.SingleArtifact
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.ksp)
     alias(libs.plugins.compose.compiler)
 }
 
 val gitCommitCount: Int by lazy { runGitCommand("rev-list", "--count", "HEAD")?.toIntOrNull() ?: 0 }
 val gitVersionCode: Int by lazy { 5 + gitCommitCount }
+val baseVersionName = gropify.project.app.versionName.replace("\"", "")
+val buildSuffix = project.findProperty("buildSuffix") as? String ?: "dev"
+val finalVersionName = "$baseVersionName-$buildSuffix"
 
 fun runGitCommand(vararg args: String): String? = runCatching {
     ProcessBuilder(listOf("git") + args)
@@ -32,11 +35,6 @@ android {
             }
     }
 
-    val baseVersionName = gropify.project.app.versionName.replace("\"", "")
-    val buildSuffix = project.findProperty("buildSuffix") as? String ?: "dev"
-
-    val finalVersionName = "$baseVersionName-$buildSuffix"
-
     defaultConfig {
         applicationId = gropify.project.app.packageName
         minSdk = gropify.project.android.minSdk
@@ -44,13 +42,6 @@ android {
         versionName = gropify.project.app.versionName
         versionCode = gitVersionCode
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    }
-
-    applicationVariants.all {
-        outputs.all {
-            val output = this as com.android.build.gradle.internal.api.ApkVariantOutputImpl
-            output.outputFileName = "REAREye-v${finalVersionName}.apk"
-        }
     }
 
     signingConfigs {
@@ -73,6 +64,15 @@ android {
             enableV1Signing = true
             enableV2Signing = true
             enableV3Signing = true
+        }
+    }
+
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "x86_64")
+            isUniversalApk = true
         }
     }
 
@@ -99,8 +99,25 @@ android {
         buildConfig = true
         viewBinding = true
         compose = true
+        aidl = true
     }
     lint { checkReleaseBuilds = false }
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        val variantName = variant.name.replaceFirstChar { it.uppercase() }
+        val exportApk = tasks.register<Sync>("export${variantName}Apk") {
+            from(variant.artifacts.get(SingleArtifact.APK))
+            include("*arm64-v8a*.apk")
+            rename { "REAREye-v${finalVersionName}.apk" }
+            into(layout.buildDirectory.dir("outputs/renamed-apk/${variant.name}"))
+        }
+
+        tasks.matching { it.name == "assemble${variantName}" }.configureEach {
+            finalizedBy(exportApk)
+        }
+    }
 }
 
 tasks.withType<KotlinJvmCompile>().configureEach {
@@ -116,6 +133,7 @@ tasks.withType<KotlinJvmCompile>().configureEach {
 
 dependencies {
     implementation(project(":rear-widget-api"))
+    implementation(libs.androidx.compose.foundation.layout)
 
     compileOnly(libs.rovo89.xposed.api)
     ksp(libs.yukihookapi.ksp.xposed)
@@ -126,6 +144,7 @@ dependencies {
     implementation(libs.kavaref.extension)
 
     implementation(libs.dexkit)
+    implementation(libs.mmkv)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)
@@ -143,6 +162,7 @@ dependencies {
     implementation(libs.miuix.ui)
     implementation(libs.miuix.preference)
     implementation(libs.miuix.icons)
+    implementation(libs.miuix.blur)
     implementation(libs.haze)
     implementation(libs.backdrop)
     implementation(libs.capsule)

@@ -1,0 +1,32 @@
+name: Push Chinese translations to Transifex
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'app/src/main/res/values-zh-rCN/strings.xml'
+
+jobs:
+  push-translations:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Transifex CLI
+        run: |
+          curl -o- https://raw.githubusercontent.com/transifex/cli/master/install.sh | bash
+          echo "$GITHUB_WORKSPACE" >> "$GITHUB_PATH"
+          export PATH="$GITHUB_WORKSPACE:$PATH"
+          tx --version
+
+      - name: Configure Transifex
+        run: |
+          echo "[https://app.transifex.com/nekostash/reareye]
+          rest_hostname = https://rest.api.transifex.com
+          token = ${{ secrets.TRANSIFEX_TOKEN }}" > ~/.transifexrc
+
+      - name: Push Chinese translations
+        run: |
+          tx push -t -l zh_CN

@@ -2,8 +2,6 @@ package hk.uwu.reareye.ui.screen
 
 import android.content.Intent
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.drawable.BitmapDrawable
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutLinearInEasing
@@ -27,39 +25,56 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Apps
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.core.graphics.createBitmap
+import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import dev.chrisbanes.haze.HazeState
 import hk.uwu.reareye.R
@@ -74,43 +89,43 @@ import hk.uwu.reareye.ui.theme.rearAcrylicEffect
 import hk.uwu.reareye.ui.theme.rearAcrylicSource
 import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
 import hk.uwu.reareye.ui.theme.rememberAcrylicHazeStyle
+import hk.uwu.reareye.utils.blend.ColorBlendToken
+import hk.uwu.reareye.utils.effect.BgEffectBackground
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.blur.BlendColorEntry
+import top.yukonga.miuix.kmp.blur.BlurBlendMode
+import top.yukonga.miuix.kmp.blur.BlurColors
+import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import top.yukonga.miuix.kmp.blur.textureBlur
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Create
 import top.yukonga.miuix.kmp.icon.extended.Link
-import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.shapes.SmoothRoundedCornerShape
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
-import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+import utils.pageContentPadding
 import java.util.concurrent.ConcurrentHashMap
 
 private val contributorAvatarHttpClient = OkHttpClient()
-
-private object AppLogoCache {
-    @Volatile
-    private var cachedImage: ImageBitmap? = null
-
-    fun peek(): ImageBitmap? = cachedImage
-
-    fun store(image: ImageBitmap) {
-        cachedImage = image
-    }
-}
-
 private object ContributorAvatarCache {
     private val cache = ConcurrentHashMap<String, ImageBitmap>()
 
@@ -159,6 +174,52 @@ private data class CreditEntry(
     val url: String,
 )
 
+private data class AboutVisualTokens(
+    val isDarkTheme: Boolean,
+    val backgroundColor: Color,
+    val cardBlendColors: List<BlendColorEntry>,
+    val logoBlendColors: List<BlendColorEntry>,
+)
+
+@Composable
+private fun rememberAboutVisualTokens(): AboutVisualTokens {
+    val surface = colorScheme.surface
+    val isDarkTheme = surface.luminance() < 0.5f
+
+    return remember(surface, isDarkTheme) {
+        AboutVisualTokens(
+            isDarkTheme = isDarkTheme,
+            backgroundColor = surface,
+            cardBlendColors = aboutCardBlendColors(isDarkTheme),
+            logoBlendColors = aboutLogoBlendColors(isDarkTheme),
+        )
+    }
+}
+
+private fun aboutCardBlendColors(isDarkTheme: Boolean): List<BlendColorEntry> {
+    return if (isDarkTheme) {
+        ColorBlendToken.Overlay_Thin_Light
+    } else {
+        ColorBlendToken.Pured_Regular_Light
+    }
+}
+
+private fun aboutLogoBlendColors(isDarkTheme: Boolean): List<BlendColorEntry> {
+    return if (isDarkTheme) {
+        listOf(
+            BlendColorEntry(Color(0xe6a1a1a1), BlurBlendMode.ColorDodge),
+            BlendColorEntry(Color(0x4de6e6e6), BlurBlendMode.LinearLight),
+            BlendColorEntry(Color(0xff1af500), BlurBlendMode.Lab),
+        )
+    } else {
+        listOf(
+            BlendColorEntry(Color(0xcc4a4a4a), BlurBlendMode.ColorBurn),
+            BlendColorEntry(Color(0xff4f4f4f), BlurBlendMode.LinearLight),
+            BlendColorEntry(Color(0xff1af200), BlurBlendMode.Lab),
+        )
+    }
+}
+
 @Composable
 private fun rememberSkeletonPulseAlpha(label: String): Float {
     val infiniteTransition = rememberInfiniteTransition(label = label)
@@ -181,9 +242,23 @@ fun AboutScreen(bottomInnerPadding: Dp = 0.dp) {
     val hazeState = rememberAcrylicHazeState()
     val hazeStyle = rememberAcrylicHazeStyle()
     val versionText = rememberVersionText()
+    var logoHeightPx by remember { mutableIntStateOf(0) }
     val contributorState by ContributorRepository.state.collectAsState()
+    val lazyListState = rememberLazyListState()
 
     var route by remember { mutableStateOf<AboutRoute>(AboutRoute.Root) }
+
+    val scrollProgress by remember {
+        derivedStateOf {
+            if (logoHeightPx <= 0) {
+                0f
+            } else {
+                val index = lazyListState.firstVisibleItemIndex
+                val offset = lazyListState.firstVisibleItemScrollOffset
+                if (index > 0) 1f else (offset.toFloat() / logoHeightPx).coerceIn(0f, 1f)
+            }
+        }
+    }
 
     val entries = remember {
         listOf(
@@ -238,18 +313,23 @@ fun AboutScreen(bottomInnerPadding: Dp = 0.dp) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
-                color = Color.Transparent,
-                title = stringResource(
-                    if (route is AboutRoute.Root) {
-                        R.string.about_navigation
-                    } else {
-                        R.string.credits_contributors_title
-                    }
-                ),
-                navigationIcon = {
-                    if (route is AboutRoute.Contributors) {
+            if (route is AboutRoute.Root) {
+                SmallTopAppBar(
+                    title = stringResource(R.string.about_navigation),
+                    scrollBehavior = scrollBehavior,
+                    color = colorScheme.surface.copy(
+                        alpha = if (scrollProgress == 1f) 1f else 0f
+                    ),
+                    titleColor = colorScheme.onSurface.copy(alpha = scrollProgress),
+                    defaultWindowInsetsPadding = false,
+                    navigationIconPadding = 12.dp,
+                )
+            } else {
+                TopAppBar(
+                    modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
+                    color = Color.Transparent,
+                    title = stringResource(R.string.credits_contributors_title),
+                    navigationIcon = {
                         IconButton(onClick = { route = AboutRoute.Root }) {
                             Icon(
                                 modifier = Modifier.graphicsLayer {
@@ -259,16 +339,17 @@ fun AboutScreen(bottomInnerPadding: Dp = 0.dp) {
                                 contentDescription = null,
                             )
                         }
-                    }
-                },
-                navigationIconPadding = 12.dp,
-                scrollBehavior = scrollBehavior,
-            )
+                    },
+                    navigationIconPadding = 12.dp,
+                    scrollBehavior = scrollBehavior,
+                )
+            }
         }
     ) { paddingValues ->
         AnimatedContent(
             modifier = Modifier
                 .fillMaxSize()
+                .background(colorScheme.surface)
                 .graphicsLayer { clip = true },
             targetState = route,
             contentKey = { it },
@@ -315,6 +396,9 @@ fun AboutScreen(bottomInnerPadding: Dp = 0.dp) {
                     versionText = versionText,
                     entries = entries,
                     onOpenContributors = { route = AboutRoute.Contributors },
+                    lazyListState = lazyListState,
+                    scrollProgress = scrollProgress,
+                    onLogoHeightChanged = { logoHeightPx = it }
                 )
 
                 AboutRoute.Contributors -> ContributorListContent(
@@ -338,107 +422,315 @@ private fun AboutRootContent(
     versionText: String,
     entries: List<CreditEntry>,
     onOpenContributors: () -> Unit,
+    scrollProgress: Float,
+    onLogoHeightChanged: (Int) -> Unit,
+    lazyListState: LazyListState,
 ) {
     val context = LocalContext.current
+    val visualTokens = rememberAboutVisualTokens()
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .scrollEndHaptic()
-            .overScrollVertical()
-            .nestedScroll(scrollBehavior.nestedScrollConnection)
-            .rearAcrylicSource(hazeState)
-            .padding(horizontal = 12.dp),
-        contentPadding = PaddingValues(
-            top = paddingValues.calculateTopPadding(),
-            bottom = paddingValues.calculateBottomPadding() + bottomInnerPadding,
-        ),
-        overscrollEffect = null,
+    val backdrop = rememberLayerBackdrop()
+
+    val scrollPadding = pageContentPadding(
+        paddingValues,
+        paddingValues,
+        false,
+        extraStart = WindowInsets.displayCutout.asPaddingValues().calculateLeftPadding(LayoutDirection.Ltr),
+        extraEnd = WindowInsets.displayCutout.asPaddingValues().calculateRightPadding(LayoutDirection.Ltr),
+    )
+    val logoPadding = pageContentPadding(
+        paddingValues,
+        paddingValues,
+        false,
+        extraTop = 10.dp,
+        extraStart = WindowInsets.displayCutout.asPaddingValues().calculateLeftPadding(LayoutDirection.Ltr),
+        extraEnd = WindowInsets.displayCutout.asPaddingValues().calculateRightPadding(LayoutDirection.Ltr),
+    )
+
+    val density = LocalDensity.current
+    var logoHeightDp by remember { mutableStateOf(200.dp) }
+    var logoAreaY by remember { mutableFloatStateOf(0f) }
+    var iconY by remember { mutableFloatStateOf(0f) }
+    var projectNameY by remember { mutableFloatStateOf(0f) }
+    var versionCodeY by remember { mutableFloatStateOf(0f) }
+
+    var iconProgress by remember { mutableFloatStateOf(0f) }
+    var projectNameProgress by remember { mutableFloatStateOf(0f) }
+    var versionCodeProgress by remember { mutableFloatStateOf(0f) }
+    var initialLogoAreaY by remember { mutableFloatStateOf(0f) }
+    val runtimeShaderSupported = remember { isRuntimeShaderSupported() }
+
+
+    LaunchedEffect(lazyListState) {
+        snapshotFlow { lazyListState.firstVisibleItemScrollOffset }
+            .onEach { offset ->
+                if (lazyListState.firstVisibleItemIndex > 0) {
+                    if (iconProgress != 1f) iconProgress = 1f
+                    if (projectNameProgress != 1f) projectNameProgress = 1f
+                    return@onEach
+                }
+
+                if (initialLogoAreaY == 0f && logoAreaY > 0f) {
+                    initialLogoAreaY = logoAreaY
+                }
+                val refLogoAreaY = if (initialLogoAreaY > 0f) initialLogoAreaY else logoAreaY
+
+                val stage1TotalLength = refLogoAreaY - versionCodeY
+                val stage2TotalLength = versionCodeY - projectNameY
+                val stage3TotalLength = projectNameY - iconY
+
+                val versionCodeDelay = stage1TotalLength * 0.5f
+                versionCodeProgress = ((offset.toFloat() - versionCodeDelay) / (stage1TotalLength - versionCodeDelay).coerceAtLeast(1f))
+                    .coerceIn(0f, 1f)
+                projectNameProgress = ((offset.toFloat() - stage1TotalLength) / stage2TotalLength.coerceAtLeast(1f))
+                    .coerceIn(0f, 1f)
+                iconProgress = ((offset.toFloat() - stage1TotalLength - stage2TotalLength) / stage3TotalLength.coerceAtLeast(1f))
+                    .coerceIn(0f, 1f)
+            }
+            .collect { }
+    }
+    BgEffectBackground(
+        dynamicBackground = runtimeShaderSupported,
+        modifier = Modifier.fillMaxSize(),
+        bgModifier = Modifier.layerBackdrop(backdrop),
+        backgroundColor = visualTokens.backgroundColor,
+        isDarkTheme = visualTokens.isDarkTheme,
+        effectBackground = runtimeShaderSupported,
+        alpha = { 1f - scrollProgress },
     ) {
-        item {
-            ArtRevealItem(visible = true, delayMillis = 18) {
-                Card(
+        // ── 修改：Logo 固定悬浮在 LazyColumn 下方，与 AboutPage 结构一致 ──
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    top = logoPadding.calculateTopPadding() + 52.dp,
+                    start = logoPadding.calculateLeftPadding(LayoutDirection.Ltr),
+                    end = logoPadding.calculateRightPadding(LayoutDirection.Ltr),
+                )
+                .onSizeChanged { size ->
+                    with(density) { logoHeightDp = size.height.toDp() }
+                },
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            // 图标
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(90.dp)
+                    .graphicsLayer {
+                        alpha = 1 - iconProgress
+                        scaleX = 1 - (iconProgress * 0.05f)
+                        scaleY = 1 - (iconProgress * 0.05f)
+                    }
+                    .onGloballyPositioned { coordinates ->
+                        if (iconY != 0f) return@onGloballyPositioned
+                        val y = coordinates.positionInWindow().y
+                        val size = coordinates.size
+                        iconY = y + size.height
+                    },
+            ) {
+                Image(
                     modifier = Modifier
+                        .size(90.dp)
+                        .textureBlur(
+                            backdrop = backdrop,
+                            shape = SmoothRoundedCornerShape(24.dp),
+                            blurRadius = 150f,
+                            colors = BlurColors(
+                                blendColors = visualTokens.logoBlendColors,
+                            ),
+                            contentBlendMode = BlendMode.DstIn,
+                            enabled = true,
+                        ),
+                    painter = painterResource(R.drawable.ic_about_logo_hollow),
+                    contentDescription = null,
+                )
+            }
+
+            // 应用名称（带 textureBlur + 消失动画）
+            Text(
+                modifier = Modifier
+                    .padding(top = 12.dp, bottom = 5.dp)
+                    .onGloballyPositioned { coordinates ->
+                        if (projectNameY != 0f) return@onGloballyPositioned
+                        val y = coordinates.positionInWindow().y
+                        val size = coordinates.size
+                        projectNameY = y + size.height
+                    }
+                    .graphicsLayer {
+                        alpha = 1 - projectNameProgress
+                        scaleX = 1 - (projectNameProgress * 0.05f)
+                        scaleY = 1 - (projectNameProgress * 0.05f)
+                    }
+                    .textureBlur(
+                        backdrop = backdrop,
+                        shape = SmoothRoundedCornerShape(16.dp),
+                        blurRadius = 150f,
+                        colors = BlurColors(
+                            blendColors = visualTokens.logoBlendColors,
+                        ),
+                        contentBlendMode = BlendMode.DstIn,
+                        enabled = true,
+                    ),
+                text = stringResource(R.string.app_name),
+                color = colorScheme.onBackground,
+                fontWeight = FontWeight.Bold,
+                fontSize = 35.sp,
+            )
+
+            // ── 修改：版本号补上 graphicsLayer 动画 + onGloballyPositioned 追踪 ──
+            Text(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        alpha = 1 - versionCodeProgress
+                        scaleX = 1 - (versionCodeProgress * 0.05f)
+                        scaleY = 1 - (versionCodeProgress * 0.05f)
+                    }
+                    .onGloballyPositioned { coordinates ->
+                        if (versionCodeY != 0f) return@onGloballyPositioned
+                        val y = coordinates.positionInWindow().y
+                        val size = coordinates.size
+                        versionCodeY = y + size.height
+                    },
+                color = colorScheme.onSurfaceVariantSummary,
+                text = versionText,
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center,
+            )
+        }
+
+        LazyColumn(
+            state = lazyListState,
+            modifier = Modifier
+                .fillMaxSize()
+                .scrollEndHaptic()
+                .overScrollVertical()
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
+                .rearAcrylicSource(hazeState)
+                .padding(horizontal = 12.dp),
+            contentPadding = PaddingValues(
+                top = scrollPadding.calculateTopPadding(),
+                bottom = paddingValues.calculateBottomPadding() + bottomInnerPadding,
+            ),
+        ) {
+            // ── 透明占位，高度与 Logo 区域匹配，LazyColumn 滑过它时 Logo 淡出 ──
+            item(key = "logoSpacer") {
+                Box(
+                    Modifier
                         .fillMaxWidth()
-                        .padding(top = 12.dp),
-                    insideMargin = PaddingValues(16.dp),
-                    pressFeedbackType = PressFeedbackType.Sink,
-                    showIndication = true
+                        .height(
+                            logoHeightDp + 52.dp + logoPadding.calculateTopPadding() - scrollPadding.calculateTopPadding() + 126.dp,
+                        )
+                        .onSizeChanged { size ->
+                            onLogoHeightChanged(size.height)
+                        }
+                        .onGloballyPositioned { coordinates ->
+                            val y = coordinates.positionInWindow().y
+                            val size = coordinates.size
+                            logoAreaY = y + size.height
+                        },
+                    contentAlignment = Alignment.TopCenter,
+                    content = { },
+                )
+            }
+
+            item(key = "content") {
+                Column(
+                    modifier = Modifier
+                        .fillParentMaxHeight()
+                        .padding(bottom = scrollPadding.calculateBottomPadding()),
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        AppLogo(modifier = Modifier.size(52.dp))
-                        Spacer(modifier = Modifier.size(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = stringResource(R.string.app_name),
-                                style = MiuixTheme.textStyles.title3,
+                    ArtStaggeredReveal(
+                        visible = true,
+                        revealKey = "contributors",
+                        delayMillis = 36,
+                    ) {
+                        Card(
+                            modifier = Modifier
+                                .padding(horizontal = 8.dp)
+                                .textureBlur(
+                                    backdrop = backdrop,
+                                    shape = SmoothRoundedCornerShape(16.dp),
+                                    blurRadius = 60f,
+                                    noiseCoefficient = 0.001f,
+                                    colors = BlurColors(
+                                        blendColors = visualTokens.cardBlendColors,
+                                        brightness = 0f,
+                                        contrast = 1f,
+                                        saturation = 1f,
+                                    ),
+                                    enabled = true,
+                                ),
+                            colors = CardDefaults.defaultColors(
+                                Color.Transparent,
+                                Color.Transparent,
+                            ),
+                        ) {
+                            SuperCard(
+                                title = stringResource(R.string.credits_contributors_title),
+                                summary = stringResource(R.string.credits_contributors_desc),
+                                onClick = onOpenContributors,
+                                endActions = {
+                                    Icon(
+                                        imageVector = MiuixIcons.Create,
+                                        tint = colorScheme.onSurface,
+                                        contentDescription = null,
+                                    )
+                                },
                             )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = versionText,
-                                style = MiuixTheme.textStyles.body2,
-                                color = colorScheme.onSurfaceVariantSummary,
-                            )
+                        }
+                    }
+
+
+                    entries.forEachIndexed { index, entry ->
+                        ArtStaggeredReveal(
+                            visible = true,
+                            revealKey = entry.url,
+                            delayMillis = (54 + index * 18).coerceAtMost(150),
+                        ) {
+                            Card(
+                                modifier = Modifier
+                                    .padding(top = 8.dp)
+                                    .padding(horizontal = 8.dp)
+                                    .textureBlur(
+                                        backdrop = backdrop,
+                                        shape = SmoothRoundedCornerShape(16.dp),
+                                        blurRadius = 60f,
+                                        noiseCoefficient = 0.001f,
+                                        colors = BlurColors(
+                                            blendColors = visualTokens.cardBlendColors,
+                                            brightness = 0f,
+                                            contrast = 1f,
+                                            saturation = 1f,
+                                        ),
+                                        enabled = true,
+                                    ),
+                                colors = CardDefaults.defaultColors(
+                                    Color.Transparent,
+                                    Color.Transparent,
+                                ),
+                            ) {
+                                SuperCard(
+                                    title = stringResource(entry.titleRes),
+                                    summary = stringResource(entry.summaryRes),
+                                    onClick = {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, entry.url.toUri()))
+                                    },
+                                    endActions = {
+                                        Icon(
+                                            imageVector = MiuixIcons.Link,
+                                            tint = colorScheme.onSurface,
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+                            }
                         }
                     }
                 }
             }
-        }
 
-        item {
-            ArtStaggeredReveal(
-                visible = true,
-                revealKey = "contributors",
-                delayMillis = 36,
-            ) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
-                ) {
-                    SuperCard(
-                        title = stringResource(R.string.credits_contributors_title),
-                        summary = stringResource(R.string.credits_contributors_desc),
-                        onClick = onOpenContributors,
-                        endActions = {
-                            Icon(
-                                imageVector = MiuixIcons.Create,
-                                tint = colorScheme.onSurface,
-                                contentDescription = null,
-                            )
-                        },
-                    )
-                }
-            }
-        }
-
-        itemsIndexed(entries, key = { _, entry -> entry.url }) { index, entry ->
-            ArtStaggeredReveal(
-                visible = true,
-                revealKey = entry.url,
-                delayMillis = (54 + index * 18).coerceAtMost(150),
-            ) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
-                ) {
-                    SuperCard(
-                        title = stringResource(entry.titleRes),
-                        summary = stringResource(entry.summaryRes),
-                        onClick = {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, entry.url.toUri()))
-                        },
-                        endActions = {
-                            Icon(
-                                imageVector = MiuixIcons.Link,
-                                tint = colorScheme.onSurface,
-                                contentDescription = null
-                            )
-                        }
-                    )
-                }
-            }
         }
     }
 }
@@ -620,53 +912,6 @@ private fun ContributorAvatar(
                 .size(42.dp)
                 .clip(CircleShape)
                 .background(colorScheme.secondaryContainer.copy(alpha = placeholderAlpha)),
-        )
-    }
-}
-
-@Composable
-private fun AppLogo(modifier: Modifier = Modifier) {
-    val context = LocalContext.current.applicationContext
-    var imageBitmap by remember { mutableStateOf(AppLogoCache.peek()) }
-
-    LaunchedEffect(Unit) {
-        if (imageBitmap != null) {
-            return@LaunchedEffect
-        }
-
-        val loadedBitmap = withContext(Dispatchers.IO) {
-            runCatching {
-                val drawable = context.packageManager.getApplicationIcon(context.packageName)
-                val bitmap = if (drawable is BitmapDrawable) {
-                    drawable.bitmap
-                } else {
-                    val bmp = createBitmap(
-                        drawable.intrinsicWidth.takeIf { it > 0 } ?: 1,
-                        drawable.intrinsicHeight.takeIf { it > 0 } ?: 1,
-                    )
-                    val canvas = Canvas(bmp)
-                    drawable.setBounds(0, 0, canvas.width, canvas.height)
-                    drawable.draw(canvas)
-                    bmp
-                }
-                bitmap.asImageBitmap()
-            }
-        }.getOrNull()
-
-        if (loadedBitmap != null) {
-            AppLogoCache.store(loadedBitmap)
-            imageBitmap = loadedBitmap
-        }
-    }
-
-    if (imageBitmap != null) {
-        Image(bitmap = imageBitmap!!, contentDescription = null, modifier = modifier)
-    } else {
-        Icon(
-            imageVector = Icons.Filled.Apps,
-            contentDescription = null,
-            tint = colorScheme.onSurfaceVariantSummary,
-            modifier = modifier,
         )
     }
 }

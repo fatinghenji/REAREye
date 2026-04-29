@@ -14,6 +14,7 @@ import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
 import hk.uwu.reareye.widgetapi.RearWidgetApiClient
 import hk.uwu.reareye.widgetapi.RearWidgetApiContract
 import hk.uwu.reareye.widgetapi.RearWidgetNoticeOptions
+import hk.uwu.reareye.widgetapi.RearWidgetSceneRouteSpec
 import hk.uwu.reareye.widgetapi.RearWidgetTemplateConfigState
 import hk.uwu.reareye.widgetapi.RearWidgetTemplateImagePreview
 import java.io.File
@@ -81,6 +82,28 @@ object RearWidgetManagerRepository {
         applyCardsViaApi(context, oldCards, mergedCards, businesses)
     }
 
+    fun loadSceneRoutes(prefsManager: PrefsManager): List<RearWidgetSceneRouteConfig> {
+        val raw = prefsManager.getString(
+            ConfigKeys.REAR_WIDGET_SCENE_ROUTE_DATA,
+            RearWidgetConfigCodec.EMPTY_ARRAY,
+        )
+        return normalizeSceneRoutes(RearWidgetConfigCodec.parseSceneRoutes(raw))
+    }
+
+    fun saveSceneRoutes(
+        context: Context,
+        prefsManager: PrefsManager,
+        sceneRoutes: List<RearWidgetSceneRouteConfig>,
+    ) {
+        val oldSceneRoutes = loadSceneRoutes(prefsManager)
+        val normalizedSceneRoutes = normalizeSceneRoutes(sceneRoutes)
+        prefsManager.putString(
+            ConfigKeys.REAR_WIDGET_SCENE_ROUTE_DATA,
+            RearWidgetConfigCodec.encodeSceneRoutes(normalizedSceneRoutes),
+        )
+        applySceneRoutesViaApi(context, oldSceneRoutes, normalizedSceneRoutes)
+    }
+
     fun setCardEnabled(
         context: Context,
         prefsManager: PrefsManager,
@@ -118,11 +141,18 @@ object RearWidgetManagerRepository {
             )
         }
         val cards = loadCards(prefsManager)
+        val sceneRoutes = loadSceneRoutes(prefsManager)
         debugLog(
             context,
-            "refreshRuntimeFromPrefs businesses=${preparedBusinesses.size} cards=${cards.size}",
+            "refreshRuntimeFromPrefs businesses=${preparedBusinesses.size} cards=${cards.size} sceneRoutes=${sceneRoutes.size}",
         )
         applyBusinessFilesViaApi(context, businesses, preparedBusinesses)
+        applySceneRoutesViaApi(
+            context = context,
+            oldSceneRoutes = sceneRoutes,
+            newSceneRoutes = sceneRoutes,
+            reapplyAll = true,
+        )
         applyCardsViaApi(
             context = context,
             oldCards = cards,
@@ -142,7 +172,7 @@ object RearWidgetManagerRepository {
         val normalizedBusiness = business.trim()
         val normalizedSource = sourceFilePath.trim()
         val normalizedValue = imageValue.trim()
-        if (normalizedBusiness.isBlank() || normalizedValue.isBlank()) {
+        if (normalizedValue.isBlank() || (normalizedBusiness.isBlank() && normalizedSource.isBlank())) {
             return null
         }
         debugLog(
@@ -301,6 +331,39 @@ object RearWidgetManagerRepository {
         }
     }
 
+    private fun applySceneRoutesViaApi(
+        context: Context,
+        oldSceneRoutes: List<RearWidgetSceneRouteConfig>,
+        newSceneRoutes: List<RearWidgetSceneRouteConfig>,
+        reapplyAll: Boolean = false,
+    ) {
+        val oldById = oldSceneRoutes.associateBy { it.id }
+        val newById = newSceneRoutes.associateBy { it.id }
+
+        if (reapplyAll) {
+            newSceneRoutes.forEach { item ->
+                registerSceneRoute(context, item.packageName, item.scene, item.business)
+            }
+            return
+        }
+
+        (oldById.keys - newById.keys).forEach { id ->
+            oldById[id]?.let { item ->
+                unregisterSceneRoute(context, item.packageName, item.scene)
+            }
+        }
+
+        newSceneRoutes.forEach { item ->
+            val old = oldById[item.id]
+            if (old == null || old.business != item.business) {
+                if (old != null) {
+                    unregisterSceneRoute(context, old.packageName, old.scene)
+                }
+                registerSceneRoute(context, item.packageName, item.scene, item.business)
+            }
+        }
+    }
+
     private fun applyCardsViaApi(
         context: Context,
         oldCards: List<RearCardConfig>,
@@ -408,6 +471,31 @@ object RearWidgetManagerRepository {
         runCatching {
             withApiClient(context) { client ->
                 client.disableBusinessDisplay(packageName, business)
+            }
+        }
+    }
+
+    private fun registerSceneRoute(
+        context: Context,
+        packageName: String,
+        scene: String,
+        business: String,
+    ) {
+        runCatching {
+            withApiClient(context) { client ->
+                client.registerSceneRoute(packageName, scene, business)
+            }
+        }
+    }
+
+    private fun unregisterSceneRoute(
+        context: Context,
+        packageName: String,
+        scene: String,
+    ) {
+        runCatching {
+            withApiClient(context) { client ->
+                client.unregisterSceneRoute(packageName, scene)
             }
         }
     }
@@ -688,6 +776,38 @@ object RearWidgetManagerRepository {
         }.toMutableList()
 
         return merged
+    }
+
+    private fun normalizeSceneRoutes(
+        sceneRoutes: List<RearWidgetSceneRouteConfig>,
+    ): List<RearWidgetSceneRouteConfig> {
+        val normalizedById = LinkedHashMap<String, RearWidgetSceneRouteConfig>()
+        sceneRoutes.forEach { item ->
+            val packageName = item.packageName.trim()
+            val scene = RearWidgetSceneRouteSpec.normalizeScenePattern(item.scene)
+            val business = item.business.trim()
+            if (packageName.isBlank() || scene.isBlank() || business.isBlank()) return@forEach
+            val id = RearWidgetConfigCodec.newSceneRouteId(packageName, scene)
+            normalizedById[id] = RearWidgetSceneRouteConfig(
+                id = id,
+                packageName = packageName,
+                scene = scene,
+                business = business,
+                downloadedFromStore = item.downloadedFromStore,
+                storeWidgetId = item.storeWidgetId,
+                storeWidgetName = item.storeWidgetName,
+                storeReleaseTag = item.storeReleaseTag,
+                storeReleaseAssetName = item.storeReleaseAssetName,
+                storeReleasePublishedAt = item.storeReleasePublishedAt,
+            )
+        }
+        return normalizedById.values.sortedWith(
+            compareBy(
+                { it.packageName.lowercase() },
+                { RearWidgetSceneRouteSpec.normalizeScenePattern(it.scene).lowercase() },
+                { it.business.lowercase() },
+            )
+        )
     }
 
     private fun writeBytesAtomically(target: File, bytes: ByteArray) {

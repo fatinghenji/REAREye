@@ -3,12 +3,11 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 
 plugins {
     alias(libs.plugins.android.library)
-    alias(libs.plugins.kotlin.android)
     id("maven-publish")
     signing
 }
 
-val apiVersion = "1.0.2"
+val apiVersion = "1.0.3"
 
 android {
     namespace = "hk.uwu.reareye.widgetapi"

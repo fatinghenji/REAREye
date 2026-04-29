@@ -1,5 +1,6 @@
 package hk.uwu.reareye.repository.rearwidget
 
+import hk.uwu.reareye.widgetapi.RearWidgetSceneRouteSpec
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -39,6 +40,19 @@ data class RearCardConfig(
     val storeReleasePublishedAt: String? = null,
 )
 
+data class RearWidgetSceneRouteConfig(
+    val id: String,
+    val packageName: String,
+    val scene: String,
+    val business: String,
+    val downloadedFromStore: Boolean = false,
+    val storeWidgetId: String? = null,
+    val storeWidgetName: String? = null,
+    val storeReleaseTag: String? = null,
+    val storeReleaseAssetName: String? = null,
+    val storeReleasePublishedAt: String? = null,
+)
+
 object RearWidgetConfigCodec {
     const val EMPTY_ARRAY = "[]"
     private const val BUSINESS_BLOB_PREFIX = "rear_widget_business_blob_"
@@ -47,6 +61,9 @@ object RearWidgetConfigCodec {
 
     fun newBusinessId(packageName: String, business: String): String =
         "${packageName.trim()}::${business.trim()}"
+
+    fun newSceneRouteId(packageName: String, scene: String): String =
+        "${packageName.trim()}::scene::${RearWidgetSceneRouteSpec.normalizeScenePattern(scene)}"
 
     fun newCardId(): String = UUID.randomUUID().toString()
 
@@ -129,6 +146,35 @@ object RearWidgetConfigCodec {
         return out
     }
 
+    fun parseSceneRoutes(raw: String?): List<RearWidgetSceneRouteConfig> {
+        if (raw.isNullOrBlank()) return emptyList()
+        val arr = runCatching { JSONArray(raw) }.getOrNull() ?: return emptyList()
+        val out = mutableListOf<RearWidgetSceneRouteConfig>()
+        for (i in 0 until arr.length()) {
+            val obj = arr.optJSONObject(i) ?: continue
+            val packageName = obj.optString("packageName").trim()
+            val scene = obj.optString("scene").trim()
+            val business = obj.optString("business").trim()
+            if (packageName.isBlank() || scene.isBlank() || business.isBlank()) continue
+            val id = obj.optString("id").ifBlank { newSceneRouteId(packageName, scene) }
+            out += RearWidgetSceneRouteConfig(
+                id = id,
+                packageName = packageName,
+                scene = scene,
+                business = business,
+                downloadedFromStore = obj.optBoolean("downloadedFromStore", false),
+                storeWidgetId = obj.optString("storeWidgetId").trim().ifBlank { null },
+                storeWidgetName = obj.optString("storeWidgetName").trim().ifBlank { null },
+                storeReleaseTag = obj.optString("storeReleaseTag").trim().ifBlank { null },
+                storeReleaseAssetName = obj.optString("storeReleaseAssetName").trim()
+                    .ifBlank { null },
+                storeReleasePublishedAt = obj.optString("storeReleasePublishedAt").trim()
+                    .ifBlank { null },
+            )
+        }
+        return out
+    }
+
     fun encodeBusinesses(list: List<RearBusinessConfig>): String =
         JSONArray().also { arr ->
             list.forEach { item ->
@@ -166,6 +212,25 @@ object RearWidgetConfigCodec {
                         .put("sticky", item.sticky)
                         .put("priority", item.priority)
                         .put("renameable", item.renameable)
+                        .put("downloadedFromStore", item.downloadedFromStore)
+                        .put("storeWidgetId", item.storeWidgetId)
+                        .put("storeWidgetName", item.storeWidgetName)
+                        .put("storeReleaseTag", item.storeReleaseTag)
+                        .put("storeReleaseAssetName", item.storeReleaseAssetName)
+                        .put("storeReleasePublishedAt", item.storeReleasePublishedAt)
+                )
+            }
+        }.toString()
+
+    fun encodeSceneRoutes(list: List<RearWidgetSceneRouteConfig>): String =
+        JSONArray().also { arr ->
+            list.forEach { item ->
+                arr.put(
+                    JSONObject()
+                        .put("id", item.id)
+                        .put("packageName", item.packageName)
+                        .put("scene", item.scene)
+                        .put("business", item.business)
                         .put("downloadedFromStore", item.downloadedFromStore)
                         .put("storeWidgetId", item.storeWidgetId)
                         .put("storeWidgetName", item.storeWidgetName)

@@ -193,6 +193,7 @@ sealed class ConfigType {
     enum class ManagerType {
         REAR_WALLPAPER,
         BUSINESS,
+        SCENE_ROUTE,
         CARD,
         BUSINESS_EXTRA,
     }

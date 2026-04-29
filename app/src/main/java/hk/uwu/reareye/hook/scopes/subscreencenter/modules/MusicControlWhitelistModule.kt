@@ -5,14 +5,44 @@ import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.hook.utils.createDexKitCacheBridge
+import hk.uwu.reareye.hook.utils.resolveDexKitClassValue
+import hk.uwu.reareye.hook.utils.resolveDexKitFieldValue
+import hk.uwu.reareye.hook.utils.resolveHookPackageVersionCode
 import hk.uwu.reareye.ui.config.ConfigKeys
+import org.luckypray.dexkit.DexKitCacheBridge
+import org.luckypray.dexkit.annotations.DexKitExperimentalApi
 
+@OptIn(DexKitExperimentalApi::class)
 class MusicControlWhitelistModule : YukiBaseHooker() {
+    companion object {
+        private const val SMART_ASSISTANT_CONFIG_CLASS_CACHE_KEY =
+            "SSC_MUSIC_WHITELIST_CONFIG_CLASS"
+        private const val SMART_ASSISTANT_CONFIG_PRIMARY_MAP_FIELD_CACHE_KEY =
+            "SSC_MUSIC_WHITELIST_CONFIG_PRIMARY_MAP_FIELD"
+    }
+
     override fun onHook() {
         loadApp("com.xiaomi.subscreencenter") {
-            val clz = "p2.a".toClass().resolve()
+            val versionCode = resolveHookPackageVersionCode(
+                systemContext,
+                appInfo.packageName,
+                appInfo.sourceDir,
+            )
+            val bridge = createDexKitCacheBridge(
+                packageName = appInfo.packageName,
+                packageVersionCode = versionCode,
+                sourceDir = appInfo.sourceDir,
+                dataDir = appInfo.dataDir,
+            )
+            val configClassName = resolveSmartAssistantConfigClassName(bridge)
+            val primaryMapFieldName = resolveSmartAssistantConfigPrimaryMapFieldName(
+                bridge,
+                configClassName,
+            )
+            val clz = configClassName.toClass().resolve()
             val field = clz.firstField {
-                name = "a"
+                name = primaryMapFieldName
                 type = Map::class.java
             }
             val map = buildMap<String, String> {
@@ -36,7 +66,7 @@ class MusicControlWhitelistModule : YukiBaseHooker() {
             }.hook().after {
                 if (!prefs.getBoolean(
                         ConfigKeys.HOOK_MUSIC_CONTROLS_FORCE_UPDATE,
-                        false
+                        false,
                     )
                 ) return@after
                 val i = instance.asResolver().firstField {
@@ -54,5 +84,57 @@ class MusicControlWhitelistModule : YukiBaseHooker() {
                 }
             }
         }
+    }
+
+    private fun resolveSmartAssistantConfigClassName(
+        bridge: DexKitCacheBridge.RecyclableBridge,
+    ): String {
+        return resolveDexKitClassValue(
+            bridge = bridge,
+            cacheKey = SMART_ASSISTANT_CONFIG_CLASS_CACHE_KEY,
+        ) {
+            // DexKit source anchor:
+            // .tmp-ref/decompiled-jadx/sources/P2/a.java
+            // Original class in jadx: p2.a
+            findClass {
+                matcher {
+                    usingStrings(
+                        "com.android.incallui",
+                        "com.xiaomi.music",
+                        "com.xiaomi.smarthome",
+                        "mihomeCamera",
+                        "unified.music",
+                    )
+                }
+            }.singleOrNull()
+        } ?: error("DexKit failed to resolve smart assistant config class")
+    }
+
+    private fun resolveSmartAssistantConfigPrimaryMapFieldName(
+        bridge: DexKitCacheBridge.RecyclableBridge,
+        configClassName: String,
+    ): String {
+        return resolveDexKitFieldValue(
+            bridge = bridge,
+            cacheKey = SMART_ASSISTANT_CONFIG_PRIMARY_MAP_FIELD_CACHE_KEY,
+        ) {
+            // DexKit source anchor:
+            // .tmp-ref/decompiled-jadx/sources/P2/a.java:99
+            // p2.a.c(String) reads the primary package->business map and checks "unified.music".
+            findField {
+                matcher {
+                    declaredClass = configClassName
+                    type = "java.util.Map"
+                    readMethods {
+                        add {
+                            declaredClass = configClassName
+                            paramTypes(String::class.java)
+                            returnType = "boolean"
+                            usingStrings("unified.music", "music")
+                        }
+                    }
+                }
+            }.singleOrNull()
+        } ?: error("DexKit failed to resolve smart assistant primary map field")
     }
 }

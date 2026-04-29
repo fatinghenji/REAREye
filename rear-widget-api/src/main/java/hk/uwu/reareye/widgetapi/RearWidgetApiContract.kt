@@ -16,6 +16,8 @@ object RearWidgetApiContract {
         const val UNREGISTER_FILE = "unregister_file"
         const val REGISTER = "register"
         const val UNREGISTER = "unregister"
+        const val REGISTER_SCENE_ROUTE = "register_scene_route"
+        const val UNREGISTER_SCENE_ROUTE = "unregister_scene_route"
         const val DISABLE_DISPLAY = "disable_display"
         const val POST = "post"
         const val UPDATE = "update"
@@ -24,6 +26,7 @@ object RearWidgetApiContract {
 
     object BundleKeys {
         const val PACKAGE_NAME = "packageName"
+        const val SCENE = "scene"
         const val BUSINESS = "business"
         const val NOTIFICATION_ID = "notificationId"
         const val COMPOSITE_KEY = "compositeKey"

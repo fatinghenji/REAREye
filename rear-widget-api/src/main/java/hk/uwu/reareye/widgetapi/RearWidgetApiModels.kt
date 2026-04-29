@@ -10,6 +10,105 @@ data class RearWidgetBusinessSpec(
     val defaultPriority: Int = 500,
 )
 
+data class RearWidgetSceneRouteSpec(
+    val packageName: String,
+    val scene: String,
+    val business: String,
+) {
+    private val exactPackageName: String? by lazy(LazyThreadSafetyMode.NONE) {
+        packageName.trim().takeIf { it.isNotBlank() && extractRegexPattern(it) == null }
+    }
+    private val exactScene: String? by lazy(LazyThreadSafetyMode.NONE) {
+        normalizeScenePattern(scene).takeIf { it.isNotBlank() && extractRegexPattern(scene) == null }
+    }
+    private val packagePatternSource: String? by lazy(LazyThreadSafetyMode.NONE) {
+        extractRegexPattern(packageName)
+    }
+    private val scenePatternSource: String? by lazy(LazyThreadSafetyMode.NONE) {
+        extractRegexPattern(scene)
+    }
+    private val packageRegex: Regex? by lazy(LazyThreadSafetyMode.NONE) {
+        compileRegex(packagePatternSource)
+    }
+    private val sceneRegex: Regex? by lazy(LazyThreadSafetyMode.NONE) {
+        compileRegex(scenePatternSource)
+    }
+
+    fun exactPackageNameOrNull(): String? = exactPackageName
+
+    fun exactSceneOrNull(): String? = exactScene
+
+    fun matchesPackage(candidatePackageName: String): Boolean {
+        val candidate = candidatePackageName.trim()
+        if (candidate.isBlank()) return false
+        exactPackageName?.let { return candidate == it }
+        return packageRegex?.matches(candidate) == true
+    }
+
+    fun matchesScene(candidateScene: String): Boolean {
+        val rawCandidate = candidateScene.trim()
+        if (rawCandidate.isBlank()) return false
+
+        val normalizedCandidate = normalizeScene(rawCandidate)
+        exactScene?.let { return normalizedCandidate == it }
+
+        val regex = sceneRegex ?: return false
+        return regex.matches(rawCandidate) || regex.matches(normalizedCandidate)
+    }
+
+    fun hasScenePrefix(prefix: String): Boolean {
+        val rawPrefix = prefix.trim()
+        if (rawPrefix.isBlank()) return false
+
+        exactScene?.let { return it.startsWith(normalizeScene(rawPrefix)) }
+        return scenePatternSource?.startsWith(rawPrefix) == true
+    }
+
+    companion object {
+        private const val REGEX_PREFIX = "regex:"
+        private const val REGEX_PREFIX_SHORT = "re:"
+        private val REGEX_META_CHARS = Regex("[\\^$*+?()\\[\\]{}\\\\|]")
+
+        fun normalizeScene(raw: String): String {
+            return when (raw.trim()) {
+                "food_delivery", "food_Delivery", "foodDelivery" -> "foodDelivery"
+                "taxi", "carHailing" -> "carHailing"
+                "phone", "incall" -> "incall"
+                "timer", "countdown" -> "countdown"
+                else -> raw.trim()
+            }
+        }
+
+        fun normalizeScenePattern(raw: String): String {
+            val trimmed = raw.trim()
+            if (trimmed.isBlank()) return ""
+            return if (extractRegexPattern(trimmed) != null) trimmed else normalizeScene(trimmed)
+        }
+
+        fun extractRegexPattern(raw: String): String? {
+            val trimmed = raw.trim()
+            if (trimmed.isBlank()) return null
+            if (trimmed.startsWith(REGEX_PREFIX, ignoreCase = true)) {
+                return trimmed.substring(REGEX_PREFIX.length).trim().takeIf { it.isNotBlank() }
+            }
+            if (trimmed.startsWith(REGEX_PREFIX_SHORT, ignoreCase = true)) {
+                return trimmed.substring(REGEX_PREFIX_SHORT.length).trim()
+                    .takeIf { it.isNotBlank() }
+            }
+            if (trimmed.length >= 2 && trimmed.startsWith('/') && trimmed.endsWith('/')) {
+                return trimmed.substring(1, trimmed.length - 1).trim().takeIf { it.isNotBlank() }
+            }
+            return trimmed.takeIf { REGEX_META_CHARS.containsMatchIn(it) }
+        }
+
+        private fun compileRegex(pattern: String?): Regex? {
+            return pattern
+                ?.takeIf { it.isNotBlank() }
+                ?.let { runCatching { Regex(it) }.getOrNull() }
+        }
+    }
+}
+
 data class RearWidgetNoticeOptions(
     val sticky: Boolean = false,
     val disablePopup: Boolean = true,
