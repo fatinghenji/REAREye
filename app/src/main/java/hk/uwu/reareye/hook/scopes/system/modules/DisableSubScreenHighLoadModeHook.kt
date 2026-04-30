@@ -1,0 +1,48 @@
+package hk.uwu.reareye.hook.scopes.system.modules
+
+import com.highcapable.kavaref.KavaRef.Companion.resolve
+import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
+import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.ui.config.ConfigKeys
+
+class DisableSubScreenHighLoadModeHook : YukiBaseHooker() {
+    override fun onHook() {
+        loadSystem {
+            val dualScreenCoverManagerRef = "com.android.server.power.DualScreenCoverManager"
+                .toClass()
+                .resolve()
+            val windowProcessUtilsRef = "com.android.server.wm.WindowProcessUtils"
+                .toClass()
+                .resolve()
+
+            dualScreenCoverManagerRef.firstMethod {
+                name = "updateHighLoadSceneMode"
+                parameters(Int::class.java, Boolean::class.java)
+                returnType = Void.TYPE
+            }.hook().replaceUnit {
+                val value = args(1).boolean()
+                if (!value) {
+                    invokeOriginal(*args)
+                    return@replaceUnit
+                }
+
+                val packageName = windowProcessUtilsRef.firstMethod {
+                    name = "getTopRunningActivityInfo"
+                }.invoke().topRunningPackageName()
+                if (packageName in prefs.getStringSet(
+                        ConfigKeys.SUBSCREEN_HIGH_LOAD_MODE_DISABLED_APPS,
+                    )
+                ) {
+                    result = null
+                    if (prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+                        YLog.debug("Skip subscreen high load mode package=$packageName")
+                    }
+                    return@replaceUnit
+                }
+                invokeOriginal(*args)
+            }
+        }
+    }
+}
+
+private fun Any?.topRunningPackageName() = (this as? Map<*, *>)?.get("packageName") as? String

@@ -436,6 +436,12 @@
     <string name="cfg_video_wallpaper_volume_desc">设置视频壁纸的播放音量</string>
     <string name="cfg_disable_rear_screen_cover">禁用背屏保护</string>
     <string name="cfg_disable_rear_screen_cover_desc">启用此功能后，当主屏处于全屏模式时，背屏将不会被锁定</string>
+    <string name="cfg_disable_subscreen_double_tap_sleep">背屏双击息屏禁用白名单</string>
+    <string name="cfg_disable_subscreen_double_tap_sleep_desc">选择需要让系统框架忽略背屏双击息屏/AOD 手势的应用</string>
+    <string name="cfg_disable_subscreen_double_tap_wake">背屏双击唤醒禁用白名单</string>
+    <string name="cfg_disable_subscreen_double_tap_wake_desc">选择在前台时需要忽略背屏双击唤醒的应用</string>
+    <string name="cfg_disable_subscreen_high_load_mode">背屏高负载模式移除白名单</string>
+    <string name="cfg_disable_subscreen_high_load_mode_desc">选择在主屏前台时需要跳过背屏高负载模式处理的应用</string>
     <string name="cfg_more_debug">更多调试输出</string>
     <string name="subcategory_lyrics">歌词</string>
     <string name="subcategory_lyrics_desc">管理歌词配置</string>

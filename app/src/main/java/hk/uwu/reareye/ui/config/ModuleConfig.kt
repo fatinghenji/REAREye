@@ -75,6 +75,12 @@ object ConfigKeys {
         "enable_take_over_builtin_lyric_handling"
 
     const val HOOK_DISABLE_REAR_SCREEN_COVER = "enable_hook_rear_screen_cover"
+    const val SUBSCREEN_DOUBLE_TAP_SLEEP_DISABLED_APPS =
+        "subscreen_double_tap_sleep_disabled_apps"
+    const val SUBSCREEN_DOUBLE_TAP_WAKE_DISABLED_APPS =
+        "subscreen_double_tap_wake_disabled_apps"
+    const val SUBSCREEN_HIGH_LOAD_MODE_DISABLED_APPS =
+        "subscreen_high_load_mode_disabled_apps"
 
     const val MORE_DEBUG = "enable_more_debug_logging"
     const val MODULE_FAVORITE_CONFIG_NODES = "module_favorite_config_nodes"
@@ -296,6 +302,24 @@ val REAREyeConfig = listOf(
                 titleRes = R.string.cfg_disable_rear_screen_cover,
                 descriptionRes = R.string.cfg_disable_rear_screen_cover_desc,
                 type = ConfigType.BooleanVal(defaultValue = false)
+            ),
+            ConfigItem(
+                key = ConfigKeys.SUBSCREEN_DOUBLE_TAP_SLEEP_DISABLED_APPS,
+                titleRes = R.string.cfg_disable_subscreen_double_tap_sleep,
+                descriptionRes = R.string.cfg_disable_subscreen_double_tap_sleep_desc,
+                type = ConfigType.AppList(defaultValues = emptySet())
+            ),
+            ConfigItem(
+                key = ConfigKeys.SUBSCREEN_DOUBLE_TAP_WAKE_DISABLED_APPS,
+                titleRes = R.string.cfg_disable_subscreen_double_tap_wake,
+                descriptionRes = R.string.cfg_disable_subscreen_double_tap_wake_desc,
+                type = ConfigType.AppList(defaultValues = emptySet())
+            ),
+            ConfigItem(
+                key = ConfigKeys.SUBSCREEN_HIGH_LOAD_MODE_DISABLED_APPS,
+                titleRes = R.string.cfg_disable_subscreen_high_load_mode,
+                descriptionRes = R.string.cfg_disable_subscreen_high_load_mode_desc,
+                type = ConfigType.AppList(defaultValues = emptySet())
             )
         )
     ),

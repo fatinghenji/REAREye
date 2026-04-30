@@ -436,6 +436,12 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="cfg_video_wallpaper_volume_desc">Set playback volume for video wallpapers</string>
     <string name="cfg_disable_rear_screen_cover">Disable rear screen cover</string>
     <string name="cfg_disable_rear_screen_cover_desc">When enabled, the rear screen will not be locked when the main screen is in full-screen mode</string>
+    <string name="cfg_disable_subscreen_double_tap_sleep">Rear Double-Tap Sleep Disabled Apps</string>
+    <string name="cfg_disable_subscreen_double_tap_sleep_desc">Choose apps where the system framework should ignore rear double-tap sleep/AOD gestures</string>
+    <string name="cfg_disable_subscreen_double_tap_wake">Rear Double-Tap Wake Disabled Apps</string>
+    <string name="cfg_disable_subscreen_double_tap_wake_desc">Choose apps where rear double-tap wake should be ignored while they are in the foreground</string>
+    <string name="cfg_disable_subscreen_high_load_mode">Rear High Load Mode Disabled Apps</string>
+    <string name="cfg_disable_subscreen_high_load_mode_desc">Choose main-screen foreground apps where rear high-load mode handling should be skipped</string>
     <string name="cfg_more_debug">More debug output</string>
     <string name="subcategory_lyrics">Lyrics</string>
     <string name="subcategory_lyrics_desc">Manage lyrics options</string>
