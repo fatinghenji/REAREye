@@ -77,6 +77,10 @@
     <string name="enable_music_control_whitelist">启用自定义音乐控件白名单</string>
     <string name="music_control_whitelist_apps">白名单应用</string>
     <string name="music_control_whitelist_apps_desc">选择哪些应用的音乐控件可以在背屏中显示</string>
+    <string name="cfg_subscreen_lock_back_home_whitelist">锁屏返回桌面白名单</string>
+    <string name="cfg_subscreen_lock_back_home_whitelist_desc">主屏锁屏进入 AOD 时，阻止背屏中心把选中的应用切回背屏桌面</string>
+    <string name="subscreen_lock_back_home_whitelist_apps">白名单应用</string>
+    <string name="subscreen_lock_back_home_whitelist_apps_desc">选择主屏锁屏后需要继续留在背屏、不要返回背屏桌面的应用</string>
     <string name="cfg_background_whitelist">后台白名单</string>
     <string name="cfg_background_whitelist_desc">使选中的应用保持在后台运行</string>
     <string name="enable_background_whitelist">启用后台白名单</string>

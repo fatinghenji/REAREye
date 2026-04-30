@@ -77,6 +77,10 @@
     <string name="enable_music_control_whitelist">Enable Custom Music Controls Whitelist</string>
     <string name="music_control_whitelist_apps">Whitelist Apps</string>
     <string name="music_control_whitelist_apps_desc">Choose which apps music controls can be displayed on the rear screen</string>
+    <string name="cfg_subscreen_lock_back_home_whitelist">Lock Screen Home Return Whitelist</string>
+    <string name="cfg_subscreen_lock_back_home_whitelist_desc">Prevent Subscreen Center from pulling the rear Home to front for selected apps when AOD starts after locking the main screen</string>
+    <string name="subscreen_lock_back_home_whitelist_apps">Whitelist Apps</string>
+    <string name="subscreen_lock_back_home_whitelist_apps_desc">Choose apps that should stay on the rear screen instead of returning to Subscreen Home after locking</string>
     <string name="cfg_background_whitelist">Background Whitelist</string>
     <string name="cfg_background_whitelist_desc">Keep the selected application running in the background</string>
     <string name="enable_background_whitelist">Enable Background Whitelist</string>

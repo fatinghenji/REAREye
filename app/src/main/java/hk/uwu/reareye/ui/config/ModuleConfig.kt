@@ -26,6 +26,8 @@ object ConfigKeys {
 
     const val HOOK_MUSIC_CONTROLS_WHITELIST = "enable_music_controls_whitelist_hook"
     const val MUSIC_CONTROLS_WHITELIST_APPS = "music_controls_whitelist_apps"
+    const val SUBSCREEN_LOCK_BACK_HOME_WHITELIST_APPS =
+        "subscreen_lock_back_home_whitelist_apps"
     const val HOOK_MUSIC_CONTROLS_FORCE_UPDATE = "enable_music_controls_force_update"
     const val HOOK_VIDEO_LOOPING = "enable_video_looping"
 
@@ -367,6 +369,18 @@ val REAREyeConfig = listOf(
                         titleRes = R.string.enable_music_control_force_update,
                         descriptionRes = R.string.enable_music_control_force_update_desc,
                         type = ConfigType.BooleanVal(defaultValue = false)
+                    )
+                )
+            ),
+            ConfigCategory(
+                titleRes = R.string.cfg_subscreen_lock_back_home_whitelist,
+                descriptionRes = R.string.cfg_subscreen_lock_back_home_whitelist_desc,
+                children = listOf(
+                    ConfigItem(
+                        key = ConfigKeys.SUBSCREEN_LOCK_BACK_HOME_WHITELIST_APPS,
+                        titleRes = R.string.subscreen_lock_back_home_whitelist_apps,
+                        descriptionRes = R.string.subscreen_lock_back_home_whitelist_apps_desc,
+                        type = ConfigType.AppList(defaultValues = emptySet())
                     )
                 )
             ),
