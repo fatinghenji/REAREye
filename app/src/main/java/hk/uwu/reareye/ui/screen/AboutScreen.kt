@@ -91,11 +91,14 @@ import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
 import hk.uwu.reareye.ui.theme.rememberAcrylicHazeStyle
 import hk.uwu.reareye.utils.blend.ColorBlendToken
 import hk.uwu.reareye.utils.effect.BgEffectBackground
+import hk.uwu.reareye.utils.other.OSVersionTools
+import hk.uwu.reareye.utils.other.PropTools
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
@@ -638,9 +641,58 @@ private fun AboutRootContent(
             item(key = "content") {
                 Column(
                     modifier = Modifier
-                        .fillParentMaxHeight()
+                        .fillMaxWidth()
                         .padding(bottom = scrollPadding.calculateBottomPadding()),
                 ) {
+                    ArtStaggeredReveal(
+                        visible = true,
+                        revealKey = "contributors",
+                        delayMillis = 36,
+                    ) {
+                        Card(
+                            modifier = Modifier
+                                .padding(horizontal = 8.dp)
+                                .padding(bottom = 8.dp)
+                                .textureBlur(
+                                    backdrop = backdrop,
+                                    shape = SmoothRoundedCornerShape(16.dp),
+                                    blurRadius = 60f,
+                                    noiseCoefficient = 0.001f,
+                                    colors = BlurColors(
+                                        blendColors = visualTokens.cardBlendColors,
+                                        brightness = 0f,
+                                        contrast = 1f,
+                                        saturation = 1f,
+                                    ),
+                                    enabled = true,
+                                ),
+                            colors = CardDefaults.defaultColors(
+                                Color.Transparent,
+                                Color.Transparent,
+                            ),
+                        ) {
+                            BasicComponent(
+                                title = PropTools.deviceName,
+                            )
+
+                            BasicComponent(
+                                title = androidx.compose.ui.res.stringResource(R.string.device_name),
+                                summary = PropTools.marketName,
+                            )
+
+                            BasicComponent(
+                                title = androidx.compose.ui.res.stringResource(R.string.android_version),
+                                summary = PropTools.androidVersion,
+                            )
+                            BasicComponent(
+                                title = androidx.compose.ui.res.stringResource(R.string.os_version),
+                                summary = OSVersionTools.addVersionSuffix(context),
+                            )
+
+
+                        }
+                    }
+
                     ArtStaggeredReveal(
                         visible = true,
                         revealKey = "contributors",

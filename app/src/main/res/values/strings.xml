@@ -470,4 +470,8 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="home_easter_egg_huawei_ultimate_design_working">Explore the ultimate frontier</string>
     <string name="home_easter_egg_huawei_ultimate_design_activated">Unfold in front of you</string>
     <string name="home_easter_egg_huawei_ultimate_design">ULTIMATE DESIGN</string>
+    <string name="developer_build">DEV</string>
+    <string name="device_name">Device Name</string>
+    <string name="os_version">OS Version</string>
+    <string name="android_version">Android Version</string>
 </resources>

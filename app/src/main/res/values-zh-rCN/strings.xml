@@ -470,4 +470,8 @@
     <string name="home_easter_egg_huawei_ultimate_design_working">临无人所及之境</string>
     <string name="home_easter_egg_huawei_ultimate_design_activated">呈巅峰造极形态</string>
     <string name="home_easter_egg_huawei_ultimate_design">非凡大师</string>
+    <string name="developer_build">开发版</string>
+    <string name="device_name">设备型号</string>
+    <string name="os_version">OS 版本</string>
+    <string name="android_version">Android 版本</string>
 </resources>
