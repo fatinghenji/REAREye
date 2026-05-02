@@ -11,9 +11,6 @@ class DisableSubScreenDoubleTapWakeHook : YukiBaseHooker() {
             val dualScreenCoverManagerRef = "com.android.server.power.DualScreenCoverManager"
                 .toClass()
                 .resolve()
-            val windowProcessUtilsRef = "com.android.server.wm.WindowProcessUtils"
-                .toClass()
-                .resolve()
 
             dualScreenCoverManagerRef.firstMethod {
                 name = "isScreenSkippedWakeup"
@@ -22,9 +19,7 @@ class DisableSubScreenDoubleTapWakeHook : YukiBaseHooker() {
             }.hook().before {
                 val groupId = args(0).int()
                 val details = args(1).string()
-                val packageName = windowProcessUtilsRef.firstMethod {
-                    name = "getTopRunningActivityInfo"
-                }.invoke().topRunningPackageName()
+                val packageName = instance.mainDisplayForegroundPackageName()
                 if (groupId == 1 && details == WAKE_REASON_DOUBLE_TAP &&
                     packageName in prefs.getStringSet(
                         ConfigKeys.SUBSCREEN_DOUBLE_TAP_WAKE_DISABLED_APPS,
@@ -43,5 +38,3 @@ class DisableSubScreenDoubleTapWakeHook : YukiBaseHooker() {
         private const val WAKE_REASON_DOUBLE_TAP = "android.policy:KEY"
     }
 }
-
-private fun Any?.topRunningPackageName() = (this as? Map<*, *>)?.get("packageName") as? String

@@ -11,9 +11,6 @@ class DisableSubScreenHighLoadModeHook : YukiBaseHooker() {
             val dualScreenCoverManagerRef = "com.android.server.power.DualScreenCoverManager"
                 .toClass()
                 .resolve()
-            val windowProcessUtilsRef = "com.android.server.wm.WindowProcessUtils"
-                .toClass()
-                .resolve()
 
             dualScreenCoverManagerRef.firstMethod {
                 name = "updateHighLoadSceneMode"
@@ -26,9 +23,7 @@ class DisableSubScreenHighLoadModeHook : YukiBaseHooker() {
                     return@replaceUnit
                 }
 
-                val packageName = windowProcessUtilsRef.firstMethod {
-                    name = "getTopRunningActivityInfo"
-                }.invoke().topRunningPackageName()
+                val packageName = instance.mainDisplayForegroundPackageName()
                 if (packageName in prefs.getStringSet(
                         ConfigKeys.SUBSCREEN_HIGH_LOAD_MODE_DISABLED_APPS,
                     )
@@ -44,5 +39,3 @@ class DisableSubScreenHighLoadModeHook : YukiBaseHooker() {
         }
     }
 }
-
-private fun Any?.topRunningPackageName() = (this as? Map<*, *>)?.get("packageName") as? String
