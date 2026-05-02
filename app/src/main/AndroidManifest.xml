@@ -88,5 +88,10 @@
                 android:value="false" />
         </service>
 
+
     </application>
+
+    <queries>
+        <package android:name="com.xiaomi.subscreencenter" />
+    </queries>
 </manifest>

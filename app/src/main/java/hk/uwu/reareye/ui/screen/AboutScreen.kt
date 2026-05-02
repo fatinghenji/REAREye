@@ -93,12 +93,14 @@ import hk.uwu.reareye.utils.blend.ColorBlendToken
 import hk.uwu.reareye.utils.effect.BgEffectBackground
 import hk.uwu.reareye.utils.other.DeviceConfigTools
 import hk.uwu.reareye.utils.other.OSVersionTools
+import hk.uwu.reareye.utils.pageContentPadding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
@@ -125,7 +127,6 @@ import top.yukonga.miuix.kmp.shapes.SmoothRoundedCornerShape
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import utils.pageContentPadding
 import java.util.concurrent.ConcurrentHashMap
 
 private val contributorAvatarHttpClient = OkHttpClient()
@@ -672,8 +673,15 @@ private fun AboutRootContent(
                             ),
                         ) {
                             BasicComponent(
-                                title = DeviceConfigTools.deviceName,
-                            )
+                                enabled = true,
+                            ) {
+                                Text(
+                                    text = DeviceConfigTools.deviceName,
+                                    fontSize = 24.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = BasicComponentDefaults.titleColor().color,
+                                )
+                            }
 
                             BasicComponent(
                                 title = androidx.compose.ui.res.stringResource(R.string.device_name),
@@ -687,6 +695,11 @@ private fun AboutRootContent(
                             BasicComponent(
                                 title = androidx.compose.ui.res.stringResource(R.string.os_version),
                                 summary = OSVersionTools.addVersionSuffix(context),
+                            )
+
+                            BasicComponent(
+                                title = androidx.compose.ui.res.stringResource(R.string.subsceen_version),
+                                summary = DeviceConfigTools.getSubSceenVersion(context),
                             )
 
 
