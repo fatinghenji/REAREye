@@ -112,9 +112,9 @@ import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Switch
@@ -862,7 +862,7 @@ fun RearWallpaperManagerScreen(
                                             horizontalArrangement = Arrangement.Center,
                                             verticalAlignment = Alignment.CenterVertically,
                                         ) {
-                                            CircularProgressIndicator()
+                                            InfiniteProgressIndicator()
                                             Spacer(Modifier.width(10.dp))
                                             Text(text = stringResource(R.string.rear_wallpaper_loading))
                                         }
@@ -969,7 +969,7 @@ fun RearWallpaperManagerScreen(
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        CircularProgressIndicator()
+                        InfiniteProgressIndicator()
                         Spacer(Modifier.width(10.dp))
                         Text(text = stringResource(R.string.rear_wallpaper_loading))
                     }

@@ -5,7 +5,7 @@ import android.os.Build
 import hk.uwu.reareye.utils.RootHelper.executeRootCommand
 import hk.uwu.reareye.utils.RootHelper.hasRootAccess
 
-object PropTools {
+object DeviceConfigTools {
 
     // 我就说我设备名字怎么就对不上了，这玩意还要 Root 获取，破烂
     val getdevice = if (hasRootAccess()) executeRootCommand("getprop persist.private.device_name") else Pair(20, "无法获取Root来获取设备名字")
@@ -13,7 +13,7 @@ object PropTools {
 
 
     val androidVersion: String = getSystemProperties("ro.build.version.release")
-
+    
     val marketName by lazy {
 
         val marketName: String = getSystemProperties("ro.product.marketname")

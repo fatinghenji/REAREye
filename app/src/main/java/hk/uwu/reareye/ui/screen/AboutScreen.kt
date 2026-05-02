@@ -91,8 +91,8 @@ import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
 import hk.uwu.reareye.ui.theme.rememberAcrylicHazeStyle
 import hk.uwu.reareye.utils.blend.ColorBlendToken
 import hk.uwu.reareye.utils.effect.BgEffectBackground
+import hk.uwu.reareye.utils.other.DeviceConfigTools
 import hk.uwu.reareye.utils.other.OSVersionTools
-import hk.uwu.reareye.utils.other.PropTools
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.withContext
@@ -672,17 +672,17 @@ private fun AboutRootContent(
                             ),
                         ) {
                             BasicComponent(
-                                title = PropTools.deviceName,
+                                title = DeviceConfigTools.deviceName,
                             )
 
                             BasicComponent(
                                 title = androidx.compose.ui.res.stringResource(R.string.device_name),
-                                summary = PropTools.marketName,
+                                summary = DeviceConfigTools.marketName,
                             )
 
                             BasicComponent(
                                 title = androidx.compose.ui.res.stringResource(R.string.android_version),
-                                summary = PropTools.androidVersion,
+                                summary = DeviceConfigTools.androidVersion,
                             )
                             BasicComponent(
                                 title = androidx.compose.ui.res.stringResource(R.string.os_version),

@@ -3,7 +3,7 @@ package hk.uwu.reareye.utils.other
 import android.content.Context
 import android.util.Log
 import hk.uwu.reareye.R
-import hk.uwu.reareye.utils.other.PropTools.getSystemProperties
+import hk.uwu.reareye.utils.other.DeviceConfigTools.getSystemProperties
 import java.util.regex.Pattern
 
 object OSVersionTools {
