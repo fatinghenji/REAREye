@@ -91,17 +91,22 @@ import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
 import hk.uwu.reareye.ui.theme.rememberAcrylicHazeStyle
 import hk.uwu.reareye.utils.blend.ColorBlendToken
 import hk.uwu.reareye.utils.effect.BgEffectBackground
+import hk.uwu.reareye.utils.other.DeviceConfigTools
+import hk.uwu.reareye.utils.other.OSVersionTools
+import hk.uwu.reareye.utils.pageContentPadding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
-import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
@@ -122,7 +127,6 @@ import top.yukonga.miuix.kmp.shapes.SmoothRoundedCornerShape
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import utils.pageContentPadding
 import java.util.concurrent.ConcurrentHashMap
 
 private val contributorAvatarHttpClient = OkHttpClient()
@@ -638,9 +642,70 @@ private fun AboutRootContent(
             item(key = "content") {
                 Column(
                     modifier = Modifier
-                        .fillParentMaxHeight()
+                        .fillMaxWidth()
                         .padding(bottom = scrollPadding.calculateBottomPadding()),
                 ) {
+                    ArtStaggeredReveal(
+                        visible = true,
+                        revealKey = "contributors",
+                        delayMillis = 36,
+                    ) {
+                        Card(
+                            modifier = Modifier
+                                .padding(horizontal = 8.dp)
+                                .padding(bottom = 8.dp)
+                                .textureBlur(
+                                    backdrop = backdrop,
+                                    shape = SmoothRoundedCornerShape(16.dp),
+                                    blurRadius = 60f,
+                                    noiseCoefficient = 0.001f,
+                                    colors = BlurColors(
+                                        blendColors = visualTokens.cardBlendColors,
+                                        brightness = 0f,
+                                        contrast = 1f,
+                                        saturation = 1f,
+                                    ),
+                                    enabled = true,
+                                ),
+                            colors = CardDefaults.defaultColors(
+                                Color.Transparent,
+                                Color.Transparent,
+                            ),
+                        ) {
+                            BasicComponent(
+                                enabled = true,
+                            ) {
+                                Text(
+                                    text = DeviceConfigTools.deviceName,
+                                    fontSize = 24.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = BasicComponentDefaults.titleColor().color,
+                                )
+                            }
+
+                            BasicComponent(
+                                title = androidx.compose.ui.res.stringResource(R.string.device_name),
+                                summary = DeviceConfigTools.marketName,
+                            )
+
+                            BasicComponent(
+                                title = androidx.compose.ui.res.stringResource(R.string.android_version),
+                                summary = DeviceConfigTools.androidVersion,
+                            )
+                            BasicComponent(
+                                title = androidx.compose.ui.res.stringResource(R.string.os_version),
+                                summary = OSVersionTools.addVersionSuffix(context),
+                            )
+
+                            BasicComponent(
+                                title = androidx.compose.ui.res.stringResource(R.string.subsceen_version),
+                                summary = DeviceConfigTools.getSubSceenVersion(context),
+                            )
+
+
+                        }
+                    }
+
                     ArtStaggeredReveal(
                         visible = true,
                         revealKey = "contributors",
@@ -777,7 +842,7 @@ private fun ContributorListContent(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            CircularProgressIndicator()
+                            InfiniteProgressIndicator()
                             Text(text = stringResource(R.string.credits_contributors_loading))
                         }
                     }

@@ -62,8 +62,8 @@ import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
@@ -492,7 +492,7 @@ private fun RearWallpaperManagementList(
                 Card(modifier = Modifier.fillMaxWidth()) {
                     SuperCard(
                         title = stringResource(R.string.rear_wallpaper_loading),
-                        startAction = { CircularProgressIndicator() },
+                        startAction = { InfiniteProgressIndicator() },
                     )
                 }
             }
