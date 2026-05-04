@@ -113,496 +113,496 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
 
             val videoEditPoint = resolveVideoEditPlayCreatedMethod(bridge)
             val fpsLimitPoint = resolveVideoEditFpsLimitMethod(bridge)
-                    val editorConfigBuildPoint =
-                        resolveVideoEditorConfigBuildMethod(bridge)
+            val editorConfigBuildPoint =
+                resolveVideoEditorConfigBuildMethod(bridge)
             val checkDepthPoint = resolveVideoDepthCheckMethod(bridge)
-                    val timelineGetInstancePoint =
-                        resolveVideoTimelineGetInstanceMethod(bridge)
-                    val timelineAttachTexturePoint =
-                        resolveVideoTimelineAttachTextureMethod(bridge)
-                    val timelineGetDurationPoint =
-                        resolveVideoTimelineGetDurationMethod(bridge)
-                    val timelinePreparePoint =
-                        resolveVideoTimelinePrepareMethod(bridge)
-                    val timelineExportPoint =
-                        resolveVideoTimelineExportMethod(bridge)
+            val timelineGetInstancePoint =
+                resolveVideoTimelineGetInstanceMethod(bridge)
+            val timelineAttachTexturePoint =
+                resolveVideoTimelineAttachTextureMethod(bridge)
+            val timelineGetDurationPoint =
+                resolveVideoTimelineGetDurationMethod(bridge)
+            val timelinePreparePoint =
+                resolveVideoTimelinePrepareMethod(bridge)
+            val timelineExportPoint =
+                resolveVideoTimelineExportMethod(bridge)
             val toastTextPoint = resolveVideoToastTextMethod(bridge)
-                    val operationCurrentTimePoint =
-                        resolveVideoOperationCurrentTimeMethod(bridge)
+            val operationCurrentTimePoint =
+                resolveVideoOperationCurrentTimeMethod(bridge)
             val clipFrameLoadPoint = resolveVideoClipFrameLoadMethod(bridge)
             val coderHashPoint = resolveVideoHashStringMethod(bridge)
-                    val exportConfigSetFpsPoint =
-                        resolveVideoExportConfigSetFpsMethod(bridge)
+            val exportConfigSetFpsPoint =
+                resolveVideoExportConfigSetFpsMethod(bridge)
             val gsonSerializePoint = resolveVideoGsonSerializeMethod(bridge)
-                    val videoEditClz = videoEditPoint.className.toClass()
-                    val videoEditRef = videoEditClz.resolve()
-                    val fpsLimitClz = fpsLimitPoint.className.toClass().resolve()
-                    val editorCfgBuilderClz = editorConfigBuildPoint.className.toClass().resolve()
-                    val checkDepthClz = checkDepthPoint.className.toClass().resolve()
-                    val timelineClz = timelineGetInstancePoint.className.toClass()
-                    val timelineRef = timelineClz.resolve()
-                    val toastUtilsRef = toastTextPoint.className.toClass().resolve()
-                    val coderUtilsRef = coderHashPoint.className.toClass().resolve()
-                    val gsonUtilsClz = gsonSerializePoint.className.toClass().resolve()
+            val videoEditClz = videoEditPoint.className.toClass()
+            val videoEditRef = videoEditClz.resolve()
+            val fpsLimitClz = fpsLimitPoint.className.toClass().resolve()
+            val editorCfgBuilderClz = editorConfigBuildPoint.className.toClass().resolve()
+            val checkDepthClz = checkDepthPoint.className.toClass().resolve()
+            val timelineClz = timelineGetInstancePoint.className.toClass()
+            val timelineRef = timelineClz.resolve()
+            val toastUtilsRef = toastTextPoint.className.toClass().resolve()
+            val coderUtilsRef = coderHashPoint.className.toClass().resolve()
+            val gsonUtilsClz = gsonSerializePoint.className.toClass().resolve()
             val frameLoaderClassName = resolveDexKitClassValue(
-                        bridge = bridge,
-                        cacheKey = VIDEO_FRAME_LOADER_CLASS_CACHE_KEY,
+                bridge = bridge,
+                cacheKey = VIDEO_FRAME_LOADER_CLASS_CACHE_KEY,
                 selector = { it.className.substringBefore('$') },
-                    ) {
-                        findClass {
-                            matcher {
-                                usingStrings(
-                                    "MiVideoFrameLoader",
-                                    "loadFrameTime width=%d height=%d key=%s,timeMicros=%d,cost=%d",
-                                )
-                            }
-                        }.singleOrNull()
-                    } ?: error("DexKit failed to resolve video frame loader class")
+            ) {
+                findClass {
+                    matcher {
+                        usingStrings(
+                            "MiVideoFrameLoader",
+                            "loadFrameTime width=%d height=%d key=%s,timeMicros=%d,cost=%d",
+                        )
+                    }
+                }.singleOrNull()
+            } ?: error("DexKit failed to resolve video frame loader class")
             val exportConfigClassName = resolveDexKitClassValue(
-                        bridge = bridge,
-                        cacheKey = VIDEO_EXPORT_CONFIG_CLASS_CACHE_KEY,
-                    ) {
-                        findClass {
-                            searchPackages("com.android.thememanager.videoedit.entity")
-                            matcher {
-                                fields {
-                                    addForType(Int::class.java)
-                                    addForType(Size::class.java)
-                                    addForType(Boolean::class.java)
-                                    addForType(String::class.java)
-                                }
-                            }
-                        }.singleOrNull()
-                    } ?: error("DexKit failed to resolve export config class")
-                    val frameLoaderClz = frameLoaderClassName.toClass().resolve()
-                    val exportConfigClz = exportConfigClassName.toClass().resolve()
+                bridge = bridge,
+                cacheKey = VIDEO_EXPORT_CONFIG_CLASS_CACHE_KEY,
+            ) {
+                findClass {
+                    searchPackages("com.android.thememanager.videoedit.entity")
+                    matcher {
+                        fields {
+                            addForType(Int::class.java)
+                            addForType(Size::class.java)
+                            addForType(Boolean::class.java)
+                            addForType(String::class.java)
+                        }
+                    }
+                }.singleOrNull()
+            } ?: error("DexKit failed to resolve export config class")
+            val frameLoaderClz = frameLoaderClassName.toClass().resolve()
+            val exportConfigClz = exportConfigClassName.toClass().resolve()
 
-                    fun resolveFieldName(
-                        cacheKey: String,
-                        fallbackField: String,
-                        finder: DexKitBridge.() -> org.luckypray.dexkit.result.FieldData?,
-                    ): String {
-                        return resolveDexKitFieldValue(
-                            bridge = bridge,
-                            cacheKey = cacheKey,
-                        ) {
-                            finder()
-                        } ?: fallbackField
-                    }
+            fun resolveFieldName(
+                cacheKey: String,
+                fallbackField: String,
+                finder: DexKitBridge.() -> org.luckypray.dexkit.result.FieldData?,
+            ): String {
+                return resolveDexKitFieldValue(
+                    bridge = bridge,
+                    cacheKey = cacheKey,
+                ) {
+                    finder()
+                } ?: fallbackField
+            }
 
-                    val playViewFieldName = resolveFieldName(
-                        VIDEO_EDIT_PLAY_VIEW_FIELD_CACHE_KEY,
-                        "q",
-                    ) {
-                        findField {
-                            searchPackages("com.android.thememanager.videoedit")
-                            matcher {
-                                declaredClass = videoEditPoint.className
-                                type = "com.android.thememanager.videoedit.widget.VlogPlayView"
-                            }
-                        }.singleOrNull()
+            val playViewFieldName = resolveFieldName(
+                VIDEO_EDIT_PLAY_VIEW_FIELD_CACHE_KEY,
+                "q",
+            ) {
+                findField {
+                    searchPackages("com.android.thememanager.videoedit")
+                    matcher {
+                        declaredClass = videoEditPoint.className
+                        type = "com.android.thememanager.videoedit.widget.VlogPlayView"
                     }
-                    val configFieldName = resolveFieldName(
-                        VIDEO_EDIT_CONFIG_FIELD_CACHE_KEY,
-                        "s",
-                    ) {
-                        findField {
-                            searchPackages("com.android.thememanager.videoedit")
-                            matcher {
-                                declaredClass = videoEditPoint.className
-                                type = "com.android.thememanager.videoedit.VideoEditorConfig"
-                            }
-                        }.singleOrNull()
+                }.singleOrNull()
+            }
+            val configFieldName = resolveFieldName(
+                VIDEO_EDIT_CONFIG_FIELD_CACHE_KEY,
+                "s",
+            ) {
+                findField {
+                    searchPackages("com.android.thememanager.videoedit")
+                    matcher {
+                        declaredClass = videoEditPoint.className
+                        type = "com.android.thememanager.videoedit.VideoEditorConfig"
                     }
-                    val operationViewFieldName = resolveFieldName(
-                        VIDEO_EDIT_OPERATION_VIEW_FIELD_CACHE_KEY,
-                        "n",
-                    ) {
-                        findField {
-                            searchPackages("com.android.thememanager.videoedit")
-                            matcher {
-                                declaredClass = videoEditPoint.className
-                                type =
-                                    "com.android.thememanager.videoedit.widget.SingleEditOperationView"
-                            }
-                        }.singleOrNull()
+                }.singleOrNull()
+            }
+            val operationViewFieldName = resolveFieldName(
+                VIDEO_EDIT_OPERATION_VIEW_FIELD_CACHE_KEY,
+                "n",
+            ) {
+                findField {
+                    searchPackages("com.android.thememanager.videoedit")
+                    matcher {
+                        declaredClass = videoEditPoint.className
+                        type =
+                            "com.android.thememanager.videoedit.widget.SingleEditOperationView"
                     }
-                    val trimInFieldName = resolveFieldName(
-                        VIDEO_EDIT_TRIM_IN_FIELD_CACHE_KEY,
-                        "i",
-                    ) {
-                        findField {
-                            searchPackages("com.android.thememanager.videoedit")
-                            matcher {
+                }.singleOrNull()
+            }
+            val trimInFieldName = resolveFieldName(
+                VIDEO_EDIT_TRIM_IN_FIELD_CACHE_KEY,
+                "i",
+            ) {
+                findField {
+                    searchPackages("com.android.thememanager.videoedit")
+                    matcher {
+                        declaredClass = videoEditPoint.className
+                        type = "long"
+                        readMethods {
+                            add {
                                 declaredClass = videoEditPoint.className
-                                type = "long"
-                                readMethods {
-                                    add {
-                                        declaredClass = videoEditPoint.className
-                                        name = videoEditPoint.methodName
-                                        paramCount(0)
-                                        returnType = "void"
-                                        usingStrings("onPlayViewCreated")
-                                    }
-                                    add {
-                                        declaredClass = fpsLimitPoint.className
-                                        name = fpsLimitPoint.methodName
-                                        paramCount(0)
-                                        returnType = "void"
-                                        usingStrings("ExportConfig %s", "export videopath is ")
-                                    }
-                                }
+                                name = videoEditPoint.methodName
+                                paramCount(0)
+                                returnType = "void"
+                                usingStrings("onPlayViewCreated")
                             }
-                        }.singleOrNull()
+                            add {
+                                declaredClass = fpsLimitPoint.className
+                                name = fpsLimitPoint.methodName
+                                paramCount(0)
+                                returnType = "void"
+                                usingStrings("ExportConfig %s", "export videopath is ")
+                            }
+                        }
                     }
-                    val trimOutFieldName = resolveFieldName(
-                        VIDEO_EDIT_TRIM_OUT_FIELD_CACHE_KEY,
-                        "z",
-                    ) {
-                        findField {
-                            searchPackages("com.android.thememanager.videoedit")
-                            matcher {
+                }.singleOrNull()
+            }
+            val trimOutFieldName = resolveFieldName(
+                VIDEO_EDIT_TRIM_OUT_FIELD_CACHE_KEY,
+                "z",
+            ) {
+                findField {
+                    searchPackages("com.android.thememanager.videoedit")
+                    matcher {
+                        declaredClass = videoEditPoint.className
+                        type = "long"
+                        readMethods {
+                            add {
+                                declaredClass = fpsLimitPoint.className
+                                name = fpsLimitPoint.methodName
+                                paramCount(0)
+                                returnType = "void"
+                                usingStrings("ExportConfig %s", "export videopath is ")
+                            }
+                        }
+                        writeMethods {
+                            add {
                                 declaredClass = videoEditPoint.className
-                                type = "long"
-                                readMethods {
-                                    add {
-                                        declaredClass = fpsLimitPoint.className
-                                        name = fpsLimitPoint.methodName
-                                        paramCount(0)
-                                        returnType = "void"
-                                        usingStrings("ExportConfig %s", "export videopath is ")
-                                    }
-                                }
-                                writeMethods {
-                                    add {
-                                        declaredClass = videoEditPoint.className
-                                        name = videoEditPoint.methodName
-                                        paramCount(0)
-                                        returnType = "void"
-                                        usingStrings("onPlayViewCreated")
-                                    }
-                                }
+                                name = videoEditPoint.methodName
+                                paramCount(0)
+                                returnType = "void"
+                                usingStrings("onPlayViewCreated")
                             }
-                        }.singleOrNull()
+                        }
                     }
-                    val frameLoaderFieldName = resolveFieldName(
-                        VIDEO_EDIT_FRAME_LOADER_FIELD_CACHE_KEY,
-                        "p",
-                    ) {
-                        findField {
-                            searchPackages("com.android.thememanager.videoedit")
-                            matcher {
+                }.singleOrNull()
+            }
+            val frameLoaderFieldName = resolveFieldName(
+                VIDEO_EDIT_FRAME_LOADER_FIELD_CACHE_KEY,
+                "p",
+            ) {
+                findField {
+                    searchPackages("com.android.thememanager.videoedit")
+                    matcher {
+                        declaredClass = videoEditPoint.className
+                        type = "com.android.thememanager.videoedit.y"
+                    }
+                }.singleOrNull()
+            }
+            val clipFrameFieldName = resolveFieldName(
+                VIDEO_EDIT_CLIP_FRAME_FIELD_CACHE_KEY,
+                "g",
+            ) {
+                findField {
+                    searchPackages("com.android.thememanager.videoedit")
+                    matcher {
+                        declaredClass = videoEditPoint.className
+                        type = "com.android.thememanager.videoedit.widget.ClipFrameView"
+                    }
+                }.singleOrNull()
+            }
+            val clipListenerFieldName = resolveFieldName(
+                VIDEO_EDIT_CLIP_LISTENER_FIELD_CACHE_KEY,
+                "j",
+            ) {
+                findField {
+                    searchPackages("com.android.thememanager.videoedit")
+                    matcher {
+                        declaredClass = videoEditPoint.className
+                        type =
+                            $$"com.android.thememanager.videoedit.widget.ClipFrameView$zy"
+                    }
+                }.singleOrNull()
+            }
+            val videoUriFieldName = resolveFieldName(
+                VIDEO_EDIT_VIDEO_URI_FIELD_CACHE_KEY,
+                "y",
+            ) {
+                findField {
+                    searchPackages("com.android.thememanager.videoedit")
+                    matcher {
+                        declaredClass = videoEditPoint.className
+                        type = "java.lang.String"
+                        readMethods {
+                            add {
                                 declaredClass = videoEditPoint.className
-                                type = "com.android.thememanager.videoedit.y"
+                                name = videoEditPoint.methodName
+                                paramCount(0)
+                                returnType = "void"
+                                usingStrings("onPlayViewCreated")
                             }
-                        }.singleOrNull()
-                    }
-                    val clipFrameFieldName = resolveFieldName(
-                        VIDEO_EDIT_CLIP_FRAME_FIELD_CACHE_KEY,
-                        "g",
-                    ) {
-                        findField {
-                            searchPackages("com.android.thememanager.videoedit")
-                            matcher {
-                                declaredClass = videoEditPoint.className
-                                type = "com.android.thememanager.videoedit.widget.ClipFrameView"
+                            add {
+                                declaredClass = fpsLimitPoint.className
+                                name = fpsLimitPoint.methodName
+                                paramCount(0)
+                                returnType = "void"
+                                usingStrings("ExportConfig %s", "export videopath is ")
                             }
-                        }.singleOrNull()
+                        }
                     }
-                    val clipListenerFieldName = resolveFieldName(
-                        VIDEO_EDIT_CLIP_LISTENER_FIELD_CACHE_KEY,
-                        "j",
-                    ) {
-                        findField {
-                            searchPackages("com.android.thememanager.videoedit")
-                            matcher {
-                                declaredClass = videoEditPoint.className
-                                type =
-                                    $$"com.android.thememanager.videoedit.widget.ClipFrameView$zy"
+                }.singleOrNull()
+            }
+            val exportPathFieldName = resolveFieldName(
+                VIDEO_EDIT_EXPORT_PATH_FIELD_CACHE_KEY,
+                "c",
+            ) {
+                findField {
+                    searchPackages("com.android.thememanager.videoedit")
+                    matcher {
+                        declaredClass = videoEditPoint.className
+                        type = "java.lang.String"
+                        writeMethods {
+                            add {
+                                declaredClass = fpsLimitPoint.className
+                                name = fpsLimitPoint.methodName
+                                paramCount(0)
+                                returnType = "void"
+                                usingStrings("ExportConfig %s", "export videopath is ")
                             }
-                        }.singleOrNull()
+                        }
                     }
-                    val videoUriFieldName = resolveFieldName(
-                        VIDEO_EDIT_VIDEO_URI_FIELD_CACHE_KEY,
-                        "y",
-                    ) {
-                        findField {
-                            searchPackages("com.android.thememanager.videoedit")
-                            matcher {
-                                declaredClass = videoEditPoint.className
-                                type = "java.lang.String"
-                                readMethods {
-                                    add {
-                                        declaredClass = videoEditPoint.className
-                                        name = videoEditPoint.methodName
-                                        paramCount(0)
-                                        returnType = "void"
-                                        usingStrings("onPlayViewCreated")
-                                    }
-                                    add {
-                                        declaredClass = fpsLimitPoint.className
-                                        name = fpsLimitPoint.methodName
-                                        paramCount(0)
-                                        returnType = "void"
-                                        usingStrings("ExportConfig %s", "export videopath is ")
-                                    }
-                                }
-                            }
-                        }.singleOrNull()
-                    }
-                    val exportPathFieldName = resolveFieldName(
-                        VIDEO_EDIT_EXPORT_PATH_FIELD_CACHE_KEY,
-                        "c",
-                    ) {
-                        findField {
-                            searchPackages("com.android.thememanager.videoedit")
-                            matcher {
-                                declaredClass = videoEditPoint.className
-                                type = "java.lang.String"
-                                writeMethods {
-                                    add {
-                                        declaredClass = fpsLimitPoint.className
-                                        name = fpsLimitPoint.methodName
-                                        paramCount(0)
-                                        returnType = "void"
-                                        usingStrings("ExportConfig %s", "export videopath is ")
-                                    }
-                                }
-                            }
-                        }.singleOrNull()
-                    }
+                }.singleOrNull()
+            }
 
             val durationCropMatchResult = resolveDexKitClassValue(
-                        bridge = bridge,
-                        cacheKey = durationCropCacheKey,
-                    ) {
-                        findClass {
-                            searchPackages("com.android.thememanager.util")
-                            matcher {
-                                modifiers = Modifier.PUBLIC or Modifier.FINAL
-                                fieldCount(1)
-                                methods {
-                                    add {
-                                        name = "toString"
-                                        returnType(String::class.java)
-                                        usingStrings("DurationCrop")
-                                    }
-                                }
+                bridge = bridge,
+                cacheKey = durationCropCacheKey,
+            ) {
+                findClass {
+                    searchPackages("com.android.thememanager.util")
+                    matcher {
+                        modifiers = Modifier.PUBLIC or Modifier.FINAL
+                        fieldCount(1)
+                        methods {
+                            add {
+                                name = "toString"
+                                returnType(String::class.java)
+                                usingStrings("DurationCrop")
                             }
-                        }.singleOrNull()
+                        }
                     }
-                    val durationCropClz = (durationCropMatchResult
-                        ?: $$"com.android.thememanager.util.uc$k$toq").toClass()
+                }.singleOrNull()
+            }
+            val durationCropClz = (durationCropMatchResult
+                ?: $$"com.android.thememanager.util.uc$k$toq").toClass()
 
             val historyHelperResult = resolveDexKitClassValue(
-                        bridge = bridge,
-                        cacheKey = historyHelperCacheKey,
-                    ) {
-                        findClass {
-                            searchPackages("com.android.thememanager.settings")
-                            matcher {
-                                modifiers = Modifier.PUBLIC
-                                fields {
-                                    addForType(String::class.java)
-                                    addForType(Any::class.java)
-                                    count = 2
-                                }
-                                usingStrings("updateVideoResource")
-                            }
-                        }.singleOrNull()
+                bridge = bridge,
+                cacheKey = historyHelperCacheKey,
+            ) {
+                findClass {
+                    searchPackages("com.android.thememanager.settings")
+                    matcher {
+                        modifiers = Modifier.PUBLIC
+                        fields {
+                            addForType(String::class.java)
+                            addForType(Any::class.java)
+                            count = 2
+                        }
+                        usingStrings("updateVideoResource")
                     }
-                    val historyHelperClz =
-                        (historyHelperResult ?: "com.android.thememanager.settings.a9").toClass()
+                }.singleOrNull()
+            }
+            val historyHelperClz =
+                (historyHelperResult ?: "com.android.thememanager.settings.a9").toClass()
 
-                    checkDepthClz.firstMethod {
-                        name = checkDepthPoint.methodName
-                    }.hook().after {
-                        if (!prefs.getBoolean(
-                                ConfigKeys.HOOK_UNLOCK_VIDEO_RESTRICTIONS,
-                                true
-                            )
-                        ) return@after
-                        val ref = instance.asResolver()
-                        val videoCfg = ref.firstField {
-                            name = $$"$videoConfig"
-                        }.get() ?: return@after
-                        if (videoCfg.asResolver().field {
-                                type = Boolean::class.java
-                            }.all { it.get() == true } && !state.load()) {
-                            result = durationCropClz.resolve().firstField {
-                                type = durationCropClz
-                            }.get()
-                        } else {
-                            state.store(false)
-                        }
-                    }
+            checkDepthClz.firstMethod {
+                name = checkDepthPoint.methodName
+            }.hook().after {
+                if (!prefs.getBoolean(
+                        ConfigKeys.HOOK_UNLOCK_VIDEO_RESTRICTIONS,
+                        true
+                    )
+                ) return@after
+                val ref = instance.asResolver()
+                val videoCfg = ref.firstField {
+                    name = $$"$videoConfig"
+                }.get() ?: return@after
+                if (videoCfg.asResolver().field {
+                        type = Boolean::class.java
+                    }.all { it.get() == true } && !state.load()) {
+                    result = durationCropClz.resolve().firstField {
+                        type = durationCropClz
+                    }.get()
+                } else {
+                    state.store(false)
+                }
+            }
 
-                    // 修补视频编辑器
-                    videoEditRef.firstMethod {
-                        name = videoEditPoint.methodName
-                        returnType = Void.TYPE
-                    }.hook().replaceUnit {
-                        if (!prefs.getBoolean(ConfigKeys.HOOK_UNLOCK_VIDEO_RESTRICTIONS, true)) {
-                            invokeOriginal()
-                            return@replaceUnit
-                        }
-                        val iRef = instance.asResolver()
-                        val playViewRef = iRef.firstField {
-                            name = playViewFieldName
-                        }.get()!!.asResolver()
-                        val videoConfig = iRef.firstField {
-                            name = configFieldName
-                        }.get()
-                        val currentTrimIn = iRef.firstField {
-                            name = trimInFieldName
-                        }.get() as? Long ?: 0L
-                        val operationViewRef = iRef.firstField {
-                            name = operationViewFieldName
-                        }.get()!!.asResolver()
-                        val clipFrameRef = iRef.firstField {
-                            name = clipFrameFieldName
-                        }.get()!!.asResolver()
-                        val videoUri = iRef.firstField {
-                            name = videoUriFieldName
-                        }.get()
-                        val sInstance = timelineRef.firstMethod {
-                            name = timelineGetInstancePoint.methodName
-                            returnType = timelineClz
-                        }.invoke()!!
-                        sInstance.asResolver().firstMethod {
-                            name = timelineAttachTexturePoint.methodName
-                            returnType = Void.TYPE
-                        }.invoke(playViewRef.firstMethod {
-                            name = "getTextureView"
-                        }.invoke(), videoConfig)
-                        val duration: Long =
-                            sInstance.asResolver().firstMethod {
-                                name = timelineGetDurationPoint.methodName
-                            }.invoke() as Long
-                        val activity = instance<Activity>()
-                        if (duration <= 0) {
-                            toastUtilsRef.firstMethod { name = toastTextPoint.methodName }
-                                .invoke(activity.resources.getString(2131888794))
-                            Log.e("VideoEditActivity", "onPlayViewCreated: originDuration = 0")
-                            activity.finish()
-                            return@replaceUnit
-                        }
-                        iRef.firstField { name = trimOutFieldName }.set(duration)
-                        operationViewRef.firstMethod { name = operationCurrentTimePoint.methodName }
-                            .invoke(currentTrimIn)
-                        operationViewRef.firstMethod { name = "setTotalTime" }.invoke(duration)
-                        val yVar = frameLoaderClz.firstConstructor {
-                            parameterCount = 0
-                        }.create()
-                        iRef.firstField { name = frameLoaderFieldName }.set(yVar)
-                        clipFrameRef.firstMethod { name = "setVideoFrameLoader" }.invoke(yVar)
-                        clipFrameRef.firstMethod { name = "setClipFrameListener" }
-                            .invoke(iRef.firstField { name = clipListenerFieldName }.get())
-                        clipFrameRef.firstMethod { name = clipFrameLoadPoint.methodName }.invoke(
-                            videoUri,
-                            duration,
-                            duration
-                        )
-                        sInstance.asResolver().firstMethod {
-                            name = timelinePreparePoint.methodName
-                            parameters(Int::class.java)
-                        }.invoke(currentTrimIn.toInt())
-                        state.store(true)
-                    }
+            // 修补视频编辑器
+            videoEditRef.firstMethod {
+                name = videoEditPoint.methodName
+                returnType = Void.TYPE
+            }.hook().replaceUnit {
+                if (!prefs.getBoolean(ConfigKeys.HOOK_UNLOCK_VIDEO_RESTRICTIONS, true)) {
+                    invokeOriginal()
+                    return@replaceUnit
+                }
+                val iRef = instance.asResolver()
+                val playViewRef = iRef.firstField {
+                    name = playViewFieldName
+                }.get()!!.asResolver()
+                val videoConfig = iRef.firstField {
+                    name = configFieldName
+                }.get()
+                val currentTrimIn = iRef.firstField {
+                    name = trimInFieldName
+                }.get() as? Long ?: 0L
+                val operationViewRef = iRef.firstField {
+                    name = operationViewFieldName
+                }.get()!!.asResolver()
+                val clipFrameRef = iRef.firstField {
+                    name = clipFrameFieldName
+                }.get()!!.asResolver()
+                val videoUri = iRef.firstField {
+                    name = videoUriFieldName
+                }.get()
+                val sInstance = timelineRef.firstMethod {
+                    name = timelineGetInstancePoint.methodName
+                    returnType = timelineClz
+                }.invoke()!!
+                sInstance.asResolver().firstMethod {
+                    name = timelineAttachTexturePoint.methodName
+                    returnType = Void.TYPE
+                }.invoke(playViewRef.firstMethod {
+                    name = "getTextureView"
+                }.invoke(), videoConfig)
+                val duration: Long =
+                    sInstance.asResolver().firstMethod {
+                        name = timelineGetDurationPoint.methodName
+                    }.invoke() as Long
+                val activity = instance<Activity>()
+                if (duration <= 0) {
+                    toastUtilsRef.firstMethod { name = toastTextPoint.methodName }
+                        .invoke(activity.resources.getString(2131888794))
+                    Log.e("VideoEditActivity", "onPlayViewCreated: originDuration = 0")
+                    activity.finish()
+                    return@replaceUnit
+                }
+                iRef.firstField { name = trimOutFieldName }.set(duration)
+                operationViewRef.firstMethod { name = operationCurrentTimePoint.methodName }
+                    .invoke(currentTrimIn)
+                operationViewRef.firstMethod { name = "setTotalTime" }.invoke(duration)
+                val yVar = frameLoaderClz.firstConstructor {
+                    parameterCount = 0
+                }.create()
+                iRef.firstField { name = frameLoaderFieldName }.set(yVar)
+                clipFrameRef.firstMethod { name = "setVideoFrameLoader" }.invoke(yVar)
+                clipFrameRef.firstMethod { name = "setClipFrameListener" }
+                    .invoke(iRef.firstField { name = clipListenerFieldName }.get())
+                clipFrameRef.firstMethod { name = clipFrameLoadPoint.methodName }.invoke(
+                    videoUri,
+                    duration,
+                    duration
+                )
+                sInstance.asResolver().firstMethod {
+                    name = timelinePreparePoint.methodName
+                    parameters(Int::class.java)
+                }.invoke(currentTrimIn.toInt())
+                state.store(true)
+            }
 
-                    // 修补帧率限制
-                    fpsLimitClz.firstMethod {
-                        name = fpsLimitPoint.methodName
-                    }.hook().replaceUnit {
-                        if (!prefs.getBoolean(ConfigKeys.HOOK_UNLOCK_VIDEO_RESTRICTIONS, true)) {
-                            invokeOriginal()
-                            return@replaceUnit
-                        }
-                        val strF7l8 =
-                            historyHelperClz.resolve().firstMethod {
-                                returnType = String::class.java
-                                parameterCount = 0
-                            }.invoke() as String
-                        val iVEA = instance.asResolver().firstField { type = videoEditClz }.get()!!
-                        val iRef = iVEA.asResolver()
-                        val yObj = iRef.firstField { name = videoUriFieldName }.get()
-                        val cFieldRef = iRef.firstField { name = exportPathFieldName }
-                        cFieldRef.set(
-                            strF7l8 + (coderUtilsRef.firstMethod {
-                                name = coderHashPoint.methodName
-                            }.invoke(yObj) as String) + ".mp4"
-                        )
-                        val frameRetriever =
-                            "com.xiaomi.milab.videosdk.FrameRetriever".toClass().resolve()
-                                .firstConstructor().create().asResolver()
-                        frameRetriever.firstMethod { name = "setDataSource" }.invoke(yObj)
-                        val width = frameRetriever.firstMethod { name = "getWidth" }.invoke() as Int
-                        val height =
-                            frameRetriever.firstMethod { name = "getHeight" }.invoke() as Int
-                        val fps = frameRetriever.firstMethod { name = "getFPS" }.invoke() as Float
-                        val bitrate =
-                            frameRetriever.firstMethod { name = "getBitrate" }.invoke() as Long
-                        frameRetriever.firstMethod { name = "release" }.invoke()
-                        if (width <= 0 || height <= 0) {
-                            iRef.firstMethod { name = "onExportFail" }.invoke()
-                            return@replaceUnit
-                        }
-                        val (outWidth, outHeight) = computeExportOutputSize(width, height, 1080)
-                        val toqVar = exportConfigClz.firstConstructor {
-                            parameterCount = 5
-                        }.create(
-                            true,
-                            cFieldRef.get(),
-                            Size(outWidth, outHeight),
-                            (((((bitrate / (width * height)) * outWidth) * outHeight) / fps) * fps).toInt(),
-                            0
-                        )
-                        toqVar.asResolver().firstMethod {
-                            name = exportConfigSetFpsPoint.methodName
-                        }.invoke(fps.toInt())
-                        Log.d(
-                            "VideoEditActivity",
-                            String.format(
-                                "ExportConfig %s",
-                                gsonUtilsClz.firstMethod { name = gsonSerializePoint.methodName }
-                                    .invoke(toqVar)
-                            )
-                        )
-                        Log.d("lollipop", "export videopath is " + cFieldRef.get())
-                        val qRef = timelineRef.firstMethod {
-                            name = timelineGetInstancePoint.methodName
-                        }.invoke()!!.asResolver()
-                        qRef.firstMethod {
-                            name = timelineExportPoint.methodName
-                        }.invoke(
-                            iRef.firstField { name = trimInFieldName }.get(),
-                            iRef.firstField { name = trimOutFieldName }.get(),
-                            toqVar
-                        )
-                    }
+            // 修补帧率限制
+            fpsLimitClz.firstMethod {
+                name = fpsLimitPoint.methodName
+            }.hook().replaceUnit {
+                if (!prefs.getBoolean(ConfigKeys.HOOK_UNLOCK_VIDEO_RESTRICTIONS, true)) {
+                    invokeOriginal()
+                    return@replaceUnit
+                }
+                val strF7l8 =
+                    historyHelperClz.resolve().firstMethod {
+                        returnType = String::class.java
+                        parameterCount = 0
+                    }.invoke() as String
+                val iVEA = instance.asResolver().firstField { type = videoEditClz }.get()!!
+                val iRef = iVEA.asResolver()
+                val yObj = iRef.firstField { name = videoUriFieldName }.get()
+                val cFieldRef = iRef.firstField { name = exportPathFieldName }
+                cFieldRef.set(
+                    strF7l8 + (coderUtilsRef.firstMethod {
+                        name = coderHashPoint.methodName
+                    }.invoke(yObj) as String) + ".mp4"
+                )
+                val frameRetriever =
+                    "com.xiaomi.milab.videosdk.FrameRetriever".toClass().resolve()
+                        .firstConstructor().create().asResolver()
+                frameRetriever.firstMethod { name = "setDataSource" }.invoke(yObj)
+                val width = frameRetriever.firstMethod { name = "getWidth" }.invoke() as Int
+                val height =
+                    frameRetriever.firstMethod { name = "getHeight" }.invoke() as Int
+                val fps = frameRetriever.firstMethod { name = "getFPS" }.invoke() as Float
+                val bitrate =
+                    frameRetriever.firstMethod { name = "getBitrate" }.invoke() as Long
+                frameRetriever.firstMethod { name = "release" }.invoke()
+                if (width <= 0 || height <= 0) {
+                    iRef.firstMethod { name = "onExportFail" }.invoke()
+                    return@replaceUnit
+                }
+                val (outWidth, outHeight) = computeExportOutputSize(width, height, 1080)
+                val toqVar = exportConfigClz.firstConstructor {
+                    parameterCount = 5
+                }.create(
+                    true,
+                    cFieldRef.get(),
+                    Size(outWidth, outHeight),
+                    (((((bitrate / (width * height)) * outWidth) * outHeight) / fps) * fps).toInt(),
+                    0
+                )
+                toqVar.asResolver().firstMethod {
+                    name = exportConfigSetFpsPoint.methodName
+                }.invoke(fps.toInt())
+                Log.d(
+                    "VideoEditActivity",
+                    String.format(
+                        "ExportConfig %s",
+                        gsonUtilsClz.firstMethod { name = gsonSerializePoint.methodName }
+                            .invoke(toqVar)
+                    )
+                )
+                Log.d("lollipop", "export videopath is " + cFieldRef.get())
+                val qRef = timelineRef.firstMethod {
+                    name = timelineGetInstancePoint.methodName
+                }.invoke()!!.asResolver()
+                qRef.firstMethod {
+                    name = timelineExportPoint.methodName
+                }.invoke(
+                    iRef.firstField { name = trimInFieldName }.get(),
+                    iRef.firstField { name = trimOutFieldName }.get(),
+                    toqVar
+                )
+            }
 
-                    editorCfgBuilderClz.firstMethod {
-                        name = editorConfigBuildPoint.methodName
-                    }.hook().before {
-                        if (!prefs.getBoolean(
-                                ConfigKeys.HOOK_UNLOCK_VIDEO_RESTRICTIONS,
-                                true
-                            )
-                        ) return@before
-                        val ref = instance.asResolver()
-                        val isCallFromRearScreen = ref.field {
-                            type = Boolean::class.java
-                        }.all { it.get() == true }
-                        if (isCallFromRearScreen) {
-                            YLog.debug("Overwriting video editor max duration & frame-rate limitations")
-                            ref.firstField {
-                                type = Long::class.java
-                            }.set(Long.MAX_VALUE)
-                            ref.firstField {
-                                type = Int::class.java
-                            }.set(120)
-                        }
-                    }
+            editorCfgBuilderClz.firstMethod {
+                name = editorConfigBuildPoint.methodName
+            }.hook().before {
+                if (!prefs.getBoolean(
+                        ConfigKeys.HOOK_UNLOCK_VIDEO_RESTRICTIONS,
+                        true
+                    )
+                ) return@before
+                val ref = instance.asResolver()
+                val isCallFromRearScreen = ref.field {
+                    type = Boolean::class.java
+                }.all { it.get() == true }
+                if (isCallFromRearScreen) {
+                    YLog.debug("Overwriting video editor max duration & frame-rate limitations")
+                    ref.firstField {
+                        type = Long::class.java
+                    }.set(Long.MAX_VALUE)
+                    ref.firstField {
+                        type = Int::class.java
+                    }.set(120)
+                }
+            }
         }
     }
 

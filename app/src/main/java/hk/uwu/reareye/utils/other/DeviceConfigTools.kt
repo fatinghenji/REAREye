@@ -9,12 +9,16 @@ import hk.uwu.reareye.utils.RootHelper.hasRootAccess
 object DeviceConfigTools {
 
     // 我就说我设备名字怎么就对不上了，这玩意还要 Root 获取，破烂
-    val getdevice = if (hasRootAccess()) executeRootCommand("getprop persist.private.device_name") else Pair(20, "无法获取Root来获取设备名字")
-    val deviceName =  if (getdevice.first == 0) getdevice.second else "无法获取Root来获取设备名字"
+    val getdevice =
+        if (hasRootAccess()) executeRootCommand("getprop persist.private.device_name") else Pair(
+            20,
+            "无法获取Root来获取设备名字"
+        )
+    val deviceName = if (getdevice.first == 0) getdevice.second else "无法获取Root来获取设备名字"
 
 
     val androidVersion: String = getSystemProperties("ro.build.version.release")
-    
+
     val marketName by lazy {
 
         val marketName: String = getSystemProperties("ro.product.marketname")
@@ -23,7 +27,7 @@ object DeviceConfigTools {
 
     }
 
-    fun bigtextone(st:String): String {
+    fun bigtextone(st: String): String {
         val formattedBrand = st.replaceFirstChar {
             if (it.isLowerCase()) it.titlecase() else it.toString()
         }
@@ -34,10 +38,11 @@ object DeviceConfigTools {
 
     fun getSystemProperties(key: String): String {
         val ret: String = try {
-            Class.forName("android.os.SystemProperties").getDeclaredMethod("get", String::class.java).invoke(null, key) as String
+            Class.forName("android.os.SystemProperties")
+                .getDeclaredMethod("get", String::class.java).invoke(null, key) as String
         } catch (iAE: IllegalArgumentException) {
             throw iAE
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             ""
         }
         return ret

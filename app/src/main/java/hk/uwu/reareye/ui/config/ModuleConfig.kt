@@ -101,6 +101,11 @@ enum class ModuleNavigationBarMode(
     FLOATING_GLASS(
         value = 2,
         titleRes = R.string.module_navigation_bar_mode_floating_glass,
+    ),
+
+    SEMI_TRANSPARENT(
+        value = 3,
+        titleRes = R.string.module_navigation_bar_mode_semi_transparent,
     );
 
     companion object {
@@ -109,6 +114,7 @@ enum class ModuleNavigationBarMode(
             NORMAL,
             FLOATING,
             FLOATING_GLASS,
+            SEMI_TRANSPARENT,
         )
 
         fun fromValue(value: Int): ModuleNavigationBarMode {

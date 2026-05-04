@@ -475,4 +475,5 @@
     <string name="os_version">OS 版本</string>
     <string name="android_version">Android 版本</string>
     <string name="subsceen_version">背屏版本</string>
+    <string name="module_navigation_bar_mode_semi_transparent">半透明</string>
 </resources>

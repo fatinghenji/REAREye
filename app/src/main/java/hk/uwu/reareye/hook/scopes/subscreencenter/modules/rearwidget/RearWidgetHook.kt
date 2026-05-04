@@ -2052,14 +2052,14 @@ class RearWidgetHook : YukiBaseHooker() {
             val extras = RearWidgetRuntimeStore.buildDecoratedExtras(notice.ticket)
             val runnable =
                 resolveSmartAssistantPostRunnableClassName().toClass().resolve().firstConstructor {
-                parameterCount = 5
-            }.create(
-                mgr,
-                notice.ticket.notificationId,
-                notice.ticket.packageName,
-                notice.ticket.compositeKey,
-                extras,
-            ) as? Runnable ?: return
+                    parameterCount = 5
+                }.create(
+                    mgr,
+                    notice.ticket.notificationId,
+                    notice.ticket.packageName,
+                    notice.ticket.compositeKey,
+                    extras,
+                ) as? Runnable ?: return
             handler.post(runnable)
             debugLog("injected ticket key=${notice.ticket.compositeKey} business=${notice.ticket.business}")
         }.onFailure {

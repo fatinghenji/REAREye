@@ -475,4 +475,5 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="os_version">OS Version</string>
     <string name="android_version">Android Version</string>
     <string name="subsceen_version">SubSceen Version</string>
+    <string name="module_navigation_bar_mode_semi_transparent">Semi-transparent</string>
 </resources>

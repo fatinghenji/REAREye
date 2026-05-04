@@ -27,6 +27,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -129,7 +131,15 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import java.util.concurrent.ConcurrentHashMap
 
+private val AboutPageHorizontalPadding = 12.dp
+private val AboutDeviceInfoCardTopPadding = 20.dp
+private val AboutDeviceInfoCardBottomPadding = 12.dp
+private val AboutDeviceInfoRowVerticalPadding = 8.dp
+private val AboutDeviceInfoHeaderBottomSpacing = 8.dp
+private val AboutCardSpacing = 8.dp
+
 private val contributorAvatarHttpClient = OkHttpClient()
+
 private object ContributorAvatarCache {
     private val cache = ConcurrentHashMap<String, ImageBitmap>()
 
@@ -439,16 +449,20 @@ private fun AboutRootContent(
         paddingValues,
         paddingValues,
         false,
-        extraStart = WindowInsets.displayCutout.asPaddingValues().calculateLeftPadding(LayoutDirection.Ltr),
-        extraEnd = WindowInsets.displayCutout.asPaddingValues().calculateRightPadding(LayoutDirection.Ltr),
+        extraStart = WindowInsets.displayCutout.asPaddingValues()
+            .calculateLeftPadding(LayoutDirection.Ltr),
+        extraEnd = WindowInsets.displayCutout.asPaddingValues()
+            .calculateRightPadding(LayoutDirection.Ltr),
     )
     val logoPadding = pageContentPadding(
         paddingValues,
         paddingValues,
         false,
         extraTop = 10.dp,
-        extraStart = WindowInsets.displayCutout.asPaddingValues().calculateLeftPadding(LayoutDirection.Ltr),
-        extraEnd = WindowInsets.displayCutout.asPaddingValues().calculateRightPadding(LayoutDirection.Ltr),
+        extraStart = WindowInsets.displayCutout.asPaddingValues()
+            .calculateLeftPadding(LayoutDirection.Ltr),
+        extraEnd = WindowInsets.displayCutout.asPaddingValues()
+            .calculateRightPadding(LayoutDirection.Ltr),
     )
 
     val density = LocalDensity.current
@@ -484,12 +498,19 @@ private fun AboutRootContent(
                 val stage3TotalLength = projectNameY - iconY
 
                 val versionCodeDelay = stage1TotalLength * 0.5f
-                versionCodeProgress = ((offset.toFloat() - versionCodeDelay) / (stage1TotalLength - versionCodeDelay).coerceAtLeast(1f))
-                    .coerceIn(0f, 1f)
-                projectNameProgress = ((offset.toFloat() - stage1TotalLength) / stage2TotalLength.coerceAtLeast(1f))
-                    .coerceIn(0f, 1f)
-                iconProgress = ((offset.toFloat() - stage1TotalLength - stage2TotalLength) / stage3TotalLength.coerceAtLeast(1f))
-                    .coerceIn(0f, 1f)
+                versionCodeProgress =
+                    ((offset.toFloat() - versionCodeDelay) / (stage1TotalLength - versionCodeDelay).coerceAtLeast(
+                        1f
+                    ))
+                        .coerceIn(0f, 1f)
+                projectNameProgress =
+                    ((offset.toFloat() - stage1TotalLength) / stage2TotalLength.coerceAtLeast(1f))
+                        .coerceIn(0f, 1f)
+                iconProgress =
+                    ((offset.toFloat() - stage1TotalLength - stage2TotalLength) / stage3TotalLength.coerceAtLeast(
+                        1f
+                    ))
+                        .coerceIn(0f, 1f)
             }
             .collect { }
     }
@@ -612,7 +633,7 @@ private fun AboutRootContent(
                 .overScrollVertical()
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .rearAcrylicSource(hazeState)
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = AboutPageHorizontalPadding),
             contentPadding = PaddingValues(
                 top = scrollPadding.calculateTopPadding(),
                 bottom = paddingValues.calculateBottomPadding() + bottomInnerPadding,
@@ -644,16 +665,29 @@ private fun AboutRootContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = scrollPadding.calculateBottomPadding()),
+                    verticalArrangement = Arrangement.spacedBy(AboutCardSpacing),
                 ) {
                     ArtStaggeredReveal(
                         visible = true,
-                        revealKey = "contributors",
+                        revealKey = "device_info",
                         delayMillis = 36,
                     ) {
+                        val layoutDirection = LocalLayoutDirection.current
+                        val deviceInfoCardPadding = PaddingValues(
+                            start = BasicComponentDefaults.InsideMargin.calculateStartPadding(
+                                layoutDirection
+                            ),
+                            top = AboutDeviceInfoCardTopPadding,
+                            end = BasicComponentDefaults.InsideMargin.calculateEndPadding(
+                                layoutDirection
+                            ),
+                            bottom = AboutDeviceInfoCardBottomPadding,
+                        )
+                        val deviceInfoRowPadding =
+                            PaddingValues(vertical = AboutDeviceInfoRowVerticalPadding)
+
                         Card(
                             modifier = Modifier
-                                .padding(horizontal = 8.dp)
-                                .padding(bottom = 8.dp)
                                 .textureBlur(
                                     backdrop = backdrop,
                                     shape = SmoothRoundedCornerShape(16.dp),
@@ -672,37 +706,40 @@ private fun AboutRootContent(
                                 Color.Transparent,
                             ),
                         ) {
-                            BasicComponent(
-                                enabled = true,
+                            Column(
+                                modifier = Modifier.padding(deviceInfoCardPadding),
                             ) {
                                 Text(
                                     text = DeviceConfigTools.deviceName,
+                                    modifier = Modifier.padding(bottom = AboutDeviceInfoHeaderBottomSpacing),
                                     fontSize = 24.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = BasicComponentDefaults.titleColor().color,
                                 )
+
+                                BasicComponent(
+                                    title = androidx.compose.ui.res.stringResource(R.string.device_name),
+                                    summary = DeviceConfigTools.marketName,
+                                    insideMargin = deviceInfoRowPadding,
+                                )
+
+                                BasicComponent(
+                                    title = androidx.compose.ui.res.stringResource(R.string.android_version),
+                                    summary = DeviceConfigTools.androidVersion,
+                                    insideMargin = deviceInfoRowPadding,
+                                )
+                                BasicComponent(
+                                    title = androidx.compose.ui.res.stringResource(R.string.os_version),
+                                    summary = OSVersionTools.addVersionSuffix(context),
+                                    insideMargin = deviceInfoRowPadding,
+                                )
+
+                                BasicComponent(
+                                    title = androidx.compose.ui.res.stringResource(R.string.subsceen_version),
+                                    summary = DeviceConfigTools.getSubSceenVersion(context),
+                                    insideMargin = deviceInfoRowPadding,
+                                )
                             }
-
-                            BasicComponent(
-                                title = androidx.compose.ui.res.stringResource(R.string.device_name),
-                                summary = DeviceConfigTools.marketName,
-                            )
-
-                            BasicComponent(
-                                title = androidx.compose.ui.res.stringResource(R.string.android_version),
-                                summary = DeviceConfigTools.androidVersion,
-                            )
-                            BasicComponent(
-                                title = androidx.compose.ui.res.stringResource(R.string.os_version),
-                                summary = OSVersionTools.addVersionSuffix(context),
-                            )
-
-                            BasicComponent(
-                                title = androidx.compose.ui.res.stringResource(R.string.subsceen_version),
-                                summary = DeviceConfigTools.getSubSceenVersion(context),
-                            )
-
-
                         }
                     }
 
@@ -711,53 +748,11 @@ private fun AboutRootContent(
                         revealKey = "contributors",
                         delayMillis = 36,
                     ) {
-                        Card(
-                            modifier = Modifier
-                                .padding(horizontal = 8.dp)
-                                .textureBlur(
-                                    backdrop = backdrop,
-                                    shape = SmoothRoundedCornerShape(16.dp),
-                                    blurRadius = 60f,
-                                    noiseCoefficient = 0.001f,
-                                    colors = BlurColors(
-                                        blendColors = visualTokens.cardBlendColors,
-                                        brightness = 0f,
-                                        contrast = 1f,
-                                        saturation = 1f,
-                                    ),
-                                    enabled = true,
-                                ),
-                            colors = CardDefaults.defaultColors(
-                                Color.Transparent,
-                                Color.Transparent,
-                            ),
-                        ) {
-                            SuperCard(
-                                title = stringResource(R.string.credits_contributors_title),
-                                summary = stringResource(R.string.credits_contributors_desc),
-                                onClick = onOpenContributors,
-                                endActions = {
-                                    Icon(
-                                        imageVector = MiuixIcons.Create,
-                                        tint = colorScheme.onSurface,
-                                        contentDescription = null,
-                                    )
-                                },
-                            )
-                        }
-                    }
-
-
-                    entries.forEachIndexed { index, entry ->
-                        ArtStaggeredReveal(
-                            visible = true,
-                            revealKey = entry.url,
-                            delayMillis = (54 + index * 18).coerceAtMost(150),
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(AboutCardSpacing),
                         ) {
                             Card(
                                 modifier = Modifier
-                                    .padding(top = 8.dp)
-                                    .padding(horizontal = 8.dp)
                                     .textureBlur(
                                         backdrop = backdrop,
                                         shape = SmoothRoundedCornerShape(16.dp),
@@ -777,19 +772,66 @@ private fun AboutRootContent(
                                 ),
                             ) {
                                 SuperCard(
-                                    title = stringResource(entry.titleRes),
-                                    summary = stringResource(entry.summaryRes),
-                                    onClick = {
-                                        context.startActivity(Intent(Intent.ACTION_VIEW, entry.url.toUri()))
-                                    },
+                                    title = stringResource(R.string.credits_contributors_title),
+                                    summary = stringResource(R.string.credits_contributors_desc),
+                                    onClick = onOpenContributors,
                                     endActions = {
                                         Icon(
-                                            imageVector = MiuixIcons.Link,
+                                            imageVector = MiuixIcons.Create,
                                             tint = colorScheme.onSurface,
                                             contentDescription = null
                                         )
                                     }
                                 )
+                            }
+
+                            entries.forEachIndexed { index, entry ->
+                                ArtStaggeredReveal(
+                                    visible = true,
+                                    revealKey = entry.url,
+                                    delayMillis = (54 + index * 18).coerceAtMost(150),
+                                ) {
+                                    Card(
+                                        modifier = Modifier
+                                            .textureBlur(
+                                                backdrop = backdrop,
+                                                shape = SmoothRoundedCornerShape(16.dp),
+                                                blurRadius = 60f,
+                                                noiseCoefficient = 0.001f,
+                                                colors = BlurColors(
+                                                    blendColors = visualTokens.cardBlendColors,
+                                                    brightness = 0f,
+                                                    contrast = 1f,
+                                                    saturation = 1f,
+                                                ),
+                                                enabled = true,
+                                            ),
+                                        colors = CardDefaults.defaultColors(
+                                            Color.Transparent,
+                                            Color.Transparent,
+                                        ),
+                                    ) {
+                                        SuperCard(
+                                            title = stringResource(entry.titleRes),
+                                            summary = stringResource(entry.summaryRes),
+                                            onClick = {
+                                                context.startActivity(
+                                                    Intent(
+                                                        Intent.ACTION_VIEW,
+                                                        entry.url.toUri()
+                                                    )
+                                                )
+                                            },
+                                            endActions = {
+                                                Icon(
+                                                    imageVector = MiuixIcons.Link,
+                                                    tint = colorScheme.onSurface,
+                                                    contentDescription = null
+                                                )
+                                            }
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -817,12 +859,12 @@ private fun ContributorListContent(
             .overScrollVertical()
             .nestedScroll(scrollBehavior.nestedScrollConnection)
             .rearAcrylicSource(hazeState)
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = AboutPageHorizontalPadding),
         contentPadding = PaddingValues(
             top = paddingValues.calculateTopPadding(),
             bottom = paddingValues.calculateBottomPadding() + bottomInnerPadding,
         ),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(AboutCardSpacing),
         overscrollEffect = null,
     ) {
         item {

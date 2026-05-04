@@ -84,12 +84,11 @@ fun RearNavigationBar(
         )
     }
 
-    if (navigationBarMode == ModuleNavigationBarMode.NORMAL) {
-        val enable = rememberBlurBackdrop(true)
-        BlurredBar(backdrop = enable){
+    if (navigationBarMode == ModuleNavigationBarMode.NORMAL || navigationBarMode == ModuleNavigationBarMode.SEMI_TRANSPARENT) {
+        val bar: @Composable () -> Unit = {
             NavigationBar(
                 modifier = modifier,
-                color = Color.Transparent,
+                color = if (navigationBarMode == ModuleNavigationBarMode.NORMAL) MiuixTheme.colorScheme.surface else Color.Transparent,
                 mode = NavigationBarDisplayMode.IconAndText,
             ) {
                 items.forEach { item ->
@@ -101,6 +100,12 @@ fun RearNavigationBar(
                     )
                 }
             }
+        }
+        if (navigationBarMode == ModuleNavigationBarMode.SEMI_TRANSPARENT) {
+            val enable = rememberBlurBackdrop(true)
+            BlurredBar(backdrop = enable, bar)
+        } else {
+            bar()
         }
         return
     }

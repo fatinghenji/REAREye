@@ -889,7 +889,7 @@ private fun UpdateInfoCard(currentHash: String, latestHash: String?, checking: B
 }
 
 @Composable
-fun InfoLine(title: String, value: String,modifier: Modifier = Modifier) {
+fun InfoLine(title: String, value: String, modifier: Modifier = Modifier) {
     Column(modifier = modifier) {
         Text(text = title, style = MiuixTheme.textStyles.headline1)
         Spacer(modifier = Modifier.height(2.dp))

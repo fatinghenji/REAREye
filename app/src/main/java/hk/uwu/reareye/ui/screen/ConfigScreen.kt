@@ -21,11 +21,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +41,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
@@ -520,7 +523,13 @@ private fun ConfigNodeList(
     resolveFavoriteNodeId: (ConfigNode) -> String? = { null },
     onToggleFavorite: (ConfigNode) -> Unit = {},
 ) {
+    val listState = rememberLazyListState()
+    val isListScrolling by remember {
+        derivedStateOf { listState.isScrollInProgress }
+    }
+
     LazyColumn(
+        state = listState,
         modifier = Modifier
             .fillMaxHeight()
             .scrollEndHaptic()
@@ -596,6 +605,7 @@ private fun ConfigNodeList(
                         ConfigNodeRowWithFavoriteMenu(
                             node = child,
                             prefsManager = prefsManager,
+                            isListScrolling = isListScrolling,
                             onOpenCategory = onOpenCategory,
                             onOpenAppList = onOpenAppList,
                             onOpenManager = onOpenManager,
@@ -615,6 +625,7 @@ private fun ConfigNodeList(
                     ConfigNodeRowWithFavoriteMenu(
                         node = node,
                         prefsManager = prefsManager,
+                        isListScrolling = isListScrolling,
                         onOpenCategory = onOpenCategory,
                         onOpenAppList = onOpenAppList,
                         onOpenManager = onOpenManager,
@@ -633,6 +644,7 @@ private fun ConfigNodeList(
 private fun ConfigNodeRowWithFavoriteMenu(
     node: ConfigNode,
     prefsManager: PrefsManager,
+    isListScrolling: Boolean,
     onOpenCategory: (ConfigCategory) -> Unit,
     onOpenAppList: (ConfigItem) -> Unit,
     onOpenManager: (ConfigItem) -> Unit,
@@ -650,6 +662,7 @@ private fun ConfigNodeRowWithFavoriteMenu(
     Box(
         modifier = Modifier.configNodeLongPress(
             enabled = canFavorite,
+            isScrolling = isListScrolling,
             onLongPress = { showFavoritePopup = true },
         )
     ) {
@@ -745,16 +758,18 @@ private fun FavoritePopupIcon(
 
 private fun Modifier.configNodeLongPress(
     enabled: Boolean,
+    isScrolling: Boolean,
     onLongPress: () -> Unit,
 ): Modifier {
-    if (!enabled) return this
+    if (!enabled || isScrolling) return this
 
-    return this.pointerInput(onLongPress) {
+    return this.pointerInput(onLongPress, isScrolling) {
         awaitEachGesture {
             val down = awaitFirstDown(
                 requireUnconsumed = false,
                 pass = PointerEventPass.Initial,
             )
+            if (isScrolling) return@awaitEachGesture
             val longPressTriggered = withTimeoutOrNull(
                 timeMillis = viewConfiguration.longPressTimeoutMillis,
             ) {
@@ -762,7 +777,7 @@ private fun Modifier.configNodeLongPress(
                     val event = awaitPointerEvent(PointerEventPass.Initial)
                     val change = event.changes.firstOrNull { it.id == down.id }
                         ?: return@withTimeoutOrNull false
-                    if (!change.pressed || change.isConsumed) {
+                    if (!change.pressed || change.isConsumed || change.positionChanged() || isScrolling) {
                         return@withTimeoutOrNull false
                     }
                 }
