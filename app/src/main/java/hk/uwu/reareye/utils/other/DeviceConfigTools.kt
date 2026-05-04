@@ -3,6 +3,7 @@ package hk.uwu.reareye.utils.other
 import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Build
+import android.util.Log
 import hk.uwu.reareye.utils.RootHelper.executeRootCommand
 import hk.uwu.reareye.utils.RootHelper.hasRootAccess
 
@@ -49,8 +50,13 @@ object DeviceConfigTools {
     }
 
     fun getSubSceenVersion(context: Context): String {
-        val packageManager = context.packageManager
-        val packageInfo = packageManager.getPackageInfo("com.xiaomi.subscreencenter", 0)
-        return packageInfo.versionName.toString()
+        try {
+            val packageManager = context.packageManager
+            val packageInfo = packageManager.getPackageInfo("com.xiaomi.subscreencenter", 0)
+            return packageInfo.versionName.toString()
+        } catch (e: Exception) {
+            Log.e("getSubSceenVersion", e.message,e)
+            return "无法获取小米分屏版本"
+        }
     }
 }

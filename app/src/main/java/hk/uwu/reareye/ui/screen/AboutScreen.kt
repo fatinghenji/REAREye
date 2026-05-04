@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -94,7 +95,9 @@ import hk.uwu.reareye.ui.theme.rememberAcrylicHazeStyle
 import hk.uwu.reareye.utils.blend.ColorBlendToken
 import hk.uwu.reareye.utils.effect.BgEffectBackground
 import hk.uwu.reareye.utils.other.DeviceConfigTools
+import hk.uwu.reareye.utils.other.LibraryItem
 import hk.uwu.reareye.utils.other.OSVersionTools
+import hk.uwu.reareye.utils.other.loadLibraries
 import hk.uwu.reareye.utils.pageContentPadding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.onEach
@@ -180,6 +183,7 @@ private object ContributorAvatarCache {
 private sealed interface AboutRoute {
     data object Root : AboutRoute
     data object Contributors : AboutRoute
+    data object Licenses : AboutRoute
 }
 
 private data class CreditEntry(
@@ -321,7 +325,7 @@ fun AboutScreen(bottomInnerPadding: Dp = 0.dp) {
         )
     }
 
-    BackHandler(enabled = route is AboutRoute.Contributors) {
+    BackHandler(enabled = route is AboutRoute.Contributors || route is AboutRoute.Licenses) {
         route = AboutRoute.Root
     }
 
@@ -342,7 +346,7 @@ fun AboutScreen(bottomInnerPadding: Dp = 0.dp) {
                 TopAppBar(
                     modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
                     color = Color.Transparent,
-                    title = stringResource(R.string.credits_contributors_title),
+                    title = if (route is AboutRoute.Contributors) { stringResource(R.string.credits_contributors_title) } else { stringResource(R.string.licenses_name)},
                     navigationIcon = {
                         IconButton(onClick = { route = AboutRoute.Root }) {
                             Icon(
@@ -368,7 +372,7 @@ fun AboutScreen(bottomInnerPadding: Dp = 0.dp) {
             targetState = route,
             contentKey = { it },
             transitionSpec = {
-                val forward = targetState is AboutRoute.Contributors
+                val forward = targetState is AboutRoute.Contributors || targetState is AboutRoute.Licenses
 
                 fadeIn(
                     animationSpec = tween(
@@ -410,6 +414,7 @@ fun AboutScreen(bottomInnerPadding: Dp = 0.dp) {
                     versionText = versionText,
                     entries = entries,
                     onOpenContributors = { route = AboutRoute.Contributors },
+                    onOpenLibraries = { route = AboutRoute.Licenses },
                     lazyListState = lazyListState,
                     scrollProgress = scrollProgress,
                     onLogoHeightChanged = { logoHeightPx = it }
@@ -421,6 +426,13 @@ fun AboutScreen(bottomInnerPadding: Dp = 0.dp) {
                     scrollBehavior = scrollBehavior,
                     hazeState = hazeState,
                     state = contributorState,
+                )
+
+                AboutRoute.Licenses -> LicenseContent(
+                    bottomInnerPadding = bottomInnerPadding,
+                    paddingValues = paddingValues,
+                    scrollBehavior = scrollBehavior,
+                    hazeState = hazeState,
                 )
             }
         }
@@ -439,6 +451,7 @@ private fun AboutRootContent(
     scrollProgress: Float,
     onLogoHeightChanged: (Int) -> Unit,
     lazyListState: LazyListState,
+    onOpenLibraries: () -> Unit,
 ) {
     val context = LocalContext.current
     val visualTokens = rememberAboutVisualTokens()
@@ -943,6 +956,41 @@ private fun ContributorListContent(
             }
         }
     }
+}
+
+@Composable
+private fun LicenseContent(
+    bottomInnerPadding: Dp,
+    paddingValues: PaddingValues,
+    scrollBehavior: ScrollBehavior,
+    hazeState: HazeState,
+){
+    val context = LocalContext.current
+    val data = remember {
+        loadLibraries(context)
+    }
+
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .scrollEndHaptic()
+            .overScrollVertical()
+            .nestedScroll(scrollBehavior.nestedScrollConnection)
+            .rearAcrylicSource(hazeState)
+            .padding(horizontal = 12.dp),
+        contentPadding = PaddingValues(
+            top = paddingValues.calculateTopPadding(),
+            bottom = paddingValues.calculateBottomPadding() + bottomInnerPadding,
+        ),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        overscrollEffect = null,
+    ){
+        items(data.libraries) {
+            LibraryItem(it)
+        }
+    }
+
 }
 
 @Composable
