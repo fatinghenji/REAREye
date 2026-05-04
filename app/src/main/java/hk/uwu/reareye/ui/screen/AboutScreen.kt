@@ -734,11 +734,15 @@ private fun AboutRootContent(
                                     insideMargin = deviceInfoRowPadding,
                                 )
 
-                                BasicComponent(
-                                    title = androidx.compose.ui.res.stringResource(R.string.subsceen_version),
-                                    summary = DeviceConfigTools.getSubSceenVersion(context),
-                                    insideMargin = deviceInfoRowPadding,
-                                )
+                                val subscreenVer = DeviceConfigTools.getSubScreenVersion(context)
+
+                                if (subscreenVer != "UNKNOWN") {
+                                    BasicComponent(
+                                        title = androidx.compose.ui.res.stringResource(R.string.subsceen_version),
+                                        summary = subscreenVer,
+                                        insideMargin = deviceInfoRowPadding,
+                                    )
+                                }
                             }
                         }
                     }

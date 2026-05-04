@@ -1,6 +1,7 @@
 package hk.uwu.reareye.hook.scopes.subscreencenter
 
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
+import com.highcapable.yukihookapi.hook.log.YLog
 import hk.uwu.reareye.hook.scopes.Scope
 import hk.uwu.reareye.hook.scopes.subscreencenter.modules.MusicControlWhitelistModule
 import hk.uwu.reareye.hook.scopes.subscreencenter.modules.RearWallpaperHook
@@ -13,15 +14,23 @@ import hk.uwu.reareye.hook.scopes.subscreencenter.modules.rearwidget.RearWidgetH
 import hk.uwu.reareye.hook.scopes.subscreencenter.modules.rearwidget.SystemUiNotificationBridgeHook
 
 class SubscreenCenterScope : Scope {
-    override val hooks: List<YukiBaseHooker> = listOf(
-        MusicControlWhitelistModule(),
-        SubScreenBackHomeWhitelistModule(),
-        VideoLoopModule(),
-        RearWallpaperHook(),
-        RearWidgetHook(),
-        SystemUiNotificationBridgeHook(),
-        LyriconHook(),
-        VideoVolumeHook(),
-        ExtraTimeTipHook()
-    )
+    override val hooks: List<YukiBaseHooker> = buildList {
+        if (isRearDevice) {
+            addAll(
+                listOf(
+                    MusicControlWhitelistModule(),
+                    SubScreenBackHomeWhitelistModule(),
+                    VideoLoopModule(),
+                    RearWallpaperHook(),
+                    RearWidgetHook(),
+                    SystemUiNotificationBridgeHook(),
+                    LyriconHook(),
+                    VideoVolumeHook(),
+                    ExtraTimeTipHook()
+                )
+            )
+        } else {
+            YLog.debug("This device is not support rear screen, skip load some features that this device is not supported")
+        }
+    }
 }

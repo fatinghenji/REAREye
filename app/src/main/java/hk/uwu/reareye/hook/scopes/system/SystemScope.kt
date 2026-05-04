@@ -1,6 +1,7 @@
 package hk.uwu.reareye.hook.scopes.system
 
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
+import com.highcapable.yukihookapi.hook.log.YLog
 import hk.uwu.reareye.hook.scopes.Scope
 import hk.uwu.reareye.hook.scopes.system.modules.BackgroundWhitelistModule
 import hk.uwu.reareye.hook.scopes.system.modules.DisableRearScreenCoverHook
@@ -12,13 +13,21 @@ import hk.uwu.reareye.hook.scopes.system.modules.misc.GMSUnlockModule
 
 class SystemScope : Scope {
 
-    override val hooks: List<YukiBaseHooker> = listOf(
-        RearScreenActivityWhitelistModule(),
-        BackgroundWhitelistModule(),
-        GMSUnlockModule(),
-        DisableRearScreenCoverHook(),
-        DisableSubScreenDoubleTapSleepHook(),
-        DisableSubScreenDoubleTapWakeHook(),
-        DisableSubScreenHighLoadModeHook()
-    )
+    override val hooks: List<YukiBaseHooker> = buildList {
+        add(GMSUnlockModule())
+        if (isRearDevice) {
+            addAll(
+                listOf(
+                    RearScreenActivityWhitelistModule(),
+                    BackgroundWhitelistModule(),
+                    DisableRearScreenCoverHook(),
+                    DisableSubScreenDoubleTapSleepHook(),
+                    DisableSubScreenDoubleTapWakeHook(),
+                    DisableSubScreenHighLoadModeHook()
+                )
+            )
+        } else {
+            YLog.debug("This device is not support rear screen, skip load some features that this device is not supported")
+        }
+    }
 }
