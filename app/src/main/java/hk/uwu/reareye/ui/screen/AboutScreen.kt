@@ -127,6 +127,7 @@ import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.blur.textureBlur
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Create
+import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.shapes.SmoothRoundedCornerShape
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
@@ -185,6 +186,11 @@ private sealed interface AboutRoute {
     data object Contributors : AboutRoute
     data object Licenses : AboutRoute
 }
+
+private data class AboutAnimatedRoute(
+    val route: AboutRoute,
+    val depth: Int,
+)
 
 private data class CreditEntry(
     val titleRes: Int,
@@ -255,27 +261,18 @@ private fun rememberSkeletonPulseAlpha(label: String): Float {
 
 @Composable
 fun AboutScreen(bottomInnerPadding: Dp = 0.dp) {
-    val layoutDirection = LocalLayoutDirection.current
-    val scrollBehavior = MiuixScrollBehavior()
-    val hazeState = rememberAcrylicHazeState()
-    val hazeStyle = rememberAcrylicHazeStyle()
     val versionText = rememberVersionText()
-    var logoHeightPx by remember { mutableIntStateOf(0) }
     val contributorState by ContributorRepository.state.collectAsState()
     val lazyListState = rememberLazyListState()
+    var logoHeightPx by remember { mutableIntStateOf(0) }
 
     var route by remember { mutableStateOf<AboutRoute>(AboutRoute.Root) }
-
-    val scrollProgress by remember {
-        derivedStateOf {
-            if (logoHeightPx <= 0) {
-                0f
-            } else {
-                val index = lazyListState.firstVisibleItemIndex
-                val offset = lazyListState.firstVisibleItemScrollOffset
-                if (index > 0) 1f else (offset.toFloat() / logoHeightPx).coerceIn(0f, 1f)
-            }
-        }
+    var animateRootContent by remember { mutableStateOf(true) }
+    val animatedRoute = remember(route) {
+        AboutAnimatedRoute(
+            route = route,
+            depth = if (route is AboutRoute.Root) 0 else 1,
+        )
     }
 
     val entries = remember {
@@ -329,106 +326,84 @@ fun AboutScreen(bottomInnerPadding: Dp = 0.dp) {
         route = AboutRoute.Root
     }
 
-    Scaffold(
-        topBar = {
-            if (route is AboutRoute.Root) {
-                SmallTopAppBar(
-                    title = stringResource(R.string.about_navigation),
-                    scrollBehavior = scrollBehavior,
-                    color = colorScheme.surface.copy(
-                        alpha = if (scrollProgress == 1f) 1f else 0f
-                    ),
-                    titleColor = colorScheme.onSurface.copy(alpha = scrollProgress),
-                    defaultWindowInsetsPadding = false,
-                    navigationIconPadding = 12.dp,
-                )
-            } else {
-                TopAppBar(
-                    modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
-                    color = Color.Transparent,
-                    title = if (route is AboutRoute.Contributors) { stringResource(R.string.credits_contributors_title) } else { stringResource(R.string.licenses_name)},
-                    navigationIcon = {
-                        IconButton(onClick = { route = AboutRoute.Root }) {
-                            Icon(
-                                modifier = Modifier.graphicsLayer {
-                                    if (layoutDirection == LayoutDirection.Rtl) scaleX = -1f
-                                },
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = null,
-                            )
-                        }
-                    },
-                    navigationIconPadding = 12.dp,
-                    scrollBehavior = scrollBehavior,
-                )
-            }
-        }
-    ) { paddingValues ->
-        AnimatedContent(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(colorScheme.surface)
-                .graphicsLayer { clip = true },
-            targetState = route,
-            contentKey = { it },
-            transitionSpec = {
-                val forward = targetState is AboutRoute.Contributors || targetState is AboutRoute.Licenses
+    AnimatedContent(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colorScheme.surface)
+            .graphicsLayer { clip = true },
+        targetState = animatedRoute,
+        contentKey = { it.route },
+        transitionSpec = {
+            val forward = targetState.depth >= initialState.depth
 
-                fadeIn(
-                    animationSpec = tween(
-                        durationMillis = 210,
-                        delayMillis = 50,
-                        easing = LinearOutSlowInEasing,
-                    )
-                ) + slideInHorizontally(
-                    animationSpec = tween(
-                        durationMillis = 280,
-                        easing = FastOutSlowInEasing,
-                    )
-                ) { fullWidth ->
-                    if (forward) fullWidth / 9 else -fullWidth / 9
-                } togetherWith (
-                        fadeOut(
-                            animationSpec = tween(
-                                durationMillis = 110,
-                                easing = FastOutLinearInEasing,
-                            )
-                        ) + slideOutHorizontally(
-                            animationSpec = tween(
-                                durationMillis = 190,
-                                easing = FastOutLinearInEasing,
-                            )
-                        ) { fullWidth ->
-                            if (forward) -fullWidth / 12 else fullWidth / 12
-                        }
+            fadeIn(
+                animationSpec = tween(
+                    durationMillis = 210,
+                    delayMillis = 50,
+                    easing = LinearOutSlowInEasing,
+                )
+            ) + slideInHorizontally(
+                animationSpec = tween(
+                    durationMillis = 280,
+                    easing = FastOutSlowInEasing,
+                )
+            ) { fullWidth ->
+                if (forward) fullWidth / 9 else -fullWidth / 9
+            } togetherWith (
+                    fadeOut(
+                        animationSpec = tween(
+                            durationMillis = 110,
+                            easing = FastOutLinearInEasing,
                         )
-            },
-            label = "AboutRouteTransition",
-        ) { currentRoute ->
-            when (currentRoute) {
-                AboutRoute.Root -> AboutRootContent(
-                    bottomInnerPadding = bottomInnerPadding,
-                    paddingValues = paddingValues,
-                    scrollBehavior = scrollBehavior,
-                    hazeState = hazeState,
-                    versionText = versionText,
-                    entries = entries,
-                    onOpenContributors = { route = AboutRoute.Contributors },
-                    onOpenLibraries = { route = AboutRoute.Licenses },
-                    lazyListState = lazyListState,
-                    scrollProgress = scrollProgress,
-                    onLogoHeightChanged = { logoHeightPx = it }
-                )
+                    ) + slideOutHorizontally(
+                        animationSpec = tween(
+                            durationMillis = 190,
+                            easing = FastOutLinearInEasing,
+                        )
+                    ) { fullWidth ->
+                        if (forward) -fullWidth / 12 else fullWidth / 12
+                    }
+                    )
+        },
+        label = "AboutRouteTransition",
+    ) { target ->
+        when (target.route) {
+            AboutRoute.Root -> AboutRootPage(
+                bottomInnerPadding = bottomInnerPadding,
+                versionText = versionText,
+                entries = entries,
+                lazyListState = lazyListState,
+                logoHeightPx = logoHeightPx,
+                animateEnter = animateRootContent,
+                onLogoHeightChanged = { logoHeightPx = it },
+                onOpenContributors = {
+                    animateRootContent = false
+                    route = AboutRoute.Contributors
+                },
+                onOpenLibraries = {
+                    animateRootContent = false
+                    route = AboutRoute.Licenses
+                },
+            )
 
-                AboutRoute.Contributors -> ContributorListContent(
+            AboutRoute.Contributors -> AboutSecondaryPage(
+                title = stringResource(R.string.credits_contributors_title),
+                onBack = { route = AboutRoute.Root },
+            ) { paddingValues, scrollBehavior, hazeState ->
+                ContributorListContent(
                     bottomInnerPadding = bottomInnerPadding,
                     paddingValues = paddingValues,
                     scrollBehavior = scrollBehavior,
                     hazeState = hazeState,
                     state = contributorState,
                 )
+            }
 
-                AboutRoute.Licenses -> LicenseContent(
+            AboutRoute.Licenses -> AboutSecondaryPage(
+                title = stringResource(R.string.licenses_name),
+                onBack = { route = AboutRoute.Root },
+            ) { paddingValues, scrollBehavior, hazeState ->
+                LicenseContent(
                     bottomInnerPadding = bottomInnerPadding,
                     paddingValues = paddingValues,
                     scrollBehavior = scrollBehavior,
@@ -436,6 +411,105 @@ fun AboutScreen(bottomInnerPadding: Dp = 0.dp) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun AboutRootPage(
+    bottomInnerPadding: Dp,
+    versionText: String,
+    entries: List<CreditEntry>,
+    lazyListState: LazyListState,
+    logoHeightPx: Int,
+    animateEnter: Boolean,
+    onLogoHeightChanged: (Int) -> Unit,
+    onOpenContributors: () -> Unit,
+    onOpenLibraries: () -> Unit,
+) {
+    val scrollBehavior = MiuixScrollBehavior()
+    val hazeState = rememberAcrylicHazeState()
+    val scrollProgress by remember {
+        derivedStateOf {
+            val index = lazyListState.firstVisibleItemIndex
+            val offset = lazyListState.firstVisibleItemScrollOffset
+
+            if (index > 0) {
+                1f
+            } else if (logoHeightPx <= 0) {
+                0f
+            } else {
+                (offset.toFloat() / logoHeightPx).coerceIn(0f, 1f)
+            }
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            SmallTopAppBar(
+                title = stringResource(R.string.about_navigation),
+                scrollBehavior = scrollBehavior,
+                color = colorScheme.surface.copy(alpha = if (scrollProgress == 1f) 1f else 0f),
+                titleColor = colorScheme.onSurface.copy(alpha = scrollProgress),
+                defaultWindowInsetsPadding = false,
+                navigationIconPadding = 12.dp,
+            )
+        }
+    ) { paddingValues ->
+        AboutRootContent(
+            bottomInnerPadding = bottomInnerPadding,
+            paddingValues = paddingValues,
+            scrollBehavior = scrollBehavior,
+            hazeState = hazeState,
+            versionText = versionText,
+            entries = entries,
+            onOpenContributors = onOpenContributors,
+            scrollProgress = scrollProgress,
+            onLogoHeightChanged = onLogoHeightChanged,
+            lazyListState = lazyListState,
+            onOpenLibraries = onOpenLibraries,
+            animateEnter = animateEnter,
+        )
+    }
+}
+
+@Composable
+private fun AboutSecondaryPage(
+    title: String,
+    onBack: () -> Unit,
+    content: @Composable (PaddingValues, ScrollBehavior, HazeState) -> Unit,
+) {
+    val layoutDirection = LocalLayoutDirection.current
+    val scrollBehavior = MiuixScrollBehavior()
+    val hazeState = rememberAcrylicHazeState()
+    val hazeStyle = rememberAcrylicHazeStyle()
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
+                color = Color.Transparent,
+                title = title,
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            modifier = Modifier.graphicsLayer {
+                                if (layoutDirection == LayoutDirection.Rtl) scaleX = -1f
+                            },
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = null,
+                        )
+                    }
+                },
+                navigationIconPadding = 12.dp,
+                scrollBehavior = scrollBehavior,
+            )
+        }
+    ) { paddingValues ->
+        content(
+            paddingValues,
+            scrollBehavior,
+            hazeState,
+        )
     }
 }
 
@@ -452,6 +526,7 @@ private fun AboutRootContent(
     onLogoHeightChanged: (Int) -> Unit,
     lazyListState: LazyListState,
     onOpenLibraries: () -> Unit,
+    animateEnter: Boolean,
 ) {
     val context = LocalContext.current
     val visualTokens = rememberAboutVisualTokens()
@@ -680,93 +755,20 @@ private fun AboutRootContent(
                         .padding(bottom = scrollPadding.calculateBottomPadding()),
                     verticalArrangement = Arrangement.spacedBy(AboutCardSpacing),
                 ) {
-                    ArtStaggeredReveal(
-                        visible = true,
-                        revealKey = "device_info",
-                        delayMillis = 36,
+                    AboutDeviceInfoCard(
+                        context = context,
+                        backdrop = backdrop,
+                        visualTokens = visualTokens,
+                        animateEnter = animateEnter,
+                    )
+
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(AboutCardSpacing),
                     ) {
-                        val layoutDirection = LocalLayoutDirection.current
-                        val deviceInfoCardPadding = PaddingValues(
-                            start = BasicComponentDefaults.InsideMargin.calculateStartPadding(
-                                layoutDirection
-                            ),
-                            top = AboutDeviceInfoCardTopPadding,
-                            end = BasicComponentDefaults.InsideMargin.calculateEndPadding(
-                                layoutDirection
-                            ),
-                            bottom = AboutDeviceInfoCardBottomPadding,
-                        )
-                        val deviceInfoRowPadding =
-                            PaddingValues(vertical = AboutDeviceInfoRowVerticalPadding)
-
-                        Card(
-                            modifier = Modifier
-                                .textureBlur(
-                                    backdrop = backdrop,
-                                    shape = SmoothRoundedCornerShape(16.dp),
-                                    blurRadius = 60f,
-                                    noiseCoefficient = 0.001f,
-                                    colors = BlurColors(
-                                        blendColors = visualTokens.cardBlendColors,
-                                        brightness = 0f,
-                                        contrast = 1f,
-                                        saturation = 1f,
-                                    ),
-                                    enabled = true,
-                                ),
-                            colors = CardDefaults.defaultColors(
-                                Color.Transparent,
-                                Color.Transparent,
-                            ),
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(deviceInfoCardPadding),
-                            ) {
-                                Text(
-                                    text = DeviceConfigTools.deviceName,
-                                    modifier = Modifier.padding(bottom = AboutDeviceInfoHeaderBottomSpacing),
-                                    fontSize = 24.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = BasicComponentDefaults.titleColor().color,
-                                )
-
-                                BasicComponent(
-                                    title = androidx.compose.ui.res.stringResource(R.string.device_name),
-                                    summary = DeviceConfigTools.marketName,
-                                    insideMargin = deviceInfoRowPadding,
-                                )
-
-                                BasicComponent(
-                                    title = androidx.compose.ui.res.stringResource(R.string.android_version),
-                                    summary = DeviceConfigTools.androidVersion,
-                                    insideMargin = deviceInfoRowPadding,
-                                )
-                                BasicComponent(
-                                    title = androidx.compose.ui.res.stringResource(R.string.os_version),
-                                    summary = OSVersionTools.addVersionSuffix(context),
-                                    insideMargin = deviceInfoRowPadding,
-                                )
-
-                                val subscreenVer = DeviceConfigTools.getSubScreenVersion(context)
-
-                                if (subscreenVer != "UNKNOWN") {
-                                    BasicComponent(
-                                        title = androidx.compose.ui.res.stringResource(R.string.subsceen_version),
-                                        summary = subscreenVer,
-                                        insideMargin = deviceInfoRowPadding,
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    ArtStaggeredReveal(
-                        visible = true,
-                        revealKey = "contributors",
-                        delayMillis = 36,
-                    ) {
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(AboutCardSpacing),
+                        AboutReveal(
+                            enabled = animateEnter,
+                            revealKey = "contributors",
+                            delayMillis = 36,
                         ) {
                             Card(
                                 modifier = Modifier
@@ -800,60 +802,95 @@ private fun AboutRootContent(
                                         )
                                     }
                                 )
+                            }
+                        }
+
+                        entries.forEachIndexed { index, entry ->
+                            AboutReveal(
+                                enabled = animateEnter,
+                                revealKey = entry.url,
+                                delayMillis = (54 + index * 18).coerceAtMost(150),
+                            ) {
+                                Card(
+                                    modifier = Modifier
+                                        .textureBlur(
+                                            backdrop = backdrop,
+                                            shape = SmoothRoundedCornerShape(16.dp),
+                                            blurRadius = 60f,
+                                            noiseCoefficient = 0.001f,
+                                            colors = BlurColors(
+                                                blendColors = visualTokens.cardBlendColors,
+                                                brightness = 0f,
+                                                contrast = 1f,
+                                                saturation = 1f,
+                                            ),
+                                            enabled = true,
+                                        ),
+                                    colors = CardDefaults.defaultColors(
+                                        Color.Transparent,
+                                        Color.Transparent,
+                                    ),
+                                ) {
+                                    SuperCard(
+                                        title = stringResource(entry.titleRes),
+                                        summary = stringResource(entry.summaryRes),
+                                        onClick = {
+                                            context.startActivity(
+                                                Intent(
+                                                    Intent.ACTION_VIEW,
+                                                    entry.url.toUri()
+                                                )
+                                            )
+                                        },
+                                        endActions = {
+                                            Icon(
+                                                imageVector = MiuixIcons.Link,
+                                                tint = colorScheme.onSurface,
+                                                contentDescription = null
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        AboutReveal(
+                            enabled = animateEnter,
+                            revealKey = "licenses",
+                            delayMillis = (54 + entries.size * 18).coerceAtMost(150),
+                        ) {
+                            Card(
+                                modifier = Modifier
+                                    .textureBlur(
+                                        backdrop = backdrop,
+                                        shape = SmoothRoundedCornerShape(16.dp),
+                                        blurRadius = 60f,
+                                        noiseCoefficient = 0.001f,
+                                        colors = BlurColors(
+                                            blendColors = visualTokens.cardBlendColors,
+                                            brightness = 0f,
+                                            contrast = 1f,
+                                            saturation = 1f,
+                                        ),
+                                        enabled = true,
+                                    ),
+                                colors = CardDefaults.defaultColors(
+                                    Color.Transparent,
+                                    Color.Transparent,
+                                ),
+                            ) {
                                 SuperCard(
                                     title = stringResource(R.string.licenses_name),
                                     summary = stringResource(R.string.licenses_name_summary),
                                     onClick = onOpenLibraries,
-                                )
-                            }
-
-                            entries.forEachIndexed { index, entry ->
-                                ArtStaggeredReveal(
-                                    visible = true,
-                                    revealKey = entry.url,
-                                    delayMillis = (54 + index * 18).coerceAtMost(150),
-                                ) {
-                                    Card(
-                                        modifier = Modifier
-                                            .textureBlur(
-                                                backdrop = backdrop,
-                                                shape = SmoothRoundedCornerShape(16.dp),
-                                                blurRadius = 60f,
-                                                noiseCoefficient = 0.001f,
-                                                colors = BlurColors(
-                                                    blendColors = visualTokens.cardBlendColors,
-                                                    brightness = 0f,
-                                                    contrast = 1f,
-                                                    saturation = 1f,
-                                                ),
-                                                enabled = true,
-                                            ),
-                                        colors = CardDefaults.defaultColors(
-                                            Color.Transparent,
-                                            Color.Transparent,
-                                        ),
-                                    ) {
-                                        SuperCard(
-                                            title = stringResource(entry.titleRes),
-                                            summary = stringResource(entry.summaryRes),
-                                            onClick = {
-                                                context.startActivity(
-                                                    Intent(
-                                                        Intent.ACTION_VIEW,
-                                                        entry.url.toUri()
-                                                    )
-                                                )
-                                            },
-                                            endActions = {
-                                                Icon(
-                                                    imageVector = MiuixIcons.Link,
-                                                    tint = colorScheme.onSurface,
-                                                    contentDescription = null
-                                                )
-                                            }
+                                    endActions = {
+                                        Icon(
+                                            imageVector = MiuixIcons.Info,
+                                            tint = colorScheme.onSurface,
+                                            contentDescription = null
                                         )
                                     }
-                                }
+                                )
                             }
                         }
                     }
@@ -861,6 +898,108 @@ private fun AboutRootContent(
             }
 
         }
+    }
+}
+
+@Composable
+private fun AboutDeviceInfoCard(
+    context: android.content.Context,
+    backdrop: top.yukonga.miuix.kmp.blur.LayerBackdrop,
+    visualTokens: AboutVisualTokens,
+    animateEnter: Boolean,
+) {
+    AboutReveal(
+        enabled = animateEnter,
+        revealKey = "device_info_card",
+        delayMillis = 0,
+    ) {
+        val layoutDirection = LocalLayoutDirection.current
+        val deviceInfoCardPadding = PaddingValues(
+            start = BasicComponentDefaults.InsideMargin.calculateStartPadding(layoutDirection),
+            top = AboutDeviceInfoCardTopPadding,
+            end = BasicComponentDefaults.InsideMargin.calculateEndPadding(layoutDirection),
+            bottom = AboutDeviceInfoCardBottomPadding,
+        )
+        val deviceInfoRowPadding = PaddingValues(vertical = AboutDeviceInfoRowVerticalPadding)
+        val subscreenVer = DeviceConfigTools.getSubScreenVersion(context)
+
+        Card(
+            modifier = Modifier
+                .textureBlur(
+                    backdrop = backdrop,
+                    shape = SmoothRoundedCornerShape(16.dp),
+                    blurRadius = 60f,
+                    noiseCoefficient = 0.001f,
+                    colors = BlurColors(
+                        blendColors = visualTokens.cardBlendColors,
+                        brightness = 0f,
+                        contrast = 1f,
+                        saturation = 1f,
+                    ),
+                    enabled = true,
+                ),
+            colors = CardDefaults.defaultColors(
+                Color.Transparent,
+                Color.Transparent,
+            ),
+        ) {
+            Column(
+                modifier = Modifier.padding(deviceInfoCardPadding),
+            ) {
+                Text(
+                    text = DeviceConfigTools.deviceName,
+                    modifier = Modifier.padding(bottom = AboutDeviceInfoHeaderBottomSpacing),
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = BasicComponentDefaults.titleColor().color,
+                )
+
+                BasicComponent(
+                    title = stringResource(R.string.device_name),
+                    summary = DeviceConfigTools.marketName,
+                    insideMargin = deviceInfoRowPadding,
+                )
+
+                BasicComponent(
+                    title = stringResource(R.string.android_version),
+                    summary = DeviceConfigTools.androidVersion,
+                    insideMargin = deviceInfoRowPadding,
+                )
+
+                BasicComponent(
+                    title = stringResource(R.string.os_version),
+                    summary = OSVersionTools.addVersionSuffix(context),
+                    insideMargin = deviceInfoRowPadding,
+                )
+
+                if (subscreenVer != "UNKNOWN") {
+                    BasicComponent(
+                        title = stringResource(R.string.subsceen_version),
+                        summary = subscreenVer,
+                        insideMargin = deviceInfoRowPadding,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AboutReveal(
+    enabled: Boolean,
+    revealKey: Any,
+    delayMillis: Int,
+    content: @Composable () -> Unit,
+) {
+    if (enabled) {
+        ArtStaggeredReveal(
+            visible = true,
+            revealKey = revealKey,
+            delayMillis = delayMillis,
+            content = content,
+        )
+    } else {
+        content()
     }
 }
 
@@ -973,7 +1112,7 @@ private fun LicenseContent(
     paddingValues: PaddingValues,
     scrollBehavior: ScrollBehavior,
     hazeState: HazeState,
-){
+) {
     val context = LocalContext.current
     val data = remember {
         loadLibraries(context)
@@ -994,7 +1133,7 @@ private fun LicenseContent(
         ),
         verticalArrangement = Arrangement.spacedBy(8.dp),
         overscrollEffect = null,
-    ){
+    ) {
         items(data.libraries) {
             LibraryItem(it)
         }
