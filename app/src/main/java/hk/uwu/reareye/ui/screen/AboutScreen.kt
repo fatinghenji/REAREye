@@ -796,6 +796,11 @@ private fun AboutRootContent(
                                         )
                                     }
                                 )
+                                SuperCard(
+                                    title = stringResource(R.string.licenses_name),
+                                    summary = stringResource(R.string.licenses_name_summary),
+                                    onClick = onOpenLibraries,
+                                )
                             }
 
                             entries.forEachIndexed { index, entry ->
