@@ -41,7 +41,7 @@ object OSVersionTools {
         }
 
         if (!isXmsValid || isRoValid) {
-            xmsVersion = if (isXmsValid || !isRoValid) {
+            xmsVersion = if (isXmsValid) {
                 compareValidVersion(xmsVersion, roXmsVersion)
             } else {
                 roXmsVersion

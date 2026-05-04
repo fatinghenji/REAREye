@@ -13,9 +13,9 @@ object DeviceConfigTools {
     val getdevice =
         if (hasRootAccess()) executeRootCommand("getprop persist.private.device_name") else Pair(
             20,
-            "无法获取Root来获取设备名字"
+            "No Root Permission"
         )
-    val deviceName = if (getdevice.first == 0) getdevice.second else "无法获取Root来获取设备名字"
+    val deviceName = if (getdevice.first == 0) getdevice.second else "No Root Permission"
 
 
     val androidVersion: String = getSystemProperties("ro.build.version.release")
@@ -24,11 +24,11 @@ object DeviceConfigTools {
 
         val marketName: String = getSystemProperties("ro.product.marketname")
 
-        if (marketName.isNotEmpty()) bigtextone(marketName) else bigtextone(Build.BRAND) + " " + Build.MODEL
+        if (marketName.isNotEmpty()) titleFirstChar(marketName) else titleFirstChar(Build.BRAND) + " " + Build.MODEL
 
     }
 
-    fun bigtextone(st: String): String {
+    fun titleFirstChar(st: String): String {
         val formattedBrand = st.replaceFirstChar {
             if (it.isLowerCase()) it.titlecase() else it.toString()
         }
@@ -49,14 +49,13 @@ object DeviceConfigTools {
         return ret
     }
 
-    fun getSubSceenVersion(context: Context): String {
-        try {
-            val packageManager = context.packageManager
+    fun getSubScreenVersion(context: Context): String {
+        val packageManager = context.packageManager
+        return try {
             val packageInfo = packageManager.getPackageInfo("com.xiaomi.subscreencenter", 0)
-            return packageInfo.versionName.toString()
-        } catch (e: Exception) {
-            Log.e("getSubSceenVersion", e.message,e)
-            return "无法获取小米分屏版本"
+            packageInfo.versionName.toString()
+        } catch (_: Exception) {
+            "UNKNOWN"
         }
     }
 }
