@@ -3,7 +3,6 @@ package hk.uwu.reareye.utils.other
 import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Build
-import android.util.Log
 import hk.uwu.reareye.utils.RootHelper.executeRootCommand
 import hk.uwu.reareye.utils.RootHelper.hasRootAccess
 
