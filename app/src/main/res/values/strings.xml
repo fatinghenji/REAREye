@@ -476,4 +476,6 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="android_version">Android Version</string>
     <string name="subsceen_version">SubSceen Version</string>
     <string name="module_navigation_bar_mode_semi_transparent">Semi-transparent</string>
+    <string name="licenses_name">Quote</string>
+    <string name="licenses_name_summary">See which libraries we have referenced</string>
 </resources>

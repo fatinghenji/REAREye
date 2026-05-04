@@ -39,5 +39,6 @@
 
 # --- Tool ---
 -keep class hk.uwu.reareye.hook.** { *; }
+-keep class hk.uwu.reareye.utils.other.AboutLibrariesToolsKt
 -keep class com.hchen.superlyricapi.* {*;}
 -dontwarn android.os.ServiceManager
