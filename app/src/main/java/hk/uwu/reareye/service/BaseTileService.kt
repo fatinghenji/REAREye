@@ -1,17 +1,14 @@
 package hk.uwu.reareye.service
 
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.util.Log
 import android.widget.Toast
-import androidx.annotation.RequiresApi
 import hk.uwu.reareye.R
 import hk.uwu.reareye.utils.RootHelper
 
-@RequiresApi(Build.VERSION_CODES.R)
 abstract class BaseTileService : TileService() {
     companion object {
         private const val TAG = "BaseTileService"

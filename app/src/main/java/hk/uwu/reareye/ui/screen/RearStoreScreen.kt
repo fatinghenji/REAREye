@@ -6,6 +6,7 @@ import android.content.Intent
 import android.graphics.BitmapFactory
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -40,6 +41,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
@@ -82,6 +84,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -96,12 +99,14 @@ import hk.uwu.reareye.repository.rearstore.RearStoreInstallProgressStage
 import hk.uwu.reareye.repository.rearstore.RearStoreInstalledWidget
 import hk.uwu.reareye.repository.rearstore.RearStoreListItem
 import hk.uwu.reareye.repository.rearstore.RearStorePreparedInstallAsset
+import hk.uwu.reareye.repository.rearstore.RearStoreQuickInstallResult
 import hk.uwu.reareye.repository.rearstore.RearStoreRelease
 import hk.uwu.reareye.repository.rearstore.RearStoreReleaseAsset
 import hk.uwu.reareye.repository.rearstore.RearStoreRepository
 import hk.uwu.reareye.repository.rearstore.RearStoreWidgetDetail
 import hk.uwu.reareye.repository.rearstore.RearStoreWidgetInfoType
 import hk.uwu.reareye.repository.rearstore.RearStoreWidgetMetadataType
+import hk.uwu.reareye.repository.rearstore.evaluateRequirements
 import hk.uwu.reareye.repository.rearstore.resolvedType
 import hk.uwu.reareye.repository.rearstore.supportsModuleVersion
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperMetadataOptions
@@ -212,6 +217,11 @@ private data class RearStorePendingInstallConflict(
     val release: RearStoreRelease,
     val asset: RearStoreReleaseAsset,
     val conflict: RearStoreInstallConflict,
+)
+
+private data class RearStorePostInstallBrowserState(
+    val title: String,
+    val url: String,
 )
 
 private data class RearStorePendingWallpaperInstall(
@@ -344,9 +354,17 @@ private data class RearStoreInstallInfo(
     val hasScene: Boolean,
     val scenePackageName: String?,
     val hasWallpaper: Boolean,
+    val requirementsSatisfied: Boolean,
+    val appListPermissionGranted: Boolean,
+    val missingPackages: List<String>,
+    val failedConfigReasons: Map<String, String>,
 )
 
-private fun defaultInstallInfo(detail: RearStoreWidgetDetail): RearStoreInstallInfo {
+private fun defaultInstallInfo(
+    context: Context,
+    prefsManager: hk.uwu.reareye.ui.config.PrefsManager,
+    detail: RearStoreWidgetDetail,
+): RearStoreInstallInfo {
     val widgetInfoType = detail.widgetInfo.resolvedType()
     val metadataType = detail.displayMetadataType()
     val businessSetupId = detail.widgetInfo?.businessSetup?.id.normalizedOrNull()
@@ -356,6 +374,7 @@ private fun defaultInstallInfo(detail: RearStoreWidgetDetail): RearStoreInstallI
     val scenePackageName = sceneSetup?.packageName.normalizedOrNull()
     val hasCard = widgetInfoType == RearStoreWidgetInfoType.WIDGET &&
             detail.widgetInfo?.cardSetup != null
+    val requirementsResult = detail.widgetInfo.evaluateRequirements(context, prefsManager)
     return RearStoreInstallInfo(
         widgetInfoType = widgetInfoType,
         hasComponent = widgetInfoType == RearStoreWidgetInfoType.WIDGET,
@@ -368,6 +387,10 @@ private fun defaultInstallInfo(detail: RearStoreWidgetDetail): RearStoreInstallI
         scenePackageName = scenePackageName,
         hasWallpaper = widgetInfoType == RearStoreWidgetInfoType.WALLPAPER ||
                 metadataType == RearStoreWidgetMetadataType.WALLPAPER,
+        requirementsSatisfied = requirementsResult.satisfied,
+        appListPermissionGranted = requirementsResult.appListPermissionGranted,
+        missingPackages = requirementsResult.missingPackages,
+        failedConfigReasons = requirementsResult.failedConfigReasons,
     )
 }
 
@@ -461,6 +484,7 @@ private fun RearStoreWidgetDetail.displayMetadataType(): RearStoreWidgetMetadata
 
 private fun resolveInstallBlockMessage(
     context: Context,
+    prefsManager: hk.uwu.reareye.ui.config.PrefsManager,
     detail: RearStoreWidgetDetail,
 ): String? {
     val widgetInfoType = detail.widgetInfo.resolvedType()
@@ -477,6 +501,28 @@ private fun resolveInstallBlockMessage(
         detail.widgetInfo?.businessSetup?.id.normalizedOrNull() == null
     ) {
         return context.getString(R.string.rear_store_install_missing_business_setup)
+    }
+    val requirementsResult = detail.widgetInfo.evaluateRequirements(context, prefsManager)
+    if (!requirementsResult.satisfied) {
+        return buildString {
+            appendLine(context.getString(R.string.rear_store_install_requirements_not_met))
+            if (!requirementsResult.appListPermissionGranted && requirementsResult.missingPackages.isNotEmpty()) {
+                appendLine("- ${context.getString(R.string.rear_store_install_requirements_packages_permission)}")
+            }
+            requirementsResult.missingPackages.forEach { pkg ->
+                appendLine(
+                    "- ${
+                        context.getString(
+                            R.string.rear_store_install_requirements_missing_package_item,
+                            pkg
+                        )
+                    }"
+                )
+            }
+            requirementsResult.failedConfigReasons.values.forEach { reason ->
+                appendLine("- $reason")
+            }
+        }.trim()
     }
     return null
 }
@@ -551,6 +597,55 @@ private fun parseIsoEpochMillis(value: String?): Long {
         }
     }
     return Long.MIN_VALUE
+}
+
+private fun buildPostInstallUri(
+    detail: RearStoreWidgetDetail,
+    installResult: RearStoreQuickInstallResult,
+): String? {
+    val template = detail.widgetInfo?.postInstall?.uri.normalizedOrNull() ?: return null
+    return template
+        .replace("{id}", detail.widgetId)
+        .replace("{business}", installResult.businessConfigId ?: "{business}")
+        .replace("{card}", installResult.cardId ?: "{card}")
+}
+
+private fun launchPostInstallUri(
+    context: Context,
+    detail: RearStoreWidgetDetail,
+    installResult: RearStoreQuickInstallResult,
+    onOpenBrowser: (RearStorePostInstallBrowserState) -> Unit,
+) {
+    val uriString = buildPostInstallUri(detail, installResult) ?: return
+    val uri = runCatching { uriString.toUri() }.getOrNull() ?: return
+    val scheme = uri.scheme?.lowercase(Locale.ROOT).orEmpty()
+    if (scheme == "content") {
+        runCatching {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, uri).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+            )
+        }
+        return
+    }
+    if (scheme == "http" || scheme == "https") {
+        onOpenBrowser(
+            RearStorePostInstallBrowserState(
+                title = detail.name.normalizedOrNull() ?: detail.widgetId,
+                url = uriString,
+            )
+        )
+        return
+    }
+    runCatching {
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW, uri).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        )
+    }
 }
 
 private fun RearStoreListItem.matchesLocalQuery(query: String): Boolean {
@@ -1021,6 +1116,10 @@ private fun RearStoreDetailContent(
     var wallpaperMetadataDraft by remember(widgetId) {
         mutableStateOf<RearWallpaperMetadataOptions?>(null)
     }
+    var blockedInstallMessage by remember(widgetId) { mutableStateOf<String?>(null) }
+    var postInstallBrowserState by remember(widgetId) {
+        mutableStateOf<RearStorePostInstallBrowserState?>(null)
+    }
 
     suspend fun reloadDetail() {
         loading = true
@@ -1104,6 +1203,12 @@ private fun RearStoreDetailContent(
             delay(360)
             activeInstall = null
             onInstalled()
+            launchPostInstallUri(
+                context = context,
+                detail = widgetDetail,
+                installResult = installResult,
+                onOpenBrowser = { postInstallBrowserState = it },
+            )
             Toast.makeText(
                 context,
                 context.getString(
@@ -1190,9 +1295,9 @@ private fun RearStoreDetailContent(
         forceOverwrite: Boolean = false,
     ) {
         val widgetDetail = detail ?: return
-        val blockedMessage = resolveInstallBlockMessage(context, widgetDetail)
+        val blockedMessage = resolveInstallBlockMessage(context, prefsManager, widgetDetail)
         if (blockedMessage != null) {
-            Toast.makeText(context, blockedMessage, Toast.LENGTH_SHORT).show()
+            blockedInstallMessage = blockedMessage
             return
         }
         val conflict = withContext(Dispatchers.IO) {
@@ -1392,6 +1497,7 @@ private fun RearStoreDetailContent(
                     selectedTab = selectedTab,
                     widgetDetail = widgetDetail,
                     installedWidget = installedWidget,
+                    prefsManager = prefsManager,
                     visibleReleases = visibleReleases,
                     showAllReleases = showAllReleases,
                     readmeLoading = readmeLoading,
@@ -1438,6 +1544,56 @@ private fun RearStoreDetailContent(
             }
             Button(
                 onClick = { showUninstallDialog = false },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.rear_widget_cancel))
+            }
+        }
+    }
+
+    OverlayDialog(
+        show = blockedInstallMessage != null,
+        title = stringResource(R.string.rear_store_install_blocked_title),
+        onDismissRequest = { blockedInstallMessage = null },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                RearStoreDialogMessageCard(message = blockedInstallMessage.orEmpty())
+            }
+            Button(
+                onClick = { blockedInstallMessage = null },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.rear_widget_cancel))
+            }
+        }
+    }
+
+    val postInstallBrowser = postInstallBrowserState
+    OverlayDialog(
+        show = postInstallBrowser != null,
+        title = postInstallBrowser?.title
+            ?: stringResource(R.string.rear_store_postinstall_browser_title),
+        onDismissRequest = { postInstallBrowserState = null },
+        outsideMargin = DpSize(width = 10.dp, height = 10.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                RearStorePostInstallBrowser(
+                    url = postInstallBrowser?.url.orEmpty(),
+                )
+            }
+            Button(
+                onClick = {
+                    val targetUrl = postInstallBrowser?.url ?: return@Button
+                    context.startActivity(Intent(Intent.ACTION_VIEW, targetUrl.toUri()))
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.rear_store_postinstall_open_in_browser))
+            }
+            Button(
+                onClick = { postInstallBrowserState = null },
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(stringResource(R.string.rear_widget_cancel))
@@ -1594,6 +1750,7 @@ private fun RearStoreDetailTabContent(
     selectedTab: RearStoreDetailTab,
     widgetDetail: RearStoreWidgetDetail,
     installedWidget: RearStoreInstalledWidget?,
+    prefsManager: hk.uwu.reareye.ui.config.PrefsManager,
     visibleReleases: List<RearStoreRelease>,
     showAllReleases: Boolean,
     readmeLoading: Boolean,
@@ -1661,7 +1818,10 @@ private fun RearStoreDetailTabContent(
                         onClick = onRequestUninstall,
                     )
                 }
-                RearStoreInstallInfoCard(detail = widgetDetail)
+                RearStoreInstallInfoCard(
+                    detail = widgetDetail,
+                    prefsManager = prefsManager,
+                )
                 RearStoreRepositoryCard(detail = widgetDetail)
                 RearStoreAuthorCard(
                     author = widgetDetail.author,
@@ -2237,8 +2397,14 @@ private fun rememberInstallInfoBadgePalette(group: RearStoreInstallInfoBadgeGrou
 }
 
 @Composable
-private fun RearStoreInstallInfoCard(detail: RearStoreWidgetDetail) {
-    val installInfo = defaultInstallInfo(detail)
+private fun RearStoreInstallInfoCard(
+    detail: RearStoreWidgetDetail,
+    prefsManager: hk.uwu.reareye.ui.config.PrefsManager,
+) {
+    val context = LocalContext.current
+    val installInfo = remember(detail, prefsManager) {
+        defaultInstallInfo(context, prefsManager, detail)
+    }
     val componentPalette = rememberInstallInfoBadgePalette(RearStoreInstallInfoBadgeGroup.COMPONENT)
     val cardPalette = rememberInstallInfoBadgePalette(RearStoreInstallInfoBadgeGroup.CARD)
     val notificationPalette =
@@ -2270,7 +2436,7 @@ private fun RearStoreInstallInfoCard(detail: RearStoreWidgetDetail) {
                 palette = cardPalette,
             )
         )
-        installInfo.cardPackageName?.takeIf { installInfo.hasCard }?.let {
+        installInfo.cardPackageName?.let {
             add(
                 RearBadgeItem(
                     text = stringResource(R.string.rear_store_install_badge_card_package, it),
@@ -2313,6 +2479,37 @@ private fun RearStoreInstallInfoCard(detail: RearStoreWidgetDetail) {
                     palette = warningPalette,
                 )
             )
+        }
+        if (!installInfo.appListPermissionGranted && installInfo.missingPackages.isNotEmpty()) {
+            add(
+                RearBadgeItem(
+                    text = stringResource(R.string.rear_store_install_requirements_packages_permission),
+                    palette = warningPalette,
+                )
+            )
+        }
+        if (installInfo.missingPackages.isNotEmpty() && installInfo.appListPermissionGranted) {
+            installInfo.missingPackages.forEach { pkg ->
+                add(
+                    RearBadgeItem(
+                        text = stringResource(
+                            R.string.rear_store_install_requirements_missing_package_item,
+                            pkg
+                        ),
+                        palette = warningPalette,
+                    )
+                )
+            }
+        }
+        if (installInfo.failedConfigReasons.isNotEmpty()) {
+            installInfo.failedConfigReasons.values.forEach { reason ->
+                add(
+                    RearBadgeItem(
+                        text = reason,
+                        palette = warningPalette,
+                    )
+                )
+            }
         }
     }
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -2709,6 +2906,87 @@ private fun WebView.publishMarkdownContentHeight(onContentHeightChanged: (Int) -
         val resolvedHeight =
             (measuredOrContentHeight + paddingTop + paddingBottom).coerceAtLeast(1)
         onContentHeightChanged(resolvedHeight)
+    }
+}
+
+@Composable
+private fun RearStorePostInstallBrowser(url: String) {
+    val context = LocalContext.current
+    val prefsManager = remember(context) { context.getPrefsManager() }
+    val webViewHardwareAccelerationEnabled = prefsManager.getBoolean(
+        ConfigKeys.MODULE_STORE_WEBVIEW_HARDWARE_ACCELERATION,
+        true,
+    )
+    val colorScheme = MiuixTheme.colorScheme
+    val backgroundColor = if (webViewHardwareAccelerationEnabled) {
+        Color.Transparent
+    } else {
+        colorScheme.surface
+    }
+    val nestedScrollInterop = rememberNestedScrollInteropConnection()
+
+    AndroidView(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 320.dp, max = 560.dp)
+            .nestedScroll(nestedScrollInterop),
+        factory = { viewContext ->
+            createRearStoreBrowserWebView(
+                context = viewContext,
+                hardwareAccelerationEnabled = webViewHardwareAccelerationEnabled,
+                backgroundColor = backgroundColor.toArgb(),
+            ).apply {
+                loadUrl(url)
+            }
+        },
+        update = { webView ->
+            webView.setLayerType(
+                if (webViewHardwareAccelerationEnabled) View.LAYER_TYPE_NONE else View.LAYER_TYPE_SOFTWARE,
+                null,
+            )
+            if (webView.url != url) {
+                webView.loadUrl(url)
+            }
+        },
+    )
+}
+
+@SuppressLint("SetJavaScriptEnabled")
+private fun createRearStoreBrowserWebView(
+    context: Context,
+    hardwareAccelerationEnabled: Boolean,
+    backgroundColor: Int,
+): WebView {
+    return ScrollWebView(context).apply {
+        layoutParams = ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+        )
+        setLayerType(
+            if (hardwareAccelerationEnabled) View.LAYER_TYPE_NONE else View.LAYER_TYPE_SOFTWARE,
+            null,
+        )
+        setBackgroundColor(backgroundColor)
+        settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            builtInZoomControls = false
+            displayZoomControls = false
+            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+            allowContentAccess = true
+            allowFileAccess = false
+            setSupportMultipleWindows(false)
+            userAgentString = "$userAgentString REAREyeStoreWebView"
+        }
+        webChromeClient = WebChromeClient()
+        webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(
+                view: WebView,
+                request: WebResourceRequest,
+            ): Boolean {
+                return false
+            }
+        }
     }
 }
 
