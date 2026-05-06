@@ -1,5 +1,6 @@
 package hk.uwu.reareye.ui.screen
 
+import android.annotation.SuppressLint
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutLinearInEasing
@@ -130,6 +131,7 @@ private fun ConfigRoute.isOverlayRoute(): Boolean {
             this is ConfigRoute.BusinessExtraManager
 }
 
+@SuppressLint("LocalContextResourcesRead")
 @Composable
 fun ConfigScreen(
     bottomInnerPadding: Dp = 0.dp,
@@ -155,7 +157,10 @@ fun ConfigScreen(
     val routeScope = rememberCoroutineScope()
 
     val favoriteNodeIndex = remember(REAREyeConfig) {
-        buildFavoriteConfigNodeIndex(REAREyeConfig)
+        buildFavoriteConfigNodeIndex(
+            nodes = REAREyeConfig,
+            resolveResourceEntryName = context.resources::getResourceEntryName,
+        )
     }
     val availableFavoriteNodeIds = remember(favoriteNodeIndex.entries) {
         favoriteNodeIndex.entries.mapTo(mutableSetOf()) { it.id }
@@ -166,7 +171,9 @@ fun ConfigScreen(
     val initialFavoriteNodeIds = remember(storedFavoriteNodeIds, availableFavoriteNodeIds) {
         storedFavoriteNodeIds.filterTo(mutableSetOf()) { it in availableFavoriteNodeIds }
     }
-    var favoriteNodeIds by remember { mutableStateOf(initialFavoriteNodeIds.toSet()) }
+    var favoriteNodeIds by remember {
+        mutableStateOf(initialFavoriteNodeIds.toSet())
+    }
     val favoriteNodes = remember(favoriteNodeIds, favoriteNodeIndex.entries) {
         favoriteNodeIndex.entries
             .filter { favoriteNodeIds.contains(it.id) }
@@ -763,7 +770,7 @@ private fun Modifier.configNodeLongPress(
 ): Modifier {
     if (!enabled || isScrolling) return this
 
-    return this.pointerInput(onLongPress, isScrolling) {
+    return this.pointerInput(onLongPress, false) {
         awaitEachGesture {
             val down = awaitFirstDown(
                 requireUnconsumed = false,
@@ -803,14 +810,17 @@ private fun Modifier.configNodeLongPress(
     }
 }
 
-private fun buildFavoriteConfigNodeIndex(nodes: List<ConfigNode>): FavoriteConfigNodeIndex {
+private fun buildFavoriteConfigNodeIndex(
+    nodes: List<ConfigNode>,
+    resolveResourceEntryName: (Int) -> String,
+): FavoriteConfigNodeIndex {
     val entries = mutableListOf<FavoriteConfigNodeEntry>()
     val nodeIdLookup = IdentityHashMap<ConfigNode, String>()
     val idCounters = mutableMapOf<String, Int>()
 
-    fun nextNodeId(baseId: String): String {
-        val current = (idCounters[baseId] ?: 0) + 1
-        idCounters[baseId] = current
+    fun nextNodeId(counters: MutableMap<String, Int>, baseId: String): String {
+        val current = (counters[baseId] ?: 0) + 1
+        counters[baseId] = current
         return if (current == 1) {
             baseId
         } else {
@@ -818,16 +828,21 @@ private fun buildFavoriteConfigNodeIndex(nodes: List<ConfigNode>): FavoriteConfi
         }
     }
 
-    fun walk(currentNodes: List<ConfigNode>, categoryPath: List<Int>) {
+    fun registerNode(node: ConfigNode, nodeId: String) {
+        entries += FavoriteConfigNodeEntry(id = nodeId, node = node)
+        nodeIdLookup[node] = nodeId
+    }
+
+    fun walk(currentNodes: List<ConfigNode>, categoryPath: List<String>) {
         currentNodes.forEach { node ->
             when (node) {
                 is ConfigCategory -> {
-                    val baseNodeId = node.key?.let { "category:key:$it" }
-                        ?: "category:path:${(categoryPath + node.titleRes).joinToString("/")}"
-                    val nodeId = nextNodeId(baseNodeId)
-                    entries += FavoriteConfigNodeEntry(id = nodeId, node = node)
-                    nodeIdLookup[node] = nodeId
-                    walk(node.children, categoryPath + node.titleRes)
+                    val pathToken = node.key?.let { "key:$it" }
+                        ?: "title:${resolveResourceEntryName(node.titleRes)}"
+                    val baseId = "category:path:${(categoryPath + pathToken).joinToString("/")}"
+                    val nodeId = nextNodeId(idCounters, baseId)
+                    registerNode(node, nodeId)
+                    walk(node.children, categoryPath + pathToken)
                 }
 
                 is ConfigGroup -> {
@@ -835,14 +850,16 @@ private fun buildFavoriteConfigNodeIndex(nodes: List<ConfigNode>): FavoriteConfi
                 }
 
                 is ConfigItem -> {
-                    val nodeId = nextNodeId("item:key:${node.key}")
-                    entries += FavoriteConfigNodeEntry(id = nodeId, node = node)
-                    nodeIdLookup[node] = nodeId
+                    val nodeId = nextNodeId(idCounters, "item:key:${node.key}")
+                    registerNode(node, nodeId)
                 }
             }
         }
     }
 
     walk(nodes, emptyList())
-    return FavoriteConfigNodeIndex(entries = entries, nodeIdLookup = nodeIdLookup)
+    return FavoriteConfigNodeIndex(
+        entries = entries,
+        nodeIdLookup = nodeIdLookup,
+    )
 }
