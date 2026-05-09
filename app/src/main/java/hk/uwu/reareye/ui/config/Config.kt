@@ -196,6 +196,7 @@ sealed class ConfigType {
         SCENE_ROUTE,
         CARD,
         BUSINESS_EXTRA,
+        BOUNDS,
     }
 
     data class Manager(val managerType: ManagerType) : ConfigType() {

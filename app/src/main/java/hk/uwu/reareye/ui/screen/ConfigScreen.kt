@@ -53,6 +53,7 @@ import hk.uwu.reareye.ui.components.config.BusinessExtraConfigManagerScreen
 import hk.uwu.reareye.ui.components.config.BusinessManagerScreen
 import hk.uwu.reareye.ui.components.config.CardManagerScreen
 import hk.uwu.reareye.ui.components.config.ConfigNodeRow
+import hk.uwu.reareye.ui.components.config.CustomBoundsCompatManagerScreen
 import hk.uwu.reareye.ui.components.config.RearWallpaperManagerScreen
 import hk.uwu.reareye.ui.components.config.SceneRouteManagerScreen
 import hk.uwu.reareye.ui.config.ConfigCategory
@@ -102,6 +103,7 @@ private sealed interface ConfigRoute {
     data object SceneRouteManager : ConfigRoute
     data object CardManager : ConfigRoute
     data object BusinessExtraManager : ConfigRoute
+    data object CustomBoundsCompatManager : ConfigRoute
 }
 
 private const val NAV_BAR_EXIT_DURATION_MS = 220L
@@ -128,7 +130,8 @@ private fun ConfigRoute.isOverlayRoute(): Boolean {
             this is ConfigRoute.BusinessManager ||
             this is ConfigRoute.SceneRouteManager ||
             this is ConfigRoute.CardManager ||
-            this is ConfigRoute.BusinessExtraManager
+            this is ConfigRoute.BusinessExtraManager ||
+            this is ConfigRoute.CustomBoundsCompatManager
 }
 
 @SuppressLint("LocalContextResourcesRead")
@@ -356,6 +359,10 @@ fun ConfigScreen(
                                 openOverlayRoute(ConfigRoute.BusinessExtraManager)
                             }
 
+                            ConfigType.ManagerType.BOUNDS -> {
+                                openOverlayRoute(ConfigRoute.CustomBoundsCompatManager)
+                            }
+
                             null -> Unit
                         }
                     },
@@ -411,6 +418,10 @@ fun ConfigScreen(
                                 openOverlayRoute(ConfigRoute.BusinessExtraManager)
                             }
 
+                            ConfigType.ManagerType.BOUNDS -> {
+                                openOverlayRoute(ConfigRoute.CustomBoundsCompatManager)
+                            }
+
                             null -> Unit
                         }
                     },
@@ -461,6 +472,10 @@ fun ConfigScreen(
                                 openOverlayRoute(ConfigRoute.BusinessExtraManager)
                             }
 
+                            ConfigType.ManagerType.BOUNDS -> {
+                                openOverlayRoute(ConfigRoute.CustomBoundsCompatManager)
+                            }
+
                             null -> Unit
                         }
                     },
@@ -503,6 +518,11 @@ fun ConfigScreen(
                 )
 
                 ConfigRoute.BusinessExtraManager -> BusinessExtraConfigManagerScreen(
+                    prefsManager = prefsManager,
+                    onBack = { closeOverlayRoute() },
+                )
+
+                ConfigRoute.CustomBoundsCompatManager -> CustomBoundsCompatManagerScreen(
                     prefsManager = prefsManager,
                     onBack = { closeOverlayRoute() },
                 )

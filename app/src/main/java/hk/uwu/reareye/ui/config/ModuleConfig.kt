@@ -23,6 +23,9 @@ object ConfigKeys {
     const val ACTIVITIES_WHITELIST_APPS = "activities_whitelist_apps"
     const val ALLOW_ALL_ACTIVITIES = "allow_all_activities"
     const val HOOK_SKIP_LOCK_BACK_HOME = "enable_skip_lock_back_home"
+    const val CFG_CUSTOM_BOUNDS_COMPAT_MANAGER = "cfg_custom_bounds_compat_manager"
+    const val CUSTOM_BOUNDS_COMPAT_APPS = "custom_bounds_compat_apps"
+    const val CUSTOM_BOUNDS_COMPAT_CONFIG_DATA = "custom_bounds_compat_config_data"
 
     const val HOOK_MUSIC_CONTROLS_WHITELIST = "enable_music_controls_whitelist_hook"
     const val MUSIC_CONTROLS_WHITELIST_APPS = "music_controls_whitelist_apps"
@@ -302,6 +305,12 @@ val REAREyeConfig = listOf(
                 key = ConfigKeys.HOOK_SKIP_LOCK_BACK_HOME,
                 titleRes = R.string.skip_lock_back_home,
                 type = ConfigType.BooleanVal(defaultValue = false)
+            ),
+            ConfigItem(
+                key = ConfigKeys.CFG_CUSTOM_BOUNDS_COMPAT_MANAGER,
+                titleRes = R.string.custom_bounds_compat_manager,
+                descriptionRes = R.string.custom_bounds_compat_manager_desc,
+                type = ConfigType.Manager(ConfigType.ManagerType.BOUNDS),
             ),
             ConfigItem(
                 key = ConfigKeys.HOOK_DISABLE_REAR_SCREEN_COVER,

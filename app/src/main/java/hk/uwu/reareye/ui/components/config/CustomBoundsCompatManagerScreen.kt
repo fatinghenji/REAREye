@@ -1,0 +1,683 @@
+package hk.uwu.reareye.ui.components.config
+
+import android.annotation.SuppressLint
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.annotation.StringRes
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.rounded.EditNote
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
+import hk.uwu.reareye.R
+import hk.uwu.reareye.repository.bounds.CustomBoundsCompatAppConfig
+import hk.uwu.reareye.repository.bounds.CustomBoundsCompatConfigCodec
+import hk.uwu.reareye.repository.bounds.CustomBoundsMode
+import hk.uwu.reareye.ui.components.DialogFormColumn
+import hk.uwu.reareye.ui.components.OverlayDialog
+import hk.uwu.reareye.ui.components.RearBadgeItem
+import hk.uwu.reareye.ui.components.card.ModuleStyleDeleteAction
+import hk.uwu.reareye.ui.components.card.ModuleStyleIconAction
+import hk.uwu.reareye.ui.components.card.ModuleStyleManagerCard
+import hk.uwu.reareye.ui.components.card.SuperCard
+import hk.uwu.reareye.ui.components.motion.ArtRevealItem
+import hk.uwu.reareye.ui.components.rememberRearAccentBadgePalette
+import hk.uwu.reareye.ui.config.ConfigItem
+import hk.uwu.reareye.ui.config.ConfigKeys
+import hk.uwu.reareye.ui.config.ConfigType
+import hk.uwu.reareye.ui.config.PrefsManager
+import hk.uwu.reareye.ui.theme.rearAcrylicEffect
+import hk.uwu.reareye.ui.theme.rearAcrylicSource
+import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
+import hk.uwu.reareye.ui.theme.rememberAcrylicHazeStyle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SpinnerEntry
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Delete
+import top.yukonga.miuix.kmp.preference.SwitchPreference
+import top.yukonga.miuix.kmp.preference.WindowSpinnerPreference
+import top.yukonga.miuix.kmp.theme.miuixShape
+import top.yukonga.miuix.kmp.utils.overScrollVertical
+import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+import java.util.Locale
+
+private data class CustomBoundsOption(
+    val value: Int,
+    @param:StringRes val titleRes: Int,
+)
+
+private val gravityOptions = listOf(
+    CustomBoundsOption(17, R.string.custom_bounds_position_center),
+    CustomBoundsOption(48, R.string.custom_bounds_position_top),
+    CustomBoundsOption(80, R.string.custom_bounds_position_bottom),
+    CustomBoundsOption(3, R.string.custom_bounds_position_left),
+    CustomBoundsOption(5, R.string.custom_bounds_position_right),
+)
+
+private val rotationOptions = listOf(
+    CustomBoundsOption(
+        CustomBoundsCompatConfigCodec.ROTATION_FOLLOW_SYSTEM,
+        R.string.custom_bounds_rotation_follow,
+    ),
+    CustomBoundsOption(0, R.string.custom_bounds_rotation_0),
+    CustomBoundsOption(90, R.string.custom_bounds_rotation_90),
+    CustomBoundsOption(180, R.string.custom_bounds_rotation_180),
+    CustomBoundsOption(270, R.string.custom_bounds_rotation_270),
+)
+
+private val modeOptions = listOf(
+    CustomBoundsOption(0, R.string.custom_bounds_mode_auto_ratio),
+    CustomBoundsOption(1, R.string.custom_bounds_mode_custom_ratio),
+    CustomBoundsOption(2, R.string.custom_bounds_mode_exact_insets),
+)
+
+@SuppressLint("LocalContextGetResourceValueCall")
+@Composable
+fun CustomBoundsCompatManagerScreen(
+    prefsManager: PrefsManager,
+    onBack: () -> Unit,
+) {
+    val context = LocalContext.current
+    val layoutDirection = LocalLayoutDirection.current
+    val scrollBehavior = MiuixScrollBehavior()
+    val hazeState = rememberAcrylicHazeState()
+    val hazeStyle = rememberAcrylicHazeStyle()
+    rememberCoroutineScope()
+    val configs = remember { mutableStateListOf<CustomBoundsCompatAppConfig>() }
+    var loaded by remember { mutableStateOf(false) }
+    var dataCardsVisible by remember { mutableStateOf(false) }
+    var showAppSelector by remember { mutableStateOf(false) }
+    var showDialog by remember { mutableStateOf(false) }
+    var editingPackageName by remember { mutableStateOf<String?>(null) }
+    var draftEnabled by remember { mutableStateOf(true) }
+    var draftMode by remember { mutableIntStateOf(0) }
+    var draftAspectRatio by remember { mutableStateOf("") }
+    var draftGravity by remember { mutableIntStateOf(CustomBoundsCompatConfigCodec.DEFAULT_GRAVITY) }
+    var draftScale by remember { mutableStateOf("") }
+    var draftDensityDpi by remember { mutableStateOf("") }
+    var draftRotationDegrees by remember {
+        mutableIntStateOf(CustomBoundsCompatConfigCodec.ROTATION_FOLLOW_SYSTEM)
+    }
+    var draftInsetLeft by remember { mutableStateOf("") }
+    var draftInsetTop by remember { mutableStateOf("") }
+    var draftInsetRight by remember { mutableStateOf("") }
+    var draftInsetBottom by remember { mutableStateOf("") }
+
+    val appSelectorItem = remember {
+        ConfigItem(
+            key = ConfigKeys.CUSTOM_BOUNDS_COMPAT_APPS,
+            titleRes = R.string.custom_bounds_pick_apps,
+            descriptionRes = R.string.custom_bounds_pick_apps_desc,
+            type = ConfigType.AppList(defaultValues = emptySet()),
+        )
+    }
+
+    fun replaceConfigs(nextConfigs: List<CustomBoundsCompatAppConfig>) {
+        configs.clear()
+        configs.addAll(nextConfigs.sortedBy { it.packageName.lowercase() })
+    }
+
+    fun loadConfigsFromPrefs(): List<CustomBoundsCompatAppConfig> {
+        val selectedPackages = prefsManager.getStringSet(
+            ConfigKeys.CUSTOM_BOUNDS_COMPAT_APPS,
+            emptySet(),
+        )
+        val storedConfigs = CustomBoundsCompatConfigCodec.parse(
+            prefsManager.getString(
+                ConfigKeys.CUSTOM_BOUNDS_COMPAT_CONFIG_DATA,
+                CustomBoundsCompatConfigCodec.EMPTY_ARRAY,
+            )
+        )
+        return CustomBoundsCompatConfigCodec.normalizeForPackages(storedConfigs, selectedPackages)
+    }
+
+    fun persist(nextConfigs: List<CustomBoundsCompatAppConfig> = configs.toList()) {
+        val packages = nextConfigs.mapTo(linkedSetOf()) { it.packageName }
+        val encoded = CustomBoundsCompatConfigCodec.encode(nextConfigs)
+        prefsManager.putStringSet(ConfigKeys.CUSTOM_BOUNDS_COMPAT_APPS, packages)
+        prefsManager.putString(ConfigKeys.CUSTOM_BOUNDS_COMPAT_CONFIG_DATA, encoded)
+    }
+
+    fun syncAfterAppSelection() {
+        val nextConfigs = loadConfigsFromPrefs()
+        replaceConfigs(nextConfigs)
+        persist(nextConfigs)
+    }
+
+    fun openEditDialog(item: CustomBoundsCompatAppConfig) {
+        editingPackageName = item.packageName
+        draftEnabled = item.enabled
+        draftMode = when (item.mode) {
+            CustomBoundsMode.AUTO_RATIO -> 0
+            CustomBoundsMode.CUSTOM_RATIO -> 1
+            CustomBoundsMode.EXACT_INSETS -> 2
+        }
+        draftAspectRatio = if (item.aspectRatio > 0f) formatFloat(item.aspectRatio) else ""
+        draftGravity = normalizeGravity(item.gravity)
+        draftScale = formatFloat(item.scale)
+        draftDensityDpi = item.densityDpi.takeIf { it > 0 }?.toString().orEmpty()
+        draftRotationDegrees = CustomBoundsCompatConfigCodec.normalizeRotation(item.rotationDegrees)
+        draftInsetLeft = item.insetLeft.takeIf { it > 0 }?.toString().orEmpty()
+        draftInsetTop = item.insetTop.takeIf { it > 0 }?.toString().orEmpty()
+        draftInsetRight = item.insetRight.takeIf { it > 0 }?.toString().orEmpty()
+        draftInsetBottom = item.insetBottom.takeIf { it > 0 }?.toString().orEmpty()
+        showDialog = true
+    }
+
+    fun submitDialog() {
+        val packageName = editingPackageName ?: return
+        val mode = when (draftMode) {
+            1 -> CustomBoundsMode.CUSTOM_RATIO
+            2 -> CustomBoundsMode.EXACT_INSETS
+            else -> CustomBoundsMode.AUTO_RATIO
+        }
+        val aspectRatio = draftAspectRatio.trim().toFloatOrNull()
+        val scale = draftScale.trim().toFloatOrNull()
+        val densityDpi = draftDensityDpi.trim().ifBlank { "0" }.toIntOrNull()
+        val gravity = draftGravity
+        val rotation = draftRotationDegrees
+        val insetLeft = draftInsetLeft.trim().ifBlank { "0" }.toIntOrNull()
+        val insetTop = draftInsetTop.trim().ifBlank { "0" }.toIntOrNull()
+        val insetRight = draftInsetRight.trim().ifBlank { "0" }.toIntOrNull()
+        val insetBottom = draftInsetBottom.trim().ifBlank { "0" }.toIntOrNull()
+
+        if (scale == null || scale <= 0f || densityDpi == null || densityDpi < 0 ||
+            gravityOptions.none { it.value == gravity } ||
+            CustomBoundsCompatConfigCodec.normalizeRotation(rotation) != rotation ||
+            insetLeft == null || insetLeft < 0 || insetTop == null || insetTop < 0 ||
+            insetRight == null || insetRight < 0 || insetBottom == null || insetBottom < 0 ||
+            (mode == CustomBoundsMode.CUSTOM_RATIO && (aspectRatio == null || aspectRatio <= 0f))
+        ) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.custom_bounds_form_invalid),
+                Toast.LENGTH_SHORT,
+            ).show()
+            return
+        }
+
+        val nextConfig = CustomBoundsCompatAppConfig(
+            packageName = packageName,
+            enabled = draftEnabled,
+            mode = mode,
+            aspectRatio = aspectRatio ?: 0f,
+            gravity = gravity,
+            scale = scale,
+            densityDpi = densityDpi,
+            rotationDegrees = rotation,
+            insetLeft = insetLeft,
+            insetTop = insetTop,
+            insetRight = insetRight,
+            insetBottom = insetBottom,
+        )
+        val index = configs.indexOfFirst { it.packageName == packageName }
+        if (index >= 0) {
+            configs[index] = nextConfig
+        }
+        replaceConfigs(configs.toList())
+        persist()
+        showDialog = false
+        Toast.makeText(
+            context,
+            context.getString(R.string.custom_bounds_saved),
+            Toast.LENGTH_SHORT,
+        ).show()
+    }
+
+    LaunchedEffect(Unit) {
+        delay(220)
+        replaceConfigs(withContext(Dispatchers.IO) { loadConfigsFromPrefs() })
+        loaded = true
+        delay(90)
+        dataCardsVisible = true
+    }
+
+    if (showAppSelector) {
+        BackHandler { showAppSelector = false }
+        AppListSelectorScreen(
+            configItem = appSelectorItem,
+            prefsManager = prefsManager,
+            onCancel = { showAppSelector = false },
+            onSave = {
+                syncAfterAppSelection()
+                showAppSelector = false
+            },
+        )
+        return
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
+                color = Color.Transparent,
+                title = stringResource(R.string.custom_bounds_compat_manager),
+                navigationIconPadding = 12.dp,
+                actionIconPadding = 12.dp,
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            modifier = Modifier.graphicsLayer {
+                                if (layoutDirection == LayoutDirection.Rtl) scaleX = -1f
+                            },
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = null,
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { if (loaded) showAppSelector = true }) {
+                        Icon(imageVector = Icons.Filled.Add, contentDescription = null)
+                    }
+                },
+                scrollBehavior = scrollBehavior,
+            )
+        },
+    ) { paddingValues ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
+                .scrollEndHaptic()
+                .overScrollVertical()
+                .rearAcrylicSource(hazeState)
+                .padding(horizontal = 12.dp),
+            contentPadding = PaddingValues(
+                top = paddingValues.calculateTopPadding() + 12.dp,
+                bottom = paddingValues.calculateBottomPadding() + 12.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            overscrollEffect = null,
+        ) {
+            item {
+                Card(
+                    modifier = Modifier
+                        .padding(bottom = 12.dp)
+                        .fillMaxWidth(),
+                ) {
+                    SuperCard(
+                        title = stringResource(R.string.custom_bounds_hint_title),
+                        summary = stringResource(R.string.custom_bounds_hint),
+                        onClick = {},
+                        bottomAction = {
+                            Button(
+                                onClick = { showAppSelector = true },
+                                colors = ButtonDefaults.buttonColorsPrimary(),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.padding(end = 6.dp),
+                                )
+                                Text(text = stringResource(R.string.custom_bounds_pick_apps))
+                            }
+                        },
+                    )
+                }
+            }
+
+            if (!dataCardsVisible) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        insideMargin = PaddingValues(vertical = 24.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                InfiniteProgressIndicator()
+                                Text(text = stringResource(R.string.rear_widget_loading_data))
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (dataCardsVisible) {
+                itemsIndexed(
+                    items = configs,
+                    key = { _, item -> item.packageName },
+                    contentType = { _, _ -> "custom_bounds_item" },
+                ) { _, item ->
+                    ModuleStyleManagerCard(
+                        title = item.packageName,
+                        summaryLines = emptyList(),
+                        badges = customBoundsBadges(item),
+                        onCardClick = { openEditDialog(item) },
+                        leftAction = {
+                            ModuleStyleIconAction(
+                                icon = Icons.Rounded.EditNote,
+                                onClick = { openEditDialog(item) },
+                            )
+                        },
+                        rightAction = {
+                            ModuleStyleDeleteAction(
+                                icon = MiuixIcons.Delete,
+                                text = stringResource(R.string.rear_widget_action_delete),
+                                onClick = {
+                                    configs.remove(item)
+                                    persist()
+                                },
+                            )
+                        },
+                    )
+                }
+            }
+
+            item {
+                if (dataCardsVisible && configs.isEmpty()) {
+                    ArtRevealItem(visible = true, delayMillis = 40) {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = stringResource(R.string.custom_bounds_empty),
+                                modifier = Modifier.padding(16.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    OverlayDialog(
+        show = showDialog,
+        title = stringResource(R.string.custom_bounds_edit_app),
+        onDismissRequest = { showDialog = false },
+    ) {
+        DialogFormColumn {
+            TextField(
+                value = editingPackageName.orEmpty(),
+                onValueChange = {},
+                modifier = Modifier.fillMaxWidth(),
+                label = stringResource(R.string.rear_widget_target_package),
+                enabled = false,
+                readOnly = true,
+                singleLine = true,
+            )
+            SwitchPreference(
+                title = stringResource(R.string.custom_bounds_enable_app),
+                checked = draftEnabled,
+                onCheckedChange = { draftEnabled = it },
+            )
+            CustomBoundsDropdownPreference(
+                title = stringResource(R.string.custom_bounds_mode),
+                description = stringResource(R.string.custom_bounds_mode_help),
+                options = modeOptions,
+                selectedValue = draftMode,
+                onSelected = { draftMode = it },
+            )
+            if (draftMode == 1) {
+                TextField(
+                    value = draftAspectRatio,
+                    onValueChange = { draftAspectRatio = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = stringResource(R.string.custom_bounds_aspect_ratio),
+                    singleLine = true,
+                )
+            }
+            if (draftMode == 2) {
+                TextField(
+                    value = draftInsetLeft,
+                    onValueChange = { draftInsetLeft = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = stringResource(R.string.custom_bounds_inset_left),
+                    singleLine = true,
+                )
+                TextField(
+                    value = draftInsetTop,
+                    onValueChange = { draftInsetTop = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = stringResource(R.string.custom_bounds_inset_top),
+                    singleLine = true,
+                )
+                TextField(
+                    value = draftInsetRight,
+                    onValueChange = { draftInsetRight = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = stringResource(R.string.custom_bounds_inset_right),
+                    singleLine = true,
+                )
+                TextField(
+                    value = draftInsetBottom,
+                    onValueChange = { draftInsetBottom = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = stringResource(R.string.custom_bounds_inset_bottom),
+                    singleLine = true,
+                )
+            }
+            if (draftMode == 0) {
+                Text(
+                    text = stringResource(R.string.custom_bounds_auto_ratio_hint),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            CustomBoundsDropdownPreference(
+                title = stringResource(R.string.custom_bounds_gravity),
+                description = stringResource(R.string.custom_bounds_gravity_help),
+                options = gravityOptions,
+                selectedValue = draftGravity,
+                onSelected = { draftGravity = it },
+            )
+            TextField(
+                value = draftScale,
+                onValueChange = { draftScale = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = stringResource(R.string.custom_bounds_scale),
+                singleLine = true,
+            )
+            TextField(
+                value = draftDensityDpi,
+                onValueChange = { draftDensityDpi = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = stringResource(R.string.custom_bounds_density_dpi),
+                singleLine = true,
+            )
+            CustomBoundsDropdownPreference(
+                title = stringResource(R.string.custom_bounds_rotation_degrees),
+                description = stringResource(R.string.custom_bounds_rotation_help),
+                options = rotationOptions,
+                selectedValue = draftRotationDegrees,
+                onSelected = { draftRotationDegrees = it },
+            )
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(
+                    onClick = { submitDialog() },
+                    colors = ButtonDefaults.buttonColorsPrimary(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.rear_widget_confirm))
+                }
+                Button(
+                    onClick = { showDialog = false },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.rear_widget_cancel))
+                }
+            }
+        }
+    }
+}
+
+private fun formatFloat(value: Float): String =
+    String.format(Locale.US, "%.4f", value).trimEnd('0').trimEnd('.')
+
+private fun normalizeGravity(gravity: Int): Int {
+    return gravityOptions.firstOrNull { it.value == gravity }?.value
+        ?: CustomBoundsCompatConfigCodec.DEFAULT_GRAVITY
+}
+
+@Composable
+private fun CustomBoundsDropdownPreference(
+    title: String,
+    description: String,
+    options: List<CustomBoundsOption>,
+    selectedValue: Int,
+    onSelected: (Int) -> Unit,
+) {
+    val optionTitles = options.map { stringResource(it.titleRes) }
+    val optionEntries = remember(optionTitles) {
+        optionTitles.map { SpinnerEntry(title = it) }
+    }
+    val selectedIndex = options.indexOfFirst { it.value == selectedValue }.coerceAtLeast(0)
+    WindowSpinnerPreference(
+        modifier = Modifier.clip(miuixShape(16.dp)),
+        items = optionEntries,
+        selectedIndex = selectedIndex,
+        title = title,
+        summary = description,
+        onSelectedIndexChange = { index -> onSelected(options[index].value) },
+    )
+}
+
+@Composable
+private fun customBoundsBadges(item: CustomBoundsCompatAppConfig): List<RearBadgeItem> {
+    val statePalette = rememberRearAccentBadgePalette(
+        if (item.enabled) Color(0xFF10B981) else Color(0xFF64748B)
+    )
+    val ratioPalette = rememberRearAccentBadgePalette(Color(0xFF6366F1))
+    val positionPalette = rememberRearAccentBadgePalette(Color(0xFF8B5CF6))
+    val densityPalette = rememberRearAccentBadgePalette(Color(0xFF0EA5E9))
+    val rotationPalette = rememberRearAccentBadgePalette(Color(0xFFF59E0B))
+    return listOf(
+        RearBadgeItem(
+            text = if (item.enabled) {
+                stringResource(R.string.custom_bounds_enabled)
+            } else {
+                stringResource(R.string.custom_bounds_disabled)
+            },
+            emphasized = item.enabled,
+            palette = statePalette,
+        ),
+        RearBadgeItem(
+            text = stringResource(
+                R.string.custom_bounds_badge_mode,
+                modeTitle(item.mode),
+            ),
+            palette = ratioPalette,
+        ),
+        if (item.mode == CustomBoundsMode.CUSTOM_RATIO) RearBadgeItem(
+            text = stringResource(
+                R.string.custom_bounds_badge_ratio,
+                formatFloat(item.aspectRatio),
+            ),
+            palette = ratioPalette,
+        ) else if (item.mode == CustomBoundsMode.EXACT_INSETS) RearBadgeItem(
+            text = stringResource(
+                R.string.custom_bounds_badge_insets,
+                "${item.insetLeft},${item.insetTop},${item.insetRight},${item.insetBottom}",
+            ),
+            palette = ratioPalette,
+        ) else RearBadgeItem(
+            text = stringResource(R.string.custom_bounds_auto_ratio_hint),
+            palette = ratioPalette,
+        ),
+        RearBadgeItem(
+            text = stringResource(
+                R.string.custom_bounds_badge_scale,
+                formatFloat(item.scale),
+            ),
+            palette = ratioPalette,
+        ),
+        RearBadgeItem(
+            text = stringResource(
+                R.string.custom_bounds_badge_position,
+                gravityTitle(item.gravity),
+            ),
+            palette = positionPalette,
+        ),
+        RearBadgeItem(
+            text = stringResource(
+                R.string.custom_bounds_badge_density,
+                item.densityDpi.takeIf { it > 0 }?.toString()
+                    ?: stringResource(R.string.custom_bounds_follow_system),
+            ),
+            palette = densityPalette,
+        ),
+        RearBadgeItem(
+            text = stringResource(
+                R.string.custom_bounds_badge_rotation,
+                formatRotation(item.rotationDegrees),
+            ),
+            palette = rotationPalette,
+        ),
+    )
+}
+
+@Composable
+private fun modeTitle(mode: CustomBoundsMode): String {
+    return when (mode) {
+        CustomBoundsMode.AUTO_RATIO -> stringResource(R.string.custom_bounds_mode_auto_ratio)
+        CustomBoundsMode.CUSTOM_RATIO -> stringResource(R.string.custom_bounds_mode_custom_ratio)
+        CustomBoundsMode.EXACT_INSETS -> stringResource(R.string.custom_bounds_mode_exact_insets)
+    }
+}
+
+@Composable
+private fun gravityTitle(gravity: Int): String {
+    val option = gravityOptions.firstOrNull { it.value == gravity }
+    return if (option != null) {
+        stringResource(option.titleRes)
+    } else {
+        stringResource(R.string.custom_bounds_position_custom, gravity)
+    }
+}
+
+@Composable
+private fun formatRotation(rotationDegrees: Int): String {
+    return if (rotationDegrees == CustomBoundsCompatConfigCodec.ROTATION_FOLLOW_SYSTEM) {
+        stringResource(R.string.custom_bounds_follow_system)
+    } else {
+        stringResource(R.string.custom_bounds_rotation_value, rotationDegrees)
+    }
+}
