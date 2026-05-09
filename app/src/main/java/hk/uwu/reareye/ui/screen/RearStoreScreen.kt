@@ -1125,7 +1125,13 @@ private fun RearStoreDetailContent(
         loading = true
         loadFailed = false
         detail = withContext(Dispatchers.IO) {
-            runCatching { RearStoreRepository.loadWidgetDetail(prefsManager, widgetId) }.getOrNull()
+            runCatching {
+                RearStoreRepository.loadWidgetDetail(
+                    prefsManager = prefsManager,
+                    widgetId = widgetId,
+                    widgetInfoVersion = installedWidget?.releaseTag,
+                )
+            }.getOrNull()
         }
         readmeLoading = false
         readmeLoaded = detail?.readme != null
@@ -1133,7 +1139,7 @@ private fun RearStoreDetailContent(
         loading = false
     }
 
-    LaunchedEffect(widgetId) {
+    LaunchedEffect(widgetId, installedWidget?.releaseTag) {
         reloadDetail()
     }
 
@@ -1157,14 +1163,28 @@ private fun RearStoreDetailContent(
         return widgetId + ":" + release.tagName + ":" + asset.name
     }
 
+    suspend fun loadInstallDetail(release: RearStoreRelease): RearStoreWidgetDetail? {
+        val widgetDetail = detail ?: return null
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                RearStoreRepository.loadWidgetDetailForRelease(
+                    prefsManager = prefsManager,
+                    detail = widgetDetail,
+                    releaseTag = release.tagName,
+                )
+            }.getOrDefault(widgetDetail)
+        }
+    }
+
     suspend fun performInstall(
         release: RearStoreRelease,
         asset: RearStoreReleaseAsset,
         forceOverwrite: Boolean = false,
         preparedAsset: RearStorePreparedInstallAsset? = null,
         wallpaperMetadataOptions: RearWallpaperMetadataOptions? = null,
+        installDetail: RearStoreWidgetDetail? = null,
     ) {
-        val widgetDetail = detail ?: return
+        val widgetDetail = installDetail ?: loadInstallDetail(release) ?: return
         val assetKey = installAssetKey(release, asset)
         activeInstall = RearStoreActiveInstall(assetKey = assetKey)
         val result = runCatching {
@@ -1238,7 +1258,7 @@ private fun RearStoreDetailContent(
     }
 
     suspend fun prepareWallpaperInstall(release: RearStoreRelease, asset: RearStoreReleaseAsset) {
-        val widgetDetail = detail ?: return
+        val widgetDetail = loadInstallDetail(release) ?: return
         val assetKey = installAssetKey(release, asset)
         activeInstall = RearStoreActiveInstall(assetKey = assetKey)
         val preparedResult = runCatching {
@@ -1286,6 +1306,7 @@ private fun RearStoreDetailContent(
             release = release,
             asset = asset,
             preparedAsset = preparedAsset,
+            installDetail = widgetDetail,
         )
     }
 
@@ -1294,7 +1315,7 @@ private fun RearStoreDetailContent(
         asset: RearStoreReleaseAsset,
         forceOverwrite: Boolean = false,
     ) {
-        val widgetDetail = detail ?: return
+        val widgetDetail = loadInstallDetail(release) ?: return
         val blockedMessage = resolveInstallBlockMessage(context, prefsManager, widgetDetail)
         if (blockedMessage != null) {
             blockedInstallMessage = blockedMessage
@@ -1314,7 +1335,12 @@ private fun RearStoreDetailContent(
         if (widgetDetail.widgetInfo.resolvedType() == RearStoreWidgetInfoType.WALLPAPER) {
             prepareWallpaperInstall(release, asset)
         } else {
-            performInstall(release, asset, forceOverwrite = forceOverwrite)
+            performInstall(
+                release,
+                asset,
+                forceOverwrite = forceOverwrite,
+                installDetail = widgetDetail
+            )
         }
     }
 

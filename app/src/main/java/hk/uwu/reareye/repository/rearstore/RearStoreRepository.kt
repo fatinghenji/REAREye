@@ -902,6 +902,8 @@ data class RearStoreRelease(
     val publishedAt: String = "",
     @SerializedName("url")
     val url: String = "",
+    @SerializedName(value = "widgetInfo", alternate = ["widget_info"])
+    val widgetInfo: RearStoreWidgetInfo? = null,
     @SerializedName("assets")
     val assets: List<RearStoreReleaseAsset> = emptyList(),
 )
@@ -1128,18 +1130,19 @@ object RearStoreRepository {
 
     suspend fun loadWidgetDetail(
         prefsManager: PrefsManager,
-        widgetId: String
+        widgetId: String,
+        widgetInfoVersion: String? = null,
     ): RearStoreWidgetDetail? {
         val normalizedWidgetId = widgetId.normalizedOrNull() ?: return null
+        val normalizedWidgetInfoVersion = widgetInfoVersion.normalizedOrNull()
         val baseUrl = resolveRearStoreApiBaseUrl(prefsManager)
-        val detailCacheKey = cacheKey(baseUrl, normalizedWidgetId)
+        val detailCacheKey = cacheKey(baseUrl, normalizedWidgetId, normalizedWidgetInfoVersion)
         detailCache[detailCacheKey]?.let { return it }
         return withContext(Dispatchers.IO) {
             coroutineScope {
                 val descriptionDeferred =
                     async { loadDescriptionCached(baseUrl, normalizedWidgetId) }
                 val authorDeferred = async { loadAuthorCached(baseUrl, normalizedWidgetId) }
-                val infoDeferred = async { loadWidgetInfoCached(baseUrl, normalizedWidgetId) }
                 val releasesDeferred = async { loadReleasesCached(baseUrl, normalizedWidgetId) }
 
                 val description = descriptionDeferred.await()
@@ -1150,12 +1153,17 @@ object RearStoreRepository {
                     }
                     ?: return@coroutineScope null
                 val repository = description.repository
-                val widgetInfo = infoDeferred.await()
+                val releases = releasesDeferred.await().orEmpty()
+                val widgetInfo = loadWidgetInfoForVersionCached(
+                    baseUrl = baseUrl,
+                    widgetId = normalizedWidgetId,
+                    version = normalizedWidgetInfoVersion,
+                    releases = releases,
+                )
                 val metadata = description.metadata
-                val widgetType = loadWidgetTypeFromInfoCached(baseUrl, normalizedWidgetId)
                 val resolvedAuthor = resolveAuthor(authorDeferred.await(), repository)
                 val detail = RearStoreWidgetDetail(
-                    type = widgetType ?: metadata?.type.normalizedOrNull(),
+                    type = widgetInfo?.type.normalizedOrNull() ?: metadata?.type.normalizedOrNull(),
                     widgetId = normalizedWidgetId,
                     name = description.name.normalizedOrNull()
                         ?: widgetInfo?.name.normalizedOrNull()
@@ -1166,12 +1174,28 @@ object RearStoreRepository {
                     widgetInfo = widgetInfo,
                     metadata = metadata,
                     readme = readmeCache[detailCacheKey],
-                    releases = releasesDeferred.await().orEmpty(),
+                    releases = releases,
                 )
                 detailCache[detailCacheKey] = detail
                 detail
             }
         }
+    }
+
+    suspend fun loadWidgetDetailForRelease(
+        prefsManager: PrefsManager,
+        detail: RearStoreWidgetDetail,
+        releaseTag: String?,
+    ): RearStoreWidgetDetail = withContext(Dispatchers.IO) {
+        val normalizedWidgetId = detail.widgetId.normalizedOrNull() ?: return@withContext detail
+        val baseUrl = resolveRearStoreApiBaseUrl(prefsManager)
+        val widgetInfo = loadWidgetInfoForVersionCached(
+            baseUrl = baseUrl,
+            widgetId = normalizedWidgetId,
+            version = releaseTag,
+            releases = detail.releases,
+        )
+        detail.copy(widgetInfo = widgetInfo ?: detail.widgetInfo)
     }
 
     suspend fun loadWidgetReadme(prefsManager: PrefsManager, widgetId: String): RearStoreReadme? {
@@ -1477,6 +1501,11 @@ object RearStoreRepository {
             preferredAssetName = assetName,
         )
             ?: error("No downloadable release asset found")
+        val installDetail = loadWidgetDetailForRelease(
+            prefsManager = prefsManager,
+            detail = detail,
+            releaseTag = selectedAsset.release.tagName,
+        )
         val assetBytes = downloadAssetBytes(
             baseUrl = baseUrl,
             widgetId = detail.widgetId,
@@ -1484,10 +1513,11 @@ object RearStoreRepository {
             onProgress = onProgress,
         )
             ?: error("Failed to download widget asset")
-        val isWallpaper = detail.widgetInfo.resolvedType() == RearStoreWidgetInfoType.WALLPAPER
+        val isWallpaper =
+            installDetail.widgetInfo.resolvedType() == RearStoreWidgetInfoType.WALLPAPER
         val embeddedMetadataBytes = if (isWallpaper) extractRootMetadataMrm(assetBytes) else null
         val defaultWallpaperOptions = if (isWallpaper) {
-            detail.toWallpaperMetadataOptions(detail.defaultWallpaperName())
+            installDetail.toWallpaperMetadataOptions(installDetail.defaultWallpaperName())
         } else {
             null
         }
@@ -1519,14 +1549,27 @@ object RearStoreRepository {
         wallpaperMetadataOptions: RearWallpaperMetadataOptions? = null,
         onProgress: (RearStoreInstallProgress) -> Unit = {},
     ): RearStoreQuickInstallResult = withContext(Dispatchers.IO) {
-        val widgetInfoType = detail.widgetInfo.resolvedType()
+        val selectedReleaseTag = preparedAsset?.release?.tagName.normalizedOrNull()
+            ?: releaseTag.normalizedOrNull()
+            ?: selectAsset(
+                releases = detail.releases,
+                preferredReleaseTag = releaseTag,
+                preferredAssetName = assetName,
+            )?.release?.tagName.normalizedOrNull()
+        val installDetail = loadWidgetDetailForRelease(
+            prefsManager = prefsManager,
+            detail = detail,
+            releaseTag = selectedReleaseTag,
+        )
+        val widgetInfoType = installDetail.widgetInfo.resolvedType()
         if (!widgetInfoType.supportedInCurrentVersion) {
             error("Install mode '${widgetInfoType.rawValue}' is not supported by current version")
         }
-        if (!detail.widgetInfo.supportsModuleVersion()) {
+        if (!installDetail.widgetInfo.supportsModuleVersion()) {
             error("Current module version does not support installing this component")
         }
-        val requirementsResult = detail.widgetInfo.evaluateRequirements(context, prefsManager)
+        val requirementsResult =
+            installDetail.widgetInfo.evaluateRequirements(context, prefsManager)
         if (!requirementsResult.satisfied) {
             when {
                 !requirementsResult.appListPermissionGranted && requirementsResult.missingPackages.isNotEmpty() -> {
@@ -1556,13 +1599,13 @@ object RearStoreRepository {
                 else -> error("Widget requirements are not satisfied")
             }
         }
-        val conflict = resolveInstallConflict(prefsManager, detail)
+        val conflict = resolveInstallConflict(prefsManager, installDetail)
         if (conflict != null && !forceOverwrite) {
             error(buildInstallConflictMessage(conflict))
         }
         val prepared = preparedAsset ?: prepareInstallAsset(
             prefsManager = prefsManager,
-            detail = detail,
+            detail = installDetail,
             releaseTag = releaseTag,
             assetName = assetName,
             onProgress = onProgress,
@@ -1576,7 +1619,7 @@ object RearStoreRepository {
             RearStoreWidgetInfoType.WIDGET -> installWidgetAsset(
                 context = context,
                 prefsManager = prefsManager,
-                detail = detail,
+                detail = installDetail,
                 selectedAsset = RearStoreSelectedAsset(prepared.release, prepared.asset),
                 assetBytes = prepared.assetBytes,
                 conflict = conflict,
@@ -1585,7 +1628,7 @@ object RearStoreRepository {
             RearStoreWidgetInfoType.WALLPAPER -> installWallpaperAsset(
                 context = context,
                 prefsManager = prefsManager,
-                detail = detail,
+                detail = installDetail,
                 selectedAsset = RearStoreSelectedAsset(prepared.release, prepared.asset),
                 assetBytes = prepared.assetBytes,
                 metadataBytes = prepared.embeddedMetadataBytes,
@@ -2187,6 +2230,38 @@ object RearStoreRepository {
         return loadedWidgetInfo ?: widgetInfoCache[cacheKey]
     }
 
+    private fun loadWidgetInfoForVersionCached(
+        baseUrl: String,
+        widgetId: String,
+        version: String?,
+        releases: List<RearStoreRelease> = emptyList(),
+    ): RearStoreWidgetInfo? {
+        val normalizedVersion = version.normalizedOrNull()
+            ?: return loadWidgetInfoCached(baseUrl, widgetId)
+        val cacheKey = cacheKey(baseUrl, widgetId, normalizedVersion)
+        widgetInfoCache[cacheKey]?.let { return it }
+
+        val releaseWidgetInfo = releases.firstOrNull { release ->
+            release.tagName.normalizedOrNull() == normalizedVersion ||
+                    release.name.normalizedOrNull() == normalizedVersion
+        }?.widgetInfo
+        if (releaseWidgetInfo != null) {
+            widgetInfoCache[cacheKey] = releaseWidgetInfo
+            return releaseWidgetInfo
+        }
+
+        val loadedWidgetInfo = fetchJson<RearStoreWidgetInfoResponse>(
+            baseUrl,
+            "/widget/${Uri.encode(widgetId)}/releases/${Uri.encode(normalizedVersion)}/widget-info"
+        )?.widgetInfo
+        if (loadedWidgetInfo != null) {
+            widgetInfoCache[cacheKey] = loadedWidgetInfo
+            return loadedWidgetInfo
+        }
+
+        return loadWidgetInfoCached(baseUrl, widgetId)
+    }
+
     private fun loadWidgetTypeFromInfoCached(baseUrl: String, widgetId: String): String? {
         val cacheKey = cacheKey(baseUrl, widgetId)
         widgetTypeCache[cacheKey]?.let { return it }
@@ -2250,6 +2325,11 @@ object RearStoreRepository {
 
     private fun cacheKey(baseUrl: String, widgetId: String): String {
         return "$baseUrl\u0000$widgetId"
+    }
+
+    private fun cacheKey(baseUrl: String, widgetId: String, version: String?): String {
+        val normalizedVersion = version.normalizedOrNull() ?: return cacheKey(baseUrl, widgetId)
+        return "$baseUrl\u0000$widgetId\u0000$normalizedVersion"
     }
 
     private fun selectAsset(
