@@ -49,7 +49,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -141,6 +140,7 @@ private val AboutDeviceInfoCardBottomPadding = 12.dp
 private val AboutDeviceInfoRowVerticalPadding = 8.dp
 private val AboutDeviceInfoHeaderBottomSpacing = 8.dp
 private val AboutCardSpacing = 8.dp
+private val AboutGradientFadeDistance = 389.dp
 
 private val contributorAvatarHttpClient = OkHttpClient()
 
@@ -264,7 +264,6 @@ fun AboutScreen(bottomInnerPadding: Dp = 0.dp) {
     val versionText = rememberVersionText()
     val contributorState by ContributorRepository.state.collectAsState()
     val lazyListState = rememberLazyListState()
-    var logoHeightPx by remember { mutableIntStateOf(0) }
 
     var route by remember { mutableStateOf<AboutRoute>(AboutRoute.Root) }
     var animateRootContent by remember { mutableStateOf(true) }
@@ -373,9 +372,7 @@ fun AboutScreen(bottomInnerPadding: Dp = 0.dp) {
                 versionText = versionText,
                 entries = entries,
                 lazyListState = lazyListState,
-                logoHeightPx = logoHeightPx,
                 animateEnter = animateRootContent,
-                onLogoHeightChanged = { logoHeightPx = it },
                 onOpenContributors = {
                     animateRootContent = false
                     route = AboutRoute.Contributors
@@ -420,25 +417,24 @@ private fun AboutRootPage(
     versionText: String,
     entries: List<CreditEntry>,
     lazyListState: LazyListState,
-    logoHeightPx: Int,
     animateEnter: Boolean,
-    onLogoHeightChanged: (Int) -> Unit,
     onOpenContributors: () -> Unit,
     onOpenLibraries: () -> Unit,
 ) {
     val scrollBehavior = MiuixScrollBehavior()
     val hazeState = rememberAcrylicHazeState()
-    val scrollProgress by remember {
+    val gradientFadeDistancePx = with(LocalDensity.current) {
+        AboutGradientFadeDistance.toPx().coerceAtLeast(1f)
+    }
+    val scrollProgress by remember(lazyListState, gradientFadeDistancePx) {
         derivedStateOf {
             val index = lazyListState.firstVisibleItemIndex
             val offset = lazyListState.firstVisibleItemScrollOffset
 
             if (index > 0) {
                 1f
-            } else if (logoHeightPx <= 0) {
-                0f
             } else {
-                (offset.toFloat() / logoHeightPx).coerceIn(0f, 1f)
+                (offset.toFloat() / gradientFadeDistancePx).coerceIn(0f, 1f)
             }
         }
     }
@@ -464,7 +460,6 @@ private fun AboutRootPage(
             entries = entries,
             onOpenContributors = onOpenContributors,
             scrollProgress = scrollProgress,
-            onLogoHeightChanged = onLogoHeightChanged,
             lazyListState = lazyListState,
             onOpenLibraries = onOpenLibraries,
             animateEnter = animateEnter,
@@ -523,7 +518,6 @@ private fun AboutRootContent(
     entries: List<CreditEntry>,
     onOpenContributors: () -> Unit,
     scrollProgress: Float,
-    onLogoHeightChanged: (Int) -> Unit,
     lazyListState: LazyListState,
     onOpenLibraries: () -> Unit,
     animateEnter: Boolean,
@@ -735,9 +729,6 @@ private fun AboutRootContent(
                         .height(
                             logoHeightDp + 52.dp + logoPadding.calculateTopPadding() - scrollPadding.calculateTopPadding() + 126.dp,
                         )
-                        .onSizeChanged { size ->
-                            onLogoHeightChanged(size.height)
-                        }
                         .onGloballyPositioned { coordinates ->
                             val y = coordinates.positionInWindow().y
                             val size = coordinates.size
