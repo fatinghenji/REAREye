@@ -121,7 +121,6 @@ import hk.uwu.reareye.ui.components.card.ModuleStyleDeleteAction
 import hk.uwu.reareye.ui.components.card.SuperCard
 import hk.uwu.reareye.ui.components.config.WallpaperMetadataFields
 import hk.uwu.reareye.ui.components.motion.ArtRevealItem
-import hk.uwu.reareye.ui.components.motion.ArtStaggeredReveal
 import hk.uwu.reareye.ui.components.rememberRearAccentBadgePalette
 import hk.uwu.reareye.ui.components.webview.ScrollWebView
 import hk.uwu.reareye.ui.config.ConfigKeys
@@ -1060,19 +1059,13 @@ private fun RearStoreRootContent(
                     RearStoreMessageCard(text = stringResource(R.string.rear_store_search_empty))
                 }
             } else {
-                itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
-                    ArtStaggeredReveal(
-                        visible = true,
-                        revealKey = item.id + searchQuery,
-                        delayMillis = (24 + index * 18).coerceAtMost(160),
-                    ) {
-                        RearStoreListCard(
-                            item = item,
-                            installedWidget = installedWidgets[item.id],
-                            updateAvailable = item.hasAvailableUpdate(installedWidgets),
-                            onClick = { onOpenDetail(item.id) },
-                        )
-                    }
+                itemsIndexed(items, key = { _, item -> item.id }) { _, item ->
+                    RearStoreListCard(
+                        item = item,
+                        installedWidget = installedWidgets[item.id],
+                        updateAvailable = item.hasAvailableUpdate(installedWidgets),
+                        onClick = { onOpenDetail(item.id) },
+                    )
                 }
             }
         }
