@@ -44,6 +44,7 @@ android {
         versionName = gropify.project.app.versionName
         versionCode = gitVersionCode
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "BUILD_CHANNEL", "\"$buildSuffix\"")
     }
 
     signingConfigs {

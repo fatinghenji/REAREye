@@ -528,6 +528,16 @@
     <string name="custom_bounds_density_dpi">DPI（留空跟随系统）</string>
     <string name="custom_bounds_rotation_degrees">旋转角度</string>
     <string name="custom_bounds_rotation_help">选择固定的背屏旋转角度，或保持跟随系统。</string>
+    <string name="custom_bounds_fill_enable">填充空白区域</string>
+    <string name="custom_bounds_fill_mode">填充模式</string>
+    <string name="custom_bounds_fill_mode_help">自动模式会优先使用应用启动/背景颜色；自定义模式使用下方颜色。</string>
+    <string name="custom_bounds_fill_mode_auto">自动取色</string>
+    <string name="custom_bounds_fill_mode_custom">自定义颜色</string>
+    <string name="custom_bounds_fill_auto_hint">自动取应用启动/背景颜色，取不到时回退到系统明暗色。</string>
+    <string name="custom_bounds_fill_palette">调色板</string>
+    <string name="custom_bounds_fill_color_help">输入十六进制颜色，例如 #FF000000 或 #000000。</string>
+    <string name="custom_bounds_fill_color">填充颜色</string>
+    <string name="custom_bounds_fill_color_invalid">颜色值无效</string>
     <string name="custom_bounds_form_invalid">请填写有效的界限配置</string>
     <string name="custom_bounds_saved">界限配置已保存</string>
     <string name="custom_bounds_summary_ratio">比例 %1$s · 缩放 %2$s · 位置 %3$d</string>
@@ -554,4 +564,6 @@
     <string name="custom_bounds_badge_rotation">旋转 %1$s</string>
     <string name="custom_bounds_enabled">已启用</string>
     <string name="custom_bounds_disabled">已停用</string>
+    <string name="custom_bounds_fill_disabled">未填充</string>
+    <string name="custom_bounds_fill_custom_badge">填充 %1$s</string>
 </resources>

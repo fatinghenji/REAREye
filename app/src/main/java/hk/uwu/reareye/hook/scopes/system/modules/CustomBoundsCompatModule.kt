@@ -1,14 +1,19 @@
 package hk.uwu.reareye.hook.scopes.system.modules
 
+import android.content.Context
+import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.graphics.Color
 import android.graphics.Point
 import android.graphics.Rect
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.BuildConfig
 import hk.uwu.reareye.repository.bounds.CustomBoundsCompatAppConfig
 import hk.uwu.reareye.repository.bounds.CustomBoundsCompatConfigCodec
+import hk.uwu.reareye.repository.bounds.CustomBoundsFillMode
 import hk.uwu.reareye.repository.bounds.CustomBoundsMode
 import hk.uwu.reareye.ui.config.ConfigKeys
 import kotlin.math.max
@@ -19,13 +24,21 @@ class CustomBoundsCompatModule : YukiBaseHooker() {
     override fun onHook() {
         loadSystem {
             val activityRecordImplClass = runCatching {
-                "com.android.server.wm.ActivityRecordImpl".toClass().resolve()
+                "com.android.server.wm.ActivityRecordImpl".toClass()
+            }.getOrElse {
+                YLog.warn("ActivityRecordImpl class not found, skip custom rear bounds hook")
+                return@loadSystem
+            }
+            val activityRecordImplRef = runCatching {
+                activityRecordImplClass.resolve()
             }.getOrElse {
                 YLog.warn("ActivityRecordImpl not found, skip custom rear bounds hook")
                 return@loadSystem
             }
 
-            activityRecordImplClass.firstMethod {
+            val themeColorUtilsClass = "com.android.server.wm.ThemeColorUtils".toClass()
+
+            activityRecordImplRef.firstMethod {
                 name = "resolveOverrideConfiguration"
                 parameterCount = 2
             }.hook().after {
@@ -96,14 +109,291 @@ class CustomBoundsCompatModule : YukiBaseHooker() {
                     densityDpi = config.densityDpi.takeIf { it > 0 } ?: parentConfig.densityDpi,
                     rotation = config.rotationDegrees,
                 )
+                @Suppress("SimplifyBooleanWithConstants", "KotlinConstantConditions")
+                prepareFlipSplashColor(
+                    activityRecordImpl = instance,
+                    activityRecord = activityRecord,
+                    bounds = compatBounds,
+                    moreDebug = moreDebug,
+                    collectDetails = moreDebug && SHOULD_LOG_DETAILS,
+                    themeColorUtilsClass = themeColorUtilsClass
+                )
+                applyTaskFillColor(
+                    activityRecordImpl = instance,
+                    activityRecord = activityRecord,
+                    config = config,
+                    moreDebug = moreDebug,
+                )
                 if (moreDebug) {
                     YLog.debug(
-                        "[$TAG] apply package=$packageName displayId=$displayId parent=$parentBounds bounds=$compatBounds mode=${config.mode} ratio=${config.aspectRatio} insets=${config.insetLeft},${config.insetTop},${config.insetRight},${config.insetBottom} gravity=${config.gravity} scale=${config.scale} dpi=${config.densityDpi} rotation=${config.rotationDegrees}"
+                        "[$TAG] apply package=$packageName displayId=$displayId parent=$parentBounds bounds=$compatBounds mode=${config.mode} ratio=${config.aspectRatio} insets=${config.insetLeft},${config.insetTop},${config.insetRight},${config.insetBottom} gravity=${config.gravity} scale=${config.scale} dpi=${config.densityDpi} rotation=${config.rotationDegrees} fill=${config.fillEnabled}/${config.fillMode}"
                     )
                 }
             }
         }
     }
+
+    private fun prepareFlipSplashColor(
+        activityRecordImpl: Any?,
+        activityRecord: Any?,
+        bounds: Rect,
+        moreDebug: Boolean,
+        collectDetails: Boolean,
+        themeColorUtilsClass: Class<*>?
+    ) {
+        val activityInfo = activityRecord.field<ActivityInfo>("info") ?: return
+        val theme = activityRecord.call<Int>("getTheme")
+            ?: activityInfo.themeResource
+        val splashColor = computeSplashColorDirect(
+            activityRecordImpl = activityRecordImpl,
+            activityRecord = activityRecord,
+            activityInfo = activityInfo,
+            theme = theme,
+            collectDetails = collectDetails,
+            themeColorUtilsClass = themeColorUtilsClass
+        )
+        if (moreDebug) {
+            val detailsSuffix = if (collectDetails && splashColor.details != null) {
+                " details=${splashColor.details}"
+            } else {
+                ""
+            }
+            YLog.debug(
+                "[$TAG] prepare flip splash color source=${splashColor.source} package=${activityInfo.packageName} " +
+                        "theme=$theme color=${splashColor.color?.toArgbHex() ?: "null"} bounds=$bounds$detailsSuffix"
+            )
+        }
+    }
+
+    private fun applyTaskFillColor(
+        activityRecordImpl: Any?,
+        activityRecord: Any?,
+        config: CustomBoundsCompatAppConfig,
+        moreDebug: Boolean,
+    ) {
+        val task = activityRecord.call<Any>("getTask")
+            ?: activityRecord.call<Any>("getParent")
+            ?: return
+        val surfaceControl = task.field<Any>("mSurfaceControl")
+            ?: task.call<Any>("getSurfaceControl")
+            ?: return
+        val transaction = task.call<Any>("getSyncTransaction")
+            ?: activityRecord.call<Any>("getSyncTransaction")
+            ?: return
+
+        if (!config.fillEnabled) {
+            unsetTaskSurfaceColor(transaction, surfaceControl)
+            requestTraversal(activityRecord)
+            if (moreDebug) {
+                YLog.debug("[$TAG] unset fill package=${config.packageName}")
+            }
+            return
+        }
+
+        val fillColor = resolveFillColor(
+            activityRecordImpl = activityRecordImpl,
+            config = config,
+        ) ?: run {
+            if (moreDebug) {
+                YLog.debug(
+                    "[$TAG] skip fill package=${config.packageName} reason=no_flip_color " +
+                            describeFlipColorState(activityRecordImpl, activityRecord)
+                )
+            }
+            return
+        }
+        setTaskSurfaceColor(transaction, surfaceControl, fillColor)
+        requestTraversal(activityRecord)
+        if (moreDebug) {
+            YLog.debug(
+                "[$TAG] set fill package=${config.packageName} mode=${config.fillMode} color=${fillColor.toArgbHex()}"
+            )
+        }
+    }
+
+    private fun resolveFillColor(
+        activityRecordImpl: Any?,
+        config: CustomBoundsCompatAppConfig,
+    ): Int? {
+        return when (config.fillMode) {
+            CustomBoundsFillMode.CUSTOM -> config.fillColorArgb.takeIf(::isUsableFillColor)
+            CustomBoundsFillMode.AUTO -> resolveBySystemFlipLogic(activityRecordImpl)
+        }
+    }
+
+    private fun resolveBySystemFlipLogic(activityRecordImpl: Any?): Int? = runCatching {
+        activityRecordImpl ?: return@runCatching null
+        activityRecordImpl.field<Int>("mSplashBgColor")?.takeIf(::isUsableFillColor)
+    }.getOrNull()
+
+    private fun computeSplashColorDirect(
+        activityRecordImpl: Any?,
+        activityRecord: Any?,
+        activityInfo: ActivityInfo,
+        theme: Int,
+        collectDetails: Boolean,
+        themeColorUtilsClass: Class<*>?
+    ): SplashColorResult {
+        val details = if (collectDetails) mutableListOf<String>() else null
+        fun detailsText(): String? = details?.joinToString(";")
+        val systemContext = activityRecord.systemContext()
+            ?: activityRecordImpl.systemContext()
+            ?: return SplashColorResult(null, "none", detailsText())
+        val packageContext = createPackageContextForActivity(systemContext, activityInfo)
+            ?: return SplashColorResult(null, "none", detailsText())
+        val resolvedTheme = when {
+            theme != 0 -> theme
+            activityInfo.themeResource != 0 -> activityInfo.themeResource
+            else -> android.R.style.Theme_DeviceDefault_DayNight
+        }
+        packageContext.setTheme(resolvedTheme)
+        details?.add("resolvedTheme=$resolvedTheme")
+
+        val miuiCandidate = resolveThemeColorByMiuiUtils(
+            context = packageContext,
+            packageName = activityInfo.packageName,
+            activityRecordImpl = activityRecordImpl,
+            themeColorUtilsClass = themeColorUtilsClass,
+        )
+        if (miuiCandidate != null) {
+            details?.add("${miuiCandidate.source}=${miuiCandidate.color.toArgbHex()}")
+            if (isUsableFillColor(miuiCandidate.color)) {
+                return SplashColorResult(miuiCandidate.color, miuiCandidate.source, detailsText())
+            }
+        }
+
+        return SplashColorResult(null, "none", detailsText())
+    }
+
+    private data class SplashColorResult(
+        val color: Int?,
+        val source: String,
+        val details: String?,
+    )
+
+    private data class ColorCandidate(
+        val color: Int,
+        val source: String,
+    )
+
+    private fun resolveThemeColorByMiuiUtils(
+        context: Context,
+        packageName: String,
+        activityRecordImpl: Any?,
+        themeColorUtilsClass: Class<*>?,
+    ): ColorCandidate? = runCatching {
+        themeColorUtilsClass ?: return@runCatching null
+        val attrsClass = $$"com.android.server.wm.ThemeColorUtils$SplashScreenWindowAttrs".toClass(
+            themeColorUtilsClass.classLoader
+        )
+        val attrs = attrsClass.getDeclaredConstructor()
+            .apply { isAccessible = true }
+            .newInstance()
+        themeColorUtilsClass.getDeclaredMethod("getWindowAttrs", Context::class.java, attrsClass)
+            .apply { isAccessible = true }
+            .invoke(null, context, attrs)
+        val color = themeColorUtilsClass.getDeclaredMethod(
+            "peekWindowBGColor",
+            Context::class.java,
+            attrsClass
+        )
+            .apply { isAccessible = true }
+            .invoke(null, context, attrs) as? Int
+            ?: return@runCatching null
+        if (isUsableFillColor(color)) {
+            activityRecordImpl.setField("mSplashBgColor", color)
+            setThemeColorCache(themeColorUtilsClass, packageName, color)
+        }
+        ColorCandidate(color, "miuiThemeColorUtils")
+    }.getOrNull()
+
+    private fun createPackageContextForActivity(
+        systemContext: Context,
+        activityInfo: ActivityInfo,
+    ): Context? {
+        return runCatching {
+            val userHandleClass = "android.os.UserHandle".toClass()
+            val userId =
+                userHandleClass.getDeclaredMethod("getUserId", Int::class.javaPrimitiveType)
+                    .apply { isAccessible = true }
+                    .invoke(null, activityInfo.applicationInfo.uid) as Int
+            val userHandle = userHandleClass.getDeclaredMethod("of", Int::class.javaPrimitiveType)
+                .apply { isAccessible = true }
+                .invoke(null, userId)
+            systemContext.javaClass.getMethod(
+                "createPackageContextAsUser",
+                String::class.java,
+                Int::class.javaPrimitiveType,
+                userHandleClass,
+            ).invoke(
+                systemContext,
+                activityInfo.packageName,
+                Context.CONTEXT_RESTRICTED,
+                userHandle
+            ) as? Context
+        }.getOrElse {
+            runCatching {
+                systemContext.createPackageContext(
+                    activityInfo.packageName,
+                    Context.CONTEXT_RESTRICTED
+                )
+            }.getOrNull()
+        }
+    }
+
+    private fun setThemeColorCache(
+        themeColorUtilsClass: Class<*>,
+        packageName: String,
+        color: Int,
+    ) {
+        runCatching {
+            @Suppress("UNCHECKED_CAST")
+            val cache = themeColorUtilsClass.getDeclaredField("mAppColorCache")
+                .apply { isAccessible = true }
+                .get(null) as? MutableMap<String, Int>
+            cache?.put(packageName, color)
+        }
+    }
+
+    private fun describeFlipColorState(activityRecordImpl: Any?, activityRecord: Any?): String {
+        val splashBgColor = activityRecordImpl.field<Int>("mSplashBgColor")
+        val flipCutoutColor = activityRecordImpl.field<Int>("mFlipCutoutColor")
+        val taskDescription = activityRecord.field<Any>("taskDescription")
+        val navigationBarColor = taskDescription.call<Int>("getNavigationBarColor")
+        val systemContext = activityRecord.systemContext()
+        val nightMode = systemContext?.resources?.configuration?.isNightModeActive
+        return "splash=${splashBgColor?.toArgbHex() ?: "null"} " +
+                "flip=${flipCutoutColor?.toArgbHex() ?: "null"} " +
+                "taskDescription=${taskDescription != null} " +
+                "nav=${navigationBarColor?.toArgbHex() ?: "null"} " +
+                "night=$nightMode"
+    }
+
+    private fun setTaskSurfaceColor(transaction: Any?, surfaceControl: Any?, colorInt: Int) {
+        val color = Color.valueOf(colorInt)
+        transaction.call<Unit>(
+            "setColor",
+            surfaceControl,
+            floatArrayOf(color.red(), color.green(), color.blue()),
+        )
+    }
+
+    private fun unsetTaskSurfaceColor(transaction: Any?, surfaceControl: Any?) {
+        transaction.call<Unit>("unsetColor", surfaceControl)
+    }
+
+    private fun requestTraversal(activityRecord: Any?) {
+        activityRecord
+            .field<Any>("mWmService")
+            ?.field<Any>("mWindowPlacerLocked")
+            ?.call<Unit>("requestTraversal")
+    }
+
+    private fun isUsableFillColor(color: Int): Boolean =
+        color != 0 && (color ushr 24) != 0
+
+    private fun Int.toArgbHex(): String =
+        "#" + Integer.toHexString(this).padStart(8, '0').uppercase()
 
     private fun computeInsetsBounds(parentBounds: Rect, config: CustomBoundsCompatAppConfig): Rect {
         val left = parentBounds.left + config.insetLeft
@@ -238,6 +528,16 @@ class CustomBoundsCompatModule : YukiBaseHooker() {
         this?.asResolver()?.firstField { this.name = name }?.get<T>()
     }.getOrNull()
 
+    private fun Any?.setField(name: String, value: Any?) {
+        runCatching {
+            this?.asResolver()?.firstField { this.name = name }?.set(value)
+        }
+    }
+
+    private fun Any?.systemContext(): Context? =
+        field<Any>("mAtmService")?.field("mContext")
+            ?: field<Any>("mWmService")?.field("mContext")
+
     private fun <T> Any?.call(name: String, vararg args: Any?): T? = runCatching {
         this?.asResolver()?.firstMethod {
             this.name = name
@@ -272,5 +572,8 @@ class CustomBoundsCompatModule : YukiBaseHooker() {
         const val RIGHT = 5
         const val TOP = 48
         const val BOTTOM = 80
+
+        @Suppress("KotlinConstantConditions", "SimplifyBooleanWithConstants")
+        const val SHOULD_LOG_DETAILS = BuildConfig.BUILD_CHANNEL == "dev"
     }
 }

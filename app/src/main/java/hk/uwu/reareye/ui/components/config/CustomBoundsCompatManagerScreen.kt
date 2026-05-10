@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,8 +14,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -32,15 +36,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.toColorInt
 import hk.uwu.reareye.R
 import hk.uwu.reareye.repository.bounds.CustomBoundsCompatAppConfig
 import hk.uwu.reareye.repository.bounds.CustomBoundsCompatConfigCodec
+import hk.uwu.reareye.repository.bounds.CustomBoundsFillMode
 import hk.uwu.reareye.repository.bounds.CustomBoundsMode
 import hk.uwu.reareye.ui.components.DialogFormColumn
 import hk.uwu.reareye.ui.components.OverlayDialog
@@ -65,6 +72,7 @@ import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.ColorPalette
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
@@ -78,6 +86,7 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.preference.WindowSpinnerPreference
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.miuixShape
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
@@ -144,6 +153,10 @@ fun CustomBoundsCompatManagerScreen(
     var draftInsetTop by remember { mutableStateOf("") }
     var draftInsetRight by remember { mutableStateOf("") }
     var draftInsetBottom by remember { mutableStateOf("") }
+    var draftFillEnabled by remember { mutableStateOf(false) }
+    var draftFillMode by remember { mutableIntStateOf(0) }
+    var draftFillColor by remember { mutableStateOf("#FF000000") }
+    var draftFillColorError by remember { mutableStateOf(false) }
 
     val appSelectorItem = remember {
         ConfigItem(
@@ -203,6 +216,13 @@ fun CustomBoundsCompatManagerScreen(
         draftInsetTop = item.insetTop.takeIf { it > 0 }?.toString().orEmpty()
         draftInsetRight = item.insetRight.takeIf { it > 0 }?.toString().orEmpty()
         draftInsetBottom = item.insetBottom.takeIf { it > 0 }?.toString().orEmpty()
+        draftFillEnabled = item.fillEnabled
+        draftFillMode = when (item.fillMode) {
+            CustomBoundsFillMode.AUTO -> 0
+            CustomBoundsFillMode.CUSTOM -> 1
+        }
+        draftFillColor = formatColorInt(item.fillColorArgb.takeIf { it != 0 } ?: 0xFF000000.toInt())
+        draftFillColorError = false
         showDialog = true
     }
 
@@ -222,13 +242,21 @@ fun CustomBoundsCompatManagerScreen(
         val insetTop = draftInsetTop.trim().ifBlank { "0" }.toIntOrNull()
         val insetRight = draftInsetRight.trim().ifBlank { "0" }.toIntOrNull()
         val insetBottom = draftInsetBottom.trim().ifBlank { "0" }.toIntOrNull()
+        val fillMode = when (draftFillMode) {
+            1 -> CustomBoundsFillMode.CUSTOM
+            else -> CustomBoundsFillMode.AUTO
+        }
+        val parsedFillColor = parseColorInt(draftFillColor)
+        draftFillColorError =
+            draftFillEnabled && fillMode == CustomBoundsFillMode.CUSTOM && parsedFillColor == null
 
         if (scale == null || scale <= 0f || densityDpi == null || densityDpi < 0 ||
             gravityOptions.none { it.value == gravity } ||
             CustomBoundsCompatConfigCodec.normalizeRotation(rotation) != rotation ||
             insetLeft == null || insetLeft < 0 || insetTop == null || insetTop < 0 ||
             insetRight == null || insetRight < 0 || insetBottom == null || insetBottom < 0 ||
-            (mode == CustomBoundsMode.CUSTOM_RATIO && (aspectRatio == null || aspectRatio <= 0f))
+            (mode == CustomBoundsMode.CUSTOM_RATIO && (aspectRatio == null || aspectRatio <= 0f)) ||
+            (draftFillEnabled && fillMode == CustomBoundsFillMode.CUSTOM && parsedFillColor == null)
         ) {
             Toast.makeText(
                 context,
@@ -251,6 +279,13 @@ fun CustomBoundsCompatManagerScreen(
             insetTop = insetTop,
             insetRight = insetRight,
             insetBottom = insetBottom,
+            fillEnabled = draftFillEnabled,
+            fillMode = fillMode,
+            fillColorArgb = if (draftFillEnabled && fillMode == CustomBoundsFillMode.CUSTOM) {
+                parsedFillColor ?: 0
+            } else {
+                0
+            },
         )
         val index = configs.indexOfFirst { it.packageName == packageName }
         if (index >= 0) {
@@ -494,9 +529,8 @@ fun CustomBoundsCompatManagerScreen(
                 )
             }
             if (draftMode == 0) {
-                Text(
+                CustomBoundsInfoText(
                     text = stringResource(R.string.custom_bounds_auto_ratio_hint),
-                    modifier = Modifier.fillMaxWidth(),
                 )
             }
             CustomBoundsDropdownPreference(
@@ -527,6 +561,37 @@ fun CustomBoundsCompatManagerScreen(
                 selectedValue = draftRotationDegrees,
                 onSelected = { draftRotationDegrees = it },
             )
+            SwitchPreference(
+                title = stringResource(R.string.custom_bounds_fill_enable),
+                checked = draftFillEnabled,
+                onCheckedChange = { draftFillEnabled = it },
+            )
+            if (draftFillEnabled) {
+                CustomBoundsDropdownPreference(
+                    title = stringResource(R.string.custom_bounds_fill_mode),
+                    description = stringResource(R.string.custom_bounds_fill_mode_help),
+                    options = listOf(
+                        CustomBoundsOption(0, R.string.custom_bounds_fill_mode_auto),
+                        CustomBoundsOption(1, R.string.custom_bounds_fill_mode_custom),
+                    ),
+                    selectedValue = draftFillMode,
+                    onSelected = { draftFillMode = it },
+                )
+                if (draftFillMode == 0) {
+                    CustomBoundsInfoText(
+                        text = stringResource(R.string.custom_bounds_fill_auto_hint),
+                    )
+                } else {
+                    CustomBoundsColorEditor(
+                        value = draftFillColor,
+                        onValueChange = {
+                            draftFillColor = it
+                            draftFillColorError = parseColorInt(it) == null
+                        },
+                        error = draftFillColorError,
+                    )
+                }
+            }
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -581,6 +646,101 @@ private fun CustomBoundsDropdownPreference(
 }
 
 @Composable
+private fun CustomBoundsInfoText(text: String) {
+    Text(
+        text = text,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(miuixShape(16.dp))
+            .background(MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.42f))
+            .border(
+                width = 0.5.dp,
+                color = MiuixTheme.colorScheme.outline.copy(alpha = 0.18f),
+                shape = miuixShape(16.dp),
+            )
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        style = MiuixTheme.textStyles.body2,
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+    )
+}
+
+@Composable
+private fun CustomBoundsColorEditor(
+    value: String,
+    onValueChange: (String) -> Unit,
+    error: Boolean,
+) {
+    val parsedColor = remember(value) { parseColorInt(value) }
+    val composeColor = parsedColor?.let(::Color) ?: Color.White
+
+    fun commitColor(color: Color) {
+        onValueChange(formatColorInt(color.toArgb()))
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.custom_bounds_fill_palette),
+            style = MiuixTheme.textStyles.body2,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        )
+        ColorPalette(
+            color = composeColor,
+            onColorChanged = { commitColor(it) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            text = stringResource(R.string.custom_bounds_fill_color_help),
+            style = MiuixTheme.textStyles.body2,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .border(
+                        width = 1.dp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        shape = RoundedCornerShape(999.dp),
+                    )
+                    .background(parsedColor?.let(::Color) ?: Color.Transparent),
+            )
+            TextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier.weight(1f),
+                label = stringResource(R.string.custom_bounds_fill_color),
+                singleLine = true,
+            )
+        }
+        if (error) {
+            Text(
+                text = stringResource(R.string.custom_bounds_fill_color_invalid),
+                style = MiuixTheme.textStyles.body2,
+                color = MiuixTheme.colorScheme.error,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+private fun parseColorInt(raw: String): Int? {
+    val normalized = raw.trim()
+    if (normalized.isBlank()) return null
+    return runCatching { normalized.toColorInt() }.getOrNull()
+}
+
+private fun formatColorInt(color: Int): String =
+    String.format(Locale.US, "#%08X", color)
+
+@Composable
 private fun customBoundsBadges(item: CustomBoundsCompatAppConfig): List<RearBadgeItem> {
     val statePalette = rememberRearAccentBadgePalette(
         if (item.enabled) Color(0xFF10B981) else Color(0xFF64748B)
@@ -589,6 +749,7 @@ private fun customBoundsBadges(item: CustomBoundsCompatAppConfig): List<RearBadg
     val positionPalette = rememberRearAccentBadgePalette(Color(0xFF8B5CF6))
     val densityPalette = rememberRearAccentBadgePalette(Color(0xFF0EA5E9))
     val rotationPalette = rememberRearAccentBadgePalette(Color(0xFFF59E0B))
+    val fillPalette = rememberRearAccentBadgePalette(Color(0xFFEF4444))
     return listOf(
         RearBadgeItem(
             text = if (item.enabled) {
@@ -650,6 +811,20 @@ private fun customBoundsBadges(item: CustomBoundsCompatAppConfig): List<RearBadg
                 formatRotation(item.rotationDegrees),
             ),
             palette = rotationPalette,
+        ),
+        RearBadgeItem(
+            text = if (!item.fillEnabled) {
+                stringResource(R.string.custom_bounds_fill_disabled)
+            } else if (item.fillMode == CustomBoundsFillMode.AUTO) {
+                stringResource(R.string.custom_bounds_fill_mode_auto)
+            } else {
+                stringResource(
+                    R.string.custom_bounds_fill_custom_badge,
+                    formatColorInt(item.fillColorArgb),
+                )
+            },
+            emphasized = item.fillEnabled,
+            palette = fillPalette,
         ),
     )
 }

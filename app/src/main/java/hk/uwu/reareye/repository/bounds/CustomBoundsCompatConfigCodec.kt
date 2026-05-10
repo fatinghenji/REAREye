@@ -16,6 +16,9 @@ data class CustomBoundsCompatAppConfig(
     val insetTop: Int = 0,
     val insetRight: Int = 0,
     val insetBottom: Int = 0,
+    val fillEnabled: Boolean = false,
+    val fillMode: CustomBoundsFillMode = CustomBoundsFillMode.AUTO,
+    val fillColorArgb: Int = 0,
 )
 
 enum class CustomBoundsMode {
@@ -29,6 +32,21 @@ enum class CustomBoundsMode {
                 "auto_ratio" -> AUTO_RATIO
                 "custom_ratio" -> CUSTOM_RATIO
                 "exact_insets" -> EXACT_INSETS
+                else -> null
+            }
+        }
+    }
+}
+
+enum class CustomBoundsFillMode {
+    AUTO,
+    CUSTOM;
+
+    companion object {
+        fun fromString(value: String?): CustomBoundsFillMode? {
+            return when (value?.trim()?.lowercase()) {
+                "auto" -> AUTO
+                "custom" -> CUSTOM
                 else -> null
             }
         }
@@ -74,6 +92,9 @@ object CustomBoundsCompatConfigCodec {
                 aspectRatio > 0f -> CustomBoundsMode.CUSTOM_RATIO
                 else -> CustomBoundsMode.AUTO_RATIO
             }
+            val fillMode = CustomBoundsFillMode.fromString(
+                if (obj.has("fillMode")) obj.optString("fillMode") else null
+            ) ?: CustomBoundsFillMode.AUTO
             out += CustomBoundsCompatAppConfig(
                 packageName = packageName,
                 enabled = obj.optBoolean("enabled", true),
@@ -95,6 +116,9 @@ object CustomBoundsCompatConfigCodec {
                 insetTop = obj.optInt("insetTop", 0).coerceAtLeast(0),
                 insetRight = obj.optInt("insetRight", 0).coerceAtLeast(0),
                 insetBottom = obj.optInt("insetBottom", 0).coerceAtLeast(0),
+                fillEnabled = obj.optBoolean("fillEnabled", false),
+                fillMode = fillMode,
+                fillColorArgb = obj.optInt("fillColorArgb", 0),
             )
         }
         return out
@@ -122,6 +146,9 @@ object CustomBoundsCompatConfigCodec {
                             .put("insetTop", item.insetTop)
                             .put("insetRight", item.insetRight)
                             .put("insetBottom", item.insetBottom)
+                            .put("fillEnabled", item.fillEnabled)
+                            .put("fillMode", item.fillMode.name.lowercase())
+                            .put("fillColorArgb", item.fillColorArgb)
                     )
                 }
         }.toString()

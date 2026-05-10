@@ -528,6 +528,16 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="custom_bounds_density_dpi">DPI (empty follows system)</string>
     <string name="custom_bounds_rotation_degrees">Rotation</string>
     <string name="custom_bounds_rotation_help">Choose a fixed rear-screen rotation, or keep following the system.</string>
+    <string name="custom_bounds_fill_enable">Fill empty area</string>
+    <string name="custom_bounds_fill_mode">Fill mode</string>
+    <string name="custom_bounds_fill_mode_help">Auto uses the app splash/background color when available; custom uses the color below.</string>
+    <string name="custom_bounds_fill_mode_auto">Auto color</string>
+    <string name="custom_bounds_fill_mode_custom">Custom color</string>
+    <string name="custom_bounds_fill_auto_hint">Automatically samples the app splash/background color, falling back to the system light/dark color.</string>
+    <string name="custom_bounds_fill_palette">Palette</string>
+    <string name="custom_bounds_fill_color_help">Enter a hex color such as #FF000000 or #000000.</string>
+    <string name="custom_bounds_fill_color">Fill color</string>
+    <string name="custom_bounds_fill_color_invalid">Invalid color value</string>
     <string name="custom_bounds_form_invalid">Please enter valid bounds settings</string>
     <string name="custom_bounds_saved">Bounds settings saved</string>
     <string name="custom_bounds_summary_ratio">Ratio %1$s · Scale %2$s · Gravity %3$d</string>
@@ -554,4 +564,6 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="custom_bounds_badge_rotation">Rotation %1$s</string>
     <string name="custom_bounds_enabled">Enabled</string>
     <string name="custom_bounds_disabled">Disabled</string>
+    <string name="custom_bounds_fill_disabled">Fill off</string>
+    <string name="custom_bounds_fill_custom_badge">Fill %1$s</string>
 </resources>
