@@ -1,15 +1,19 @@
 package hk.uwu.reareye.ui.components
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -27,6 +31,7 @@ data class RearBadgeItem(
     val text: String,
     val emphasized: Boolean = false,
     val palette: RearBadgePalette? = null,
+    val onClick: (() -> Unit)? = null,
 )
 
 @Composable
@@ -138,6 +143,7 @@ fun RearBadgePill(
 fun RearBadgeGroup(
     badges: List<RearBadgeItem>,
     modifier: Modifier = Modifier,
+    horizontalAlignment: Alignment.Horizontal = Alignment.Start,
 ) {
     if (badges.isEmpty()) return
 
@@ -146,9 +152,20 @@ fun RearBadgeGroup(
         modifier = modifier,
         content = {
             badges.forEach { badge ->
+                val badgeModifier = if (badge.onClick != null) {
+                    Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        role = Role.Button,
+                        onClick = badge.onClick,
+                    )
+                } else {
+                    Modifier
+                }
                 RearBadgePill(
                     text = badge.text,
                     emphasized = badge.emphasized,
+                    modifier = badgeModifier,
                     palette = badge.palette,
                     singleLine = true,
                 )
@@ -165,24 +182,42 @@ fun RearBadgeGroup(
             val placeableIndex: Int,
         )
 
+        data class BadgeLine(
+            val positions: List<BadgePosition>,
+            val width: Int,
+            val height: Int,
+        )
+
         val maxRowWidth = constraints.maxWidth
-        val positions = mutableListOf<BadgePosition>()
+        val lines = mutableListOf<BadgeLine>()
+        val currentLinePositions = mutableListOf<BadgePosition>()
         var currentX = 0
         var currentY = 0
         var currentLineHeight = 0
         var maxUsedWidth = 0
 
+        fun commitLine() {
+            if (currentLinePositions.isEmpty()) return
+            lines += BadgeLine(
+                positions = currentLinePositions.toList(),
+                width = currentX,
+                height = currentLineHeight,
+            )
+            maxUsedWidth = maxOf(maxUsedWidth, currentX)
+            currentY += currentLineHeight + spacingPx
+            currentLinePositions.clear()
+            currentX = 0
+            currentLineHeight = 0
+        }
+
         placeables.forEachIndexed { index, placeable ->
             val proposedX = if (currentX == 0) 0 else currentX + spacingPx
             if (currentX > 0 && proposedX + placeable.width > maxRowWidth) {
-                maxUsedWidth = maxOf(maxUsedWidth, currentX)
-                currentY += currentLineHeight + spacingPx
-                currentX = 0
-                currentLineHeight = 0
+                commitLine()
             }
 
             val placeX = if (currentX == 0) 0 else currentX + spacingPx
-            positions += BadgePosition(
+            currentLinePositions += BadgePosition(
                 x = placeX,
                 y = currentY,
                 placeableIndex = index,
@@ -190,15 +225,25 @@ fun RearBadgeGroup(
             currentX = placeX + placeable.width
             currentLineHeight = maxOf(currentLineHeight, placeable.height)
         }
+        commitLine()
 
-        maxUsedWidth = maxOf(maxUsedWidth, currentX)
-        val contentHeight = if (placeables.isEmpty()) 0 else currentY + currentLineHeight
+        val contentHeight = if (placeables.isEmpty()) 0 else currentY - spacingPx
         val layoutWidth = maxUsedWidth.coerceIn(constraints.minWidth, constraints.maxWidth)
         val layoutHeight = contentHeight.coerceIn(constraints.minHeight, constraints.maxHeight)
 
         layout(layoutWidth, layoutHeight) {
-            positions.forEach { position ->
-                placeables[position.placeableIndex].placeRelative(position.x, position.y)
+            lines.forEach { line ->
+                val lineOffsetX = when (horizontalAlignment) {
+                    Alignment.CenterHorizontally -> (layoutWidth - line.width) / 2
+                    Alignment.End -> layoutWidth - line.width
+                    else -> 0
+                }.coerceAtLeast(0)
+                line.positions.forEach { position ->
+                    placeables[position.placeableIndex].placeRelative(
+                        position.x + lineOffsetX,
+                        position.y
+                    )
+                }
             }
         }
     }
