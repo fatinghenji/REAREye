@@ -5,6 +5,9 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -34,8 +37,12 @@ import androidx.core.content.ContextCompat
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import hk.uwu.reareye.ui.components.motion.ArtVisibilityMotion
+import hk.uwu.reareye.ui.components.navigation.NavigationQuickTarget
 import hk.uwu.reareye.ui.components.navigation.RearNavigationBar
+import hk.uwu.reareye.ui.components.navigation.encodeNavigationQuickActionIds
+import hk.uwu.reareye.ui.components.navigation.parseNavigationQuickActionIds
 import hk.uwu.reareye.ui.config.ConfigKeys
+import hk.uwu.reareye.ui.config.ConfigType
 import hk.uwu.reareye.ui.config.ModuleNavigationBarMode
 import hk.uwu.reareye.ui.config.ModuleSettingsController
 import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
@@ -100,6 +107,17 @@ class MainActivity : ComponentActivity() {
             var currentScreen by remember { mutableStateOf("home") }
             var navBarVisible by remember { mutableStateOf(false) }
             var configInAppListMode by remember { mutableStateOf(false) }
+            var pendingConfigQuickManagerTarget by remember {
+                mutableStateOf<ConfigType.ManagerType?>(null)
+            }
+            var pendingQuickActionTransition by remember { mutableStateOf(false) }
+            var navigationQuickActionIds by remember {
+                mutableStateOf(
+                    parseNavigationQuickActionIds(
+                        prefsManager.getString(ConfigKeys.MODULE_NAVIGATION_QUICK_ACTIONS)
+                    )
+                )
+            }
 
             LaunchedEffect(Unit) {
                 navBarVisible = true
@@ -140,6 +158,14 @@ class MainActivity : ComponentActivity() {
                                 targetState = currentScreen,
                                 contentKey = { it },
                                 transitionSpec = {
+                                    if (pendingQuickActionTransition && targetState == "config") {
+                                        pendingQuickActionTransition = false
+                                        return@AnimatedContent ContentTransform(
+                                            targetContentEnter = EnterTransition.None,
+                                            initialContentExit = ExitTransition.None,
+                                        )
+                                    }
+
                                     val initialIndex =
                                         MainScreenOrder.indexOf(initialState).coerceAtLeast(0)
                                     val targetIndex =
@@ -184,6 +210,10 @@ class MainActivity : ComponentActivity() {
 
                                     "config" -> ConfigScreen(
                                         bottomInnerPadding = stableBottomInset,
+                                        quickManagerTarget = pendingConfigQuickManagerTarget,
+                                        onQuickManagerTargetHandled = {
+                                            pendingConfigQuickManagerTarget = null
+                                        },
                                         onAppListModeChange = {
                                             configInAppListMode = it
                                         },
@@ -237,7 +267,28 @@ class MainActivity : ComponentActivity() {
                                     navigationBarMode = navigationBarMode,
                                     backdrop = backdrop,
                                     shadowVisibilityProgress = navShadowProgress,
+                                    quickActionIds = navigationQuickActionIds,
+                                    onQuickActionIdsChanged = { nextIds ->
+                                        val normalizedIds = parseNavigationQuickActionIds(
+                                            encodeNavigationQuickActionIds(nextIds)
+                                        )
+                                        navigationQuickActionIds = normalizedIds
+                                        prefsManager.putString(
+                                            ConfigKeys.MODULE_NAVIGATION_QUICK_ACTIONS,
+                                            encodeNavigationQuickActionIds(normalizedIds),
+                                        )
+                                    },
                                     onScreenSelected = { currentScreen = it },
+                                    onQuickActionSelected = { target ->
+                                        when (target) {
+                                            is NavigationQuickTarget.ConfigManager -> {
+                                                pendingConfigQuickManagerTarget = target.managerType
+                                                pendingQuickActionTransition = true
+                                                configInAppListMode = true
+                                                currentScreen = "config"
+                                            }
+                                        }
+                                    },
                                 )
                             }
                         }

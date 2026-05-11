@@ -253,8 +253,8 @@ fun CustomBoundsCompatManagerScreen(
         if (scale == null || scale <= 0f || densityDpi == null || densityDpi < 0 ||
             gravityOptions.none { it.value == gravity } ||
             CustomBoundsCompatConfigCodec.normalizeRotation(rotation) != rotation ||
-            insetLeft == null || insetLeft < 0 || insetTop == null || insetTop < 0 ||
-            insetRight == null || insetRight < 0 || insetBottom == null || insetBottom < 0 ||
+            insetLeft == null || /*insetLeft < 0 ||*/ insetTop == null || /*insetTop < 0 ||*/
+            insetRight == null || /*insetRight < 0 ||*/ insetBottom == null ||/* insetBottom < 0 ||*/
             (mode == CustomBoundsMode.CUSTOM_RATIO && (aspectRatio == null || aspectRatio <= 0f)) ||
             (draftFillEnabled && fillMode == CustomBoundsFillMode.CUSTOM && parsedFillColor == null)
         ) {
@@ -767,22 +767,28 @@ private fun customBoundsBadges(item: CustomBoundsCompatAppConfig): List<RearBadg
             ),
             palette = ratioPalette,
         ),
-        if (item.mode == CustomBoundsMode.CUSTOM_RATIO) RearBadgeItem(
-            text = stringResource(
-                R.string.custom_bounds_badge_ratio,
-                formatFloat(item.aspectRatio),
-            ),
-            palette = ratioPalette,
-        ) else if (item.mode == CustomBoundsMode.EXACT_INSETS) RearBadgeItem(
-            text = stringResource(
-                R.string.custom_bounds_badge_insets,
-                "${item.insetLeft},${item.insetTop},${item.insetRight},${item.insetBottom}",
-            ),
-            palette = ratioPalette,
-        ) else RearBadgeItem(
-            text = stringResource(R.string.custom_bounds_auto_ratio_hint),
-            palette = ratioPalette,
-        ),
+        when (item.mode) {
+            CustomBoundsMode.CUSTOM_RATIO -> RearBadgeItem(
+                text = stringResource(
+                    R.string.custom_bounds_badge_ratio,
+                    formatFloat(item.aspectRatio),
+                ),
+                palette = ratioPalette,
+            )
+
+            CustomBoundsMode.EXACT_INSETS -> RearBadgeItem(
+                text = stringResource(
+                    R.string.custom_bounds_badge_insets,
+                    "${item.insetLeft},${item.insetTop},${item.insetRight},${item.insetBottom}",
+                ),
+                palette = ratioPalette,
+            )
+
+            else -> RearBadgeItem(
+                text = stringResource(R.string.custom_bounds_auto_ratio_hint),
+                palette = ratioPalette,
+            )
+        },
         RearBadgeItem(
             text = stringResource(
                 R.string.custom_bounds_badge_scale,

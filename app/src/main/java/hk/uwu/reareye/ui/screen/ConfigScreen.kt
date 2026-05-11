@@ -138,6 +138,8 @@ private fun ConfigRoute.isOverlayRoute(): Boolean {
 @Composable
 fun ConfigScreen(
     bottomInnerPadding: Dp = 0.dp,
+    quickManagerTarget: ConfigType.ManagerType? = null,
+    onQuickManagerTargetHandled: () -> Unit = {},
     onAppListModeChange: (Boolean) -> Unit = {},
     onThemeModeChange: (Int) -> Unit = {},
     onNavigationBarModeChange: (Int) -> Unit = {},
@@ -145,7 +147,33 @@ fun ConfigScreen(
     val context = LocalContext.current
     val prefsManager = remember { context.getPrefsManager() }
 
-    var routeStack by remember { mutableStateOf(listOf<ConfigRoute>(ConfigRoute.Root)) }
+    fun findLyricsCategoryRoute(): ConfigRoute? {
+        return findConfigCategoryByTitleRes(REAREyeConfig, R.string.subcategory_lyrics)?.let(
+            ConfigRoute::Category
+        )
+    }
+
+    fun managerRoute(managerType: ConfigType.ManagerType?): ConfigRoute? {
+        return when (managerType) {
+            ConfigType.ManagerType.REAR_WALLPAPER -> ConfigRoute.RearWallpaperManager
+            ConfigType.ManagerType.BUSINESS -> ConfigRoute.BusinessManager
+            ConfigType.ManagerType.SCENE_ROUTE -> ConfigRoute.SceneRouteManager
+            ConfigType.ManagerType.CARD -> ConfigRoute.CardManager
+            ConfigType.ManagerType.BUSINESS_EXTRA -> ConfigRoute.BusinessExtraManager
+            ConfigType.ManagerType.BOUNDS -> ConfigRoute.CustomBoundsCompatManager
+            ConfigType.ManagerType.LYRICS -> findLyricsCategoryRoute()
+            null -> null
+        }
+    }
+
+    var routeStack by remember {
+        mutableStateOf(
+            listOf(
+                ConfigRoute.Root,
+                managerRoute(quickManagerTarget)
+            ).filterNotNull()
+        )
+    }
     val currentRoute = routeStack.last()
     val isOverlayMode = currentRoute.isOverlayRoute()
     val animatedRoute = remember(currentRoute, routeStack.size) {
@@ -255,13 +283,31 @@ fun ConfigScreen(
 
     fun closeOverlayRoute() {
         routeScope.launch {
-            val newStack = routeStack.dropLast(1)
-            routeStack = newStack
+            routeStack = listOf(ConfigRoute.Root)
             delay(OVERLAY_ROUTE_EXIT_DURATION_MS)
-            if (!newStack.last().isOverlayRoute()) {
-                onAppListModeChange(false)
-            }
+            onAppListModeChange(false)
         }
+    }
+
+    fun openManagerRoute(managerType: ConfigType.ManagerType?) {
+        val route = managerRoute(managerType)
+        if (route != null) {
+            openOverlayRoute(route)
+        }
+    }
+
+    fun openManagerItem(item: ConfigItem) {
+        openManagerRoute((item.type as? ConfigType.Manager)?.managerType)
+    }
+
+    LaunchedEffect(quickManagerTarget) {
+        val managerType = quickManagerTarget ?: return@LaunchedEffect
+        val route = managerRoute(managerType) ?: return@LaunchedEffect
+        routeStack = listOf(ConfigRoute.Root, route)
+        if (route.isOverlayRoute()) {
+            onAppListModeChange(true)
+        }
+        onQuickManagerTargetHandled()
     }
 
     Scaffold(
@@ -337,35 +383,7 @@ fun ConfigScreen(
                     onOpenAppList = { item ->
                         openOverlayRoute(ConfigRoute.AppList(item))
                     },
-                    onOpenManager = { item ->
-                        when ((item.type as? ConfigType.Manager)?.managerType) {
-                            ConfigType.ManagerType.REAR_WALLPAPER -> {
-                                openOverlayRoute(ConfigRoute.RearWallpaperManager)
-                            }
-
-                            ConfigType.ManagerType.BUSINESS -> {
-                                openOverlayRoute(ConfigRoute.BusinessManager)
-                            }
-
-                            ConfigType.ManagerType.SCENE_ROUTE -> {
-                                openOverlayRoute(ConfigRoute.SceneRouteManager)
-                            }
-
-                            ConfigType.ManagerType.CARD -> {
-                                openOverlayRoute(ConfigRoute.CardManager)
-                            }
-
-                            ConfigType.ManagerType.BUSINESS_EXTRA -> {
-                                openOverlayRoute(ConfigRoute.BusinessExtraManager)
-                            }
-
-                            ConfigType.ManagerType.BOUNDS -> {
-                                openOverlayRoute(ConfigRoute.CustomBoundsCompatManager)
-                            }
-
-                            null -> Unit
-                        }
-                    },
+                    onOpenManager = { item -> openManagerItem(item) },
                     onPreferenceChanged = handlePreferenceChanged,
                     showFavoriteCategoryEntry = true,
                     favoriteNodeCount = favoriteNodes.size,
@@ -396,35 +414,7 @@ fun ConfigScreen(
                     onOpenAppList = { item ->
                         openOverlayRoute(ConfigRoute.AppList(item))
                     },
-                    onOpenManager = { item ->
-                        when ((item.type as? ConfigType.Manager)?.managerType) {
-                            ConfigType.ManagerType.REAR_WALLPAPER -> {
-                                openOverlayRoute(ConfigRoute.RearWallpaperManager)
-                            }
-
-                            ConfigType.ManagerType.BUSINESS -> {
-                                openOverlayRoute(ConfigRoute.BusinessManager)
-                            }
-
-                            ConfigType.ManagerType.SCENE_ROUTE -> {
-                                openOverlayRoute(ConfigRoute.SceneRouteManager)
-                            }
-
-                            ConfigType.ManagerType.CARD -> {
-                                openOverlayRoute(ConfigRoute.CardManager)
-                            }
-
-                            ConfigType.ManagerType.BUSINESS_EXTRA -> {
-                                openOverlayRoute(ConfigRoute.BusinessExtraManager)
-                            }
-
-                            ConfigType.ManagerType.BOUNDS -> {
-                                openOverlayRoute(ConfigRoute.CustomBoundsCompatManager)
-                            }
-
-                            null -> Unit
-                        }
-                    },
+                    onOpenManager = { item -> openManagerItem(item) },
                     onPreferenceChanged = handlePreferenceChanged,
                     favoriteNodeIds = favoriteNodeIds,
                     resolveFavoriteNodeId = { node ->
@@ -450,35 +440,7 @@ fun ConfigScreen(
                     onOpenAppList = { item ->
                         openOverlayRoute(ConfigRoute.AppList(item))
                     },
-                    onOpenManager = { item ->
-                        when ((item.type as? ConfigType.Manager)?.managerType) {
-                            ConfigType.ManagerType.REAR_WALLPAPER -> {
-                                openOverlayRoute(ConfigRoute.RearWallpaperManager)
-                            }
-
-                            ConfigType.ManagerType.BUSINESS -> {
-                                openOverlayRoute(ConfigRoute.BusinessManager)
-                            }
-
-                            ConfigType.ManagerType.SCENE_ROUTE -> {
-                                openOverlayRoute(ConfigRoute.SceneRouteManager)
-                            }
-
-                            ConfigType.ManagerType.CARD -> {
-                                openOverlayRoute(ConfigRoute.CardManager)
-                            }
-
-                            ConfigType.ManagerType.BUSINESS_EXTRA -> {
-                                openOverlayRoute(ConfigRoute.BusinessExtraManager)
-                            }
-
-                            ConfigType.ManagerType.BOUNDS -> {
-                                openOverlayRoute(ConfigRoute.CustomBoundsCompatManager)
-                            }
-
-                            null -> Unit
-                        }
-                    },
+                    onOpenManager = { item -> openManagerItem(item) },
                     onPreferenceChanged = handlePreferenceChanged,
                     emptyStateRes = R.string.config_favorites_empty,
                     favoriteNodeIds = favoriteNodeIds,
@@ -529,6 +491,21 @@ fun ConfigScreen(
             }
         }
     }
+}
+
+private fun findConfigCategoryByTitleRes(
+    nodes: List<ConfigNode>,
+    titleRes: Int,
+): ConfigCategory? {
+    nodes.forEach { node ->
+        if (node is ConfigCategory) {
+            if (node.titleRes == titleRes) return node
+            findConfigCategoryByTitleRes(node.children, titleRes)?.let { return it }
+        } else if (node is ConfigGroup) {
+            findConfigCategoryByTitleRes(node.children, titleRes)?.let { return it }
+        }
+    }
+    return null
 }
 
 @Composable

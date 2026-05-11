@@ -4,6 +4,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseOut
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -64,23 +65,20 @@ import kotlin.math.abs
 import kotlin.math.sign
 
 val LocalFloatingBottomBarTabScale = staticCompositionLocalOf { { 1f } }
+val LocalFloatingBottomBarDuplicateLayer = staticCompositionLocalOf { false }
 
 @Composable
 fun RowScope.FloatingBottomBarItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    quickGestureModifier: Modifier = Modifier,
+    popup: @Composable (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val scale = LocalFloatingBottomBarTabScale.current
-    Column(
+    val isDuplicateLayer = LocalFloatingBottomBarDuplicateLayer.current
+    Box(
         modifier
-            .clip(ContinuousCapsule)
-            .clickable(
-                interactionSource = null,
-                indication = null,
-                role = Role.Tab,
-                onClick = onClick,
-            )
             .fillMaxHeight()
             .weight(1f)
             .graphicsLayer {
@@ -88,10 +86,28 @@ fun RowScope.FloatingBottomBarItem(
                 scaleX = scaleValue
                 scaleY = scaleValue
             },
-        verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        content = content,
-    )
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            Modifier
+                .matchParentSize()
+                .clip(ContinuousCapsule)
+                .then(quickGestureModifier)
+                .combinedClickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    role = Role.Tab,
+                    onClick = onClick,
+                    onLongClick = null,
+                ),
+            verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            content = content,
+        )
+        if (!isDuplicateLayer) {
+            popup?.invoke()
+        }
+    }
 }
 
 @Composable
@@ -103,6 +119,9 @@ fun FloatingBottomBar(
     tabsCount: Int,
     isBlurEnabled: Boolean = true,
     shadowVisibilityProgress: Float = 1f,
+    selectedOverlayModifier: Modifier = Modifier,
+    renderDuplicateContentLayer: Boolean = true,
+    quickGestureModifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit,
 ) {
     val isInLightTheme = MiuixTheme.colorScheme.surface.luminance() >= 0.5f
@@ -215,7 +234,9 @@ fun FloatingBottomBar(
         null
     }
     Box(
-        modifier = modifier.width(IntrinsicSize.Min),
+        modifier = modifier
+            .width(IntrinsicSize.Min)
+            .then(quickGestureModifier),
         contentAlignment = Alignment.CenterStart,
     ) {
         Row(
@@ -267,11 +288,12 @@ fun FloatingBottomBar(
             content = content,
         )
 
-        if (isBlurEnabled) {
+        if (isBlurEnabled && renderDuplicateContentLayer) {
             CompositionLocalProvider(
                 LocalFloatingBottomBarTabScale provides {
                     lerp(1f, 1.2f, dampedDragAnimation.pressProgress)
-                }
+                },
+                LocalFloatingBottomBarDuplicateLayer provides true,
             ) {
                 Row(
                     Modifier
@@ -319,6 +341,7 @@ fun FloatingBottomBar(
                         }
                     }
                     .then(interactiveHighlight?.gestureModifier ?: Modifier)
+                    .then(selectedOverlayModifier)
                     .then(dampedDragAnimation.modifier)
                     .drawBackdrop(
                         backdrop = if (isBlurEnabled) {

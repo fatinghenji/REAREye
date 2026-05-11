@@ -197,6 +197,7 @@ sealed class ConfigType {
         CARD,
         BUSINESS_EXTRA,
         BOUNDS,
+        LYRICS,
     }
 
     data class Manager(val managerType: ManagerType) : ConfigType() {
