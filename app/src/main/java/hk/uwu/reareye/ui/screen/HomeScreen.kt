@@ -275,6 +275,7 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
         EasterEggType.HUAWEI_ULTIMATE_DESIGN -> "ULTIMATE DESIGN"
         else -> AppProperties.BUILD_CHANNEL
     }
+    val versionCodename = AppProperties.PROJECT_APP_VERSION_CODENAME
 
     Scaffold(
         topBar = {
@@ -458,6 +459,7 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
                         ModuleInfoCard(
                             activated = isActivated,
                             moduleVersion = moduleVersion,
+                            versionCodename = versionCodename,
                             releaseChannel = releaseChannel,
                             easterEggType = easterEggType
                         )
@@ -818,6 +820,7 @@ private fun UpdateWarningCard(currentHash: String, latestHash: String, useMonetC
 private fun ModuleInfoCard(
     activated: Boolean,
     moduleVersion: String,
+    versionCodename: String,
     releaseChannel: String,
     easterEggType: EasterEggType
 ) {
@@ -852,6 +855,11 @@ private fun ModuleInfoCard(
         InfoLine(
             title = androidx.compose.ui.res.stringResource(R.string.module_version_label),
             value = moduleVersion,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        InfoLine(
+            title = androidx.compose.ui.res.stringResource(R.string.version_codename_label),
+            value = versionCodename,
         )
         Spacer(modifier = Modifier.height(12.dp))
         InfoLine(

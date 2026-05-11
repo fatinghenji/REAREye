@@ -963,6 +963,18 @@ private fun AboutDeviceInfoCard(
                     insideMargin = deviceInfoRowPadding,
                 )
 
+                BasicComponent(
+                    title = stringResource(R.string.module_version_label),
+                    summary = rememberVersionText(),
+                    insideMargin = deviceInfoRowPadding,
+                )
+
+                BasicComponent(
+                    title = stringResource(R.string.version_codename_label),
+                    summary = AppProperties.PROJECT_APP_VERSION_CODENAME,
+                    insideMargin = deviceInfoRowPadding,
+                )
+
                 if (subscreenVer != "UNKNOWN") {
                     BasicComponent(
                         title = stringResource(R.string.subsceen_version),

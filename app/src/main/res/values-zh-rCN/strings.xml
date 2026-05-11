@@ -424,6 +424,7 @@
     <string name="home_root_warning_title">Root 不可用</string>
     <string name="home_root_warning_desc">部分功能依赖 Root 权限， 请在Root管理器中授予本应用Root权限</string>
     <string name="module_version_label">模块版本</string>
+    <string name="version_codename_label">版本代号</string>
     <string name="quick_stop_subscreencenter">快捷终止背屏中心</string>
     <string name="quick_stop_thememanager">快捷终止主题管理</string>
     <string name="quick_stop_success">已终止 %1$s</string>

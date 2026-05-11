@@ -424,6 +424,7 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="home_root_warning_title">Root unavailable</string>
     <string name="home_root_warning_desc">Some features require root privileges. Please grant this application root privileges using your root manager</string>
     <string name="module_version_label">Module Version</string>
+    <string name="version_codename_label">Version Codename</string>
     <string name="quick_stop_subscreencenter">Force stop Subscreen Center</string>
     <string name="quick_stop_thememanager">Force stop Theme Manager</string>
     <string name="quick_stop_success">Stopped %1$s</string>
