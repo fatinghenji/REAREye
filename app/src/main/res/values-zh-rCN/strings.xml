@@ -578,4 +578,14 @@
     <string name="custom_bounds_disabled">已停用</string>
     <string name="custom_bounds_fill_disabled">未填充</string>
     <string name="custom_bounds_fill_custom_badge">填充 %1$s</string>
+    <string name="custom_bounds_rule_export_success">规则已导出</string>
+    <string name="custom_bounds_rule_export_failed">规则导出失败</string>
+    <string name="custom_bounds_rule_import_success">规则已导入</string>
+    <string name="custom_bounds_rule_import_invalid">规则文件无效或已损坏</string>
+    <string name="custom_bounds_rule_import_failed_title">导入失败</string>
+    <string name="custom_bounds_rule_import_rejected_title">拒绝导入</string>
+    <string name="custom_bounds_rule_import_app_missing">规则目标应用 %1$s 不存在，已拒绝导入。</string>
+    <string name="custom_bounds_rule_import_overwrite_title">覆盖规则？</string>
+    <string name="custom_bounds_rule_import_overwrite_message">%1$s 已有自定义界限规则，是否覆盖？</string>
+    <string name="custom_bounds_rule_import_overwrite_confirm">覆盖</string>
 </resources>

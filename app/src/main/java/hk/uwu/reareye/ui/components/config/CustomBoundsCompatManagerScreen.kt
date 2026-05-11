@@ -3,6 +3,8 @@ package hk.uwu.reareye.ui.components.config
 import android.annotation.SuppressLint
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -44,6 +46,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.toColorInt
+import com.composables.icons.materialsymbols.MaterialSymbols
+import com.composables.icons.materialsymbols.rounded.Deployed_code_update
+import com.composables.icons.materialsymbols.rounded.File_export
 import hk.uwu.reareye.R
 import hk.uwu.reareye.repository.bounds.CustomBoundsCompatAppConfig
 import hk.uwu.reareye.repository.bounds.CustomBoundsCompatConfigCodec
@@ -68,6 +73,7 @@ import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
 import hk.uwu.reareye.ui.theme.rememberAcrylicHazeStyle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -133,7 +139,7 @@ fun CustomBoundsCompatManagerScreen(
     val scrollBehavior = MiuixScrollBehavior()
     val hazeState = rememberAcrylicHazeState()
     val hazeStyle = rememberAcrylicHazeStyle()
-    rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
     val configs = remember { mutableStateListOf<CustomBoundsCompatAppConfig>() }
     var loaded by remember { mutableStateOf(false) }
     var dataCardsVisible by remember { mutableStateOf(false) }
@@ -157,6 +163,10 @@ fun CustomBoundsCompatManagerScreen(
     var draftFillMode by remember { mutableIntStateOf(0) }
     var draftFillColor by remember { mutableStateOf("#FF000000") }
     var draftFillColorError by remember { mutableStateOf(false) }
+    var exportTarget by remember { mutableStateOf<CustomBoundsCompatAppConfig?>(null) }
+    var pendingOverwriteConfig by remember { mutableStateOf<CustomBoundsCompatAppConfig?>(null) }
+    var rejectedImportPackage by remember { mutableStateOf<String?>(null) }
+    var importErrorMessage by remember { mutableStateOf<String?>(null) }
 
     val appSelectorItem = remember {
         ConfigItem(
@@ -191,6 +201,42 @@ fun CustomBoundsCompatManagerScreen(
         val encoded = CustomBoundsCompatConfigCodec.encode(nextConfigs)
         prefsManager.putStringSet(ConfigKeys.CUSTOM_BOUNDS_COMPAT_APPS, packages)
         prefsManager.putString(ConfigKeys.CUSTOM_BOUNDS_COMPAT_CONFIG_DATA, encoded)
+    }
+
+    fun toast(resId: Int) {
+        Toast.makeText(context, context.getString(resId), Toast.LENGTH_SHORT).show()
+    }
+
+    fun applyImportedConfig(config: CustomBoundsCompatAppConfig) {
+        val nextConfigs = configs.toMutableList()
+        val index = nextConfigs.indexOfFirst { it.packageName == config.packageName }
+        if (index >= 0) {
+            nextConfigs[index] = config
+        } else {
+            nextConfigs += config
+        }
+        replaceConfigs(nextConfigs)
+        persist()
+        toast(R.string.custom_bounds_rule_import_success)
+    }
+
+    fun packageInstalled(packageName: String): Boolean {
+        return runCatching {
+            context.packageManager.getPackageInfo(packageName, 0)
+            true
+        }.getOrDefault(false)
+    }
+
+    fun handleImportedConfig(config: CustomBoundsCompatAppConfig) {
+        if (!packageInstalled(config.packageName)) {
+            rejectedImportPackage = config.packageName
+            return
+        }
+        if (configs.any { it.packageName == config.packageName }) {
+            pendingOverwriteConfig = config
+        } else {
+            applyImportedConfig(config)
+        }
     }
 
     fun syncAfterAppSelection() {
@@ -301,6 +347,55 @@ fun CustomBoundsCompatManagerScreen(
         ).show()
     }
 
+    fun exportFileName(packageName: String): String {
+        val safePackage = packageName.replace(Regex("[^A-Za-z0-9._-]"), "_")
+        return "${safePackage}_${System.currentTimeMillis()}.rbt"
+    }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/octet-stream"),
+    ) { uri ->
+        val target = exportTarget
+        exportTarget = null
+        if (uri == null || target == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val success = withContext(Dispatchers.IO) {
+                runCatching {
+                    val raw = CustomBoundsCompatConfigCodec.encodeRuleFile(target)
+                    context.contentResolver.openOutputStream(uri)?.use { output ->
+                        output.write(raw.toByteArray(Charsets.UTF_8))
+                    } ?: error("openOutputStream failed")
+                }.isSuccess
+            }
+            if (success) {
+                toast(R.string.custom_bounds_rule_export_success)
+            } else {
+                toast(R.string.custom_bounds_rule_export_failed)
+            }
+        }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val importedConfig = withContext(Dispatchers.IO) {
+                runCatching {
+                    val raw = context.contentResolver.openInputStream(uri)?.use { input ->
+                        input.readBytes().toString(Charsets.UTF_8)
+                    } ?: error("openInputStream failed")
+                    CustomBoundsCompatConfigCodec.decodeRuleFile(raw)
+                }.getOrNull()
+            }
+            if (importedConfig == null) {
+                importErrorMessage = context.getString(R.string.custom_bounds_rule_import_invalid)
+            } else {
+                handleImportedConfig(importedConfig)
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         delay(220)
         replaceConfigs(withContext(Dispatchers.IO) { loadConfigsFromPrefs() })
@@ -343,6 +438,20 @@ fun CustomBoundsCompatManagerScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = {
+                        if (loaded) importLauncher.launch(
+                            arrayOf(
+                                "application/octet-stream",
+                                "text/plain",
+                                "*/*"
+                            )
+                        )
+                    }) {
+                        Icon(
+                            imageVector = MaterialSymbols.Rounded.Deployed_code_update,
+                            contentDescription = null
+                        )
+                    }
                     IconButton(onClick = { if (loaded) showAppSelector = true }) {
                         Icon(imageVector = Icons.Filled.Add, contentDescription = null)
                     }
@@ -428,10 +537,22 @@ fun CustomBoundsCompatManagerScreen(
                         badges = customBoundsBadges(item),
                         onCardClick = { openEditDialog(item) },
                         leftAction = {
-                            ModuleStyleIconAction(
-                                icon = Icons.Rounded.EditNote,
-                                onClick = { openEditDialog(item) },
-                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                ModuleStyleIconAction(
+                                    icon = Icons.Rounded.EditNote,
+                                    onClick = { openEditDialog(item) },
+                                )
+                                ModuleStyleIconAction(
+                                    icon = MaterialSymbols.Rounded.File_export,
+                                    onClick = {
+                                        exportTarget = item
+                                        exportLauncher.launch(exportFileName(item.packageName))
+                                    },
+                                )
+                            }
                         },
                         rightAction = {
                             ModuleStyleDeleteAction(
@@ -609,6 +730,84 @@ fun CustomBoundsCompatManagerScreen(
                 ) {
                     Text(stringResource(R.string.rear_widget_cancel))
                 }
+            }
+        }
+    }
+
+    OverlayDialog(
+        show = rejectedImportPackage != null,
+        title = stringResource(R.string.custom_bounds_rule_import_rejected_title),
+        onDismissRequest = { rejectedImportPackage = null },
+    ) {
+        DialogFormColumn {
+            Text(
+                text = stringResource(
+                    R.string.custom_bounds_rule_import_app_missing,
+                    rejectedImportPackage.orEmpty(),
+                ),
+                style = MiuixTheme.textStyles.body2,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
+            Button(
+                onClick = { rejectedImportPackage = null },
+                colors = ButtonDefaults.buttonColorsPrimary(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.rear_widget_confirm))
+            }
+        }
+    }
+
+    OverlayDialog(
+        show = pendingOverwriteConfig != null,
+        title = stringResource(R.string.custom_bounds_rule_import_overwrite_title),
+        onDismissRequest = { pendingOverwriteConfig = null },
+    ) {
+        DialogFormColumn {
+            Text(
+                text = stringResource(
+                    R.string.custom_bounds_rule_import_overwrite_message,
+                    pendingOverwriteConfig?.packageName.orEmpty(),
+                ),
+                style = MiuixTheme.textStyles.body2,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
+            Button(
+                onClick = {
+                    pendingOverwriteConfig?.let(::applyImportedConfig)
+                    pendingOverwriteConfig = null
+                },
+                colors = ButtonDefaults.buttonColorsPrimary(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.custom_bounds_rule_import_overwrite_confirm))
+            }
+            Button(
+                onClick = { pendingOverwriteConfig = null },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.rear_widget_cancel))
+            }
+        }
+    }
+
+    OverlayDialog(
+        show = importErrorMessage != null,
+        title = stringResource(R.string.custom_bounds_rule_import_failed_title),
+        onDismissRequest = { importErrorMessage = null },
+    ) {
+        DialogFormColumn {
+            Text(
+                text = importErrorMessage.orEmpty(),
+                style = MiuixTheme.textStyles.body2,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
+            Button(
+                onClick = { importErrorMessage = null },
+                colors = ButtonDefaults.buttonColorsPrimary(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.rear_widget_confirm))
             }
         }
     }

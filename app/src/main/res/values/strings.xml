@@ -578,4 +578,14 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="custom_bounds_disabled">Disabled</string>
     <string name="custom_bounds_fill_disabled">Fill off</string>
     <string name="custom_bounds_fill_custom_badge">Fill %1$s</string>
+    <string name="custom_bounds_rule_export_success">Rule exported</string>
+    <string name="custom_bounds_rule_export_failed">Failed to export rule</string>
+    <string name="custom_bounds_rule_import_success">Rule imported</string>
+    <string name="custom_bounds_rule_import_invalid">The rule file is invalid or corrupted</string>
+    <string name="custom_bounds_rule_import_failed_title">Import failed</string>
+    <string name="custom_bounds_rule_import_rejected_title">Import rejected</string>
+    <string name="custom_bounds_rule_import_app_missing">Target app %1$s does not exist. Import was rejected.</string>
+    <string name="custom_bounds_rule_import_overwrite_title">Overwrite rule?</string>
+    <string name="custom_bounds_rule_import_overwrite_message">%1$s already has a custom bounds rule. Overwrite it?</string>
+    <string name="custom_bounds_rule_import_overwrite_confirm">Overwrite</string>
 </resources>

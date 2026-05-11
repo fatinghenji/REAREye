@@ -1,5 +1,6 @@
 package hk.uwu.reareye.repository.bounds
 
+import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -67,6 +68,75 @@ object CustomBoundsCompatConfigCodec {
         270,
     )
 
+    private fun parseObject(obj: JSONObject): CustomBoundsCompatAppConfig? {
+        val packageName = obj.optString("packageName").trim()
+        if (packageName.isBlank()) return null
+        val aspectRatio = obj.optDouble("aspectRatio", 0.0)
+            .toFloat()
+            .takeIf { it > 0f }
+            ?: 0f
+        val parsedMode = CustomBoundsMode.fromString(
+            if (obj.has("mode")) obj.optString("mode") else null
+        )
+        val mode = parsedMode ?: when {
+            obj.optInt("insetLeft", 0) != 0 || obj.optInt("insetTop", 0) != 0 ||
+                    obj.optInt("insetRight", 0) != 0 || obj.optInt("insetBottom", 0) != 0 -> {
+                CustomBoundsMode.EXACT_INSETS
+            }
+
+            aspectRatio > 0f -> CustomBoundsMode.CUSTOM_RATIO
+            else -> CustomBoundsMode.AUTO_RATIO
+        }
+        val fillMode = CustomBoundsFillMode.fromString(
+            if (obj.has("fillMode")) obj.optString("fillMode") else null
+        ) ?: CustomBoundsFillMode.AUTO
+        return CustomBoundsCompatAppConfig(
+            packageName = packageName,
+            enabled = obj.optBoolean("enabled", true),
+            mode = mode,
+            aspectRatio = aspectRatio,
+            gravity = obj.optInt("gravity", DEFAULT_GRAVITY),
+            scale = obj.optDouble("scale", DEFAULT_SCALE.toDouble())
+                .toFloat()
+                .takeIf { it > 0f }
+                ?: DEFAULT_SCALE,
+            densityDpi = obj.optInt("densityDpi", 0).coerceAtLeast(0),
+            rotationDegrees = normalizeRotation(
+                obj.optInt(
+                    "rotationDegrees",
+                    ROTATION_FOLLOW_SYSTEM
+                )
+            ),
+            insetLeft = obj.optInt("insetLeft", 0).coerceAtLeast(0),
+            insetTop = obj.optInt("insetTop", 0).coerceAtLeast(0),
+            insetRight = obj.optInt("insetRight", 0).coerceAtLeast(0),
+            insetBottom = obj.optInt("insetBottom", 0).coerceAtLeast(0),
+            fillEnabled = obj.optBoolean("fillEnabled", false),
+            fillMode = fillMode,
+            fillColorArgb = obj.optInt("fillColorArgb", 0),
+        )
+    }
+
+    private fun toObject(item: CustomBoundsCompatAppConfig): JSONObject {
+        return JSONObject()
+            .put("version", 1)
+            .put("packageName", item.packageName.trim())
+            .put("enabled", item.enabled)
+            .put("mode", item.mode.name.lowercase())
+            .put("aspectRatio", item.aspectRatio.toDouble())
+            .put("gravity", item.gravity)
+            .put("scale", item.scale.toDouble())
+            .put("densityDpi", item.densityDpi)
+            .put("rotationDegrees", normalizeRotation(item.rotationDegrees))
+            .put("insetLeft", item.insetLeft)
+            .put("insetTop", item.insetTop)
+            .put("insetRight", item.insetRight)
+            .put("insetBottom", item.insetBottom)
+            .put("fillEnabled", item.fillEnabled)
+            .put("fillMode", item.fillMode.name.lowercase())
+            .put("fillColorArgb", item.fillColorArgb)
+    }
+
     fun parse(raw: String?): List<CustomBoundsCompatAppConfig> {
         if (raw.isNullOrBlank()) return emptyList()
         val arr = runCatching { JSONArray(raw) }.getOrNull() ?: return emptyList()
@@ -74,52 +144,9 @@ object CustomBoundsCompatConfigCodec {
         val seenPackages = HashSet<String>()
         for (i in 0 until arr.length()) {
             val obj = arr.optJSONObject(i) ?: continue
-            val packageName = obj.optString("packageName").trim()
-            if (packageName.isBlank() || !seenPackages.add(packageName)) continue
-            val aspectRatio = obj.optDouble("aspectRatio", 0.0)
-                .toFloat()
-                .takeIf { it > 0f }
-                ?: 0f
-            val parsedMode = CustomBoundsMode.fromString(
-                if (obj.has("mode")) obj.optString("mode") else null
-            )
-            val mode = parsedMode ?: when {
-                obj.optInt("insetLeft", 0) != 0 || obj.optInt("insetTop", 0) != 0 ||
-                        obj.optInt("insetRight", 0) != 0 || obj.optInt("insetBottom", 0) != 0 -> {
-                    CustomBoundsMode.EXACT_INSETS
-                }
-
-                aspectRatio > 0f -> CustomBoundsMode.CUSTOM_RATIO
-                else -> CustomBoundsMode.AUTO_RATIO
-            }
-            val fillMode = CustomBoundsFillMode.fromString(
-                if (obj.has("fillMode")) obj.optString("fillMode") else null
-            ) ?: CustomBoundsFillMode.AUTO
-            out += CustomBoundsCompatAppConfig(
-                packageName = packageName,
-                enabled = obj.optBoolean("enabled", true),
-                mode = mode,
-                aspectRatio = aspectRatio,
-                gravity = obj.optInt("gravity", DEFAULT_GRAVITY),
-                scale = obj.optDouble("scale", DEFAULT_SCALE.toDouble())
-                    .toFloat()
-                    .takeIf { it > 0f }
-                    ?: DEFAULT_SCALE,
-                densityDpi = obj.optInt("densityDpi", 0).coerceAtLeast(0),
-                rotationDegrees = normalizeRotation(
-                    obj.optInt(
-                        "rotationDegrees",
-                        ROTATION_FOLLOW_SYSTEM
-                    )
-                ),
-                insetLeft = obj.optInt("insetLeft", 0).coerceAtLeast(0),
-                insetTop = obj.optInt("insetTop", 0).coerceAtLeast(0),
-                insetRight = obj.optInt("insetRight", 0).coerceAtLeast(0),
-                insetBottom = obj.optInt("insetBottom", 0).coerceAtLeast(0),
-                fillEnabled = obj.optBoolean("fillEnabled", false),
-                fillMode = fillMode,
-                fillColorArgb = obj.optInt("fillColorArgb", 0),
-            )
+            val config = parseObject(obj) ?: continue
+            if (!seenPackages.add(config.packageName)) continue
+            out += config
         }
         return out
     }
@@ -131,27 +158,21 @@ object CustomBoundsCompatConfigCodec {
                 .filter { it.packageName.isNotBlank() }
                 .distinctBy { it.packageName }
                 .sortedBy { it.packageName.lowercase() }
-                .forEach { item ->
-                    arr.put(
-                        JSONObject()
-                            .put("packageName", item.packageName.trim())
-                            .put("enabled", item.enabled)
-                            .put("mode", item.mode.name.lowercase())
-                            .put("aspectRatio", item.aspectRatio.toDouble())
-                            .put("gravity", item.gravity)
-                            .put("scale", item.scale.toDouble())
-                            .put("densityDpi", item.densityDpi)
-                            .put("rotationDegrees", normalizeRotation(item.rotationDegrees))
-                            .put("insetLeft", item.insetLeft)
-                            .put("insetTop", item.insetTop)
-                            .put("insetRight", item.insetRight)
-                            .put("insetBottom", item.insetBottom)
-                            .put("fillEnabled", item.fillEnabled)
-                            .put("fillMode", item.fillMode.name.lowercase())
-                            .put("fillColorArgb", item.fillColorArgb)
-                    )
-                }
+                .forEach { item -> arr.put(toObject(item)) }
         }.toString()
+
+    fun encodeRuleFile(config: CustomBoundsCompatAppConfig): String {
+        val json = toObject(config).toString()
+        return Base64.encodeToString(json.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+    }
+
+    fun decodeRuleFile(raw: String?): CustomBoundsCompatAppConfig? {
+        if (raw.isNullOrBlank()) return null
+        return runCatching {
+            val decoded = Base64.decode(raw.trim(), Base64.DEFAULT).toString(Charsets.UTF_8)
+            parseObject(JSONObject(decoded))
+        }.getOrNull()
+    }
 
     fun normalizeForPackages(
         configs: List<CustomBoundsCompatAppConfig>,

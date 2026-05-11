@@ -148,8 +148,7 @@ fun LibraryItem(lib: Library, licenses: Map<String, License>) {
                 if (lib.developers.isNotEmpty() || lib.licenses.isNotEmpty()) {
                     HorizontalDivider(
                         modifier = Modifier
-                            .height(16.dp)
-                        ,
+                            .height(16.dp),
                         thickness = 1.dp,
                         color = MiuixTheme.colorScheme.outline.copy(alpha = 0.5f)
                     )
