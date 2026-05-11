@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
+import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebChromeClient
@@ -620,12 +621,27 @@ private fun launchPostInstallUri(
     val scheme = uri.scheme?.lowercase(Locale.ROOT).orEmpty()
     if (scheme == "content") {
         runCatching {
-            context.startActivity(
-                Intent(Intent.ACTION_VIEW, uri).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-            )
+            context.applicationContext.contentResolver.query(uri, null, null, null, null)
+                ?.use { cursor ->
+                    val columns = (0 until cursor.columnCount).joinToString(", ") { index ->
+                        cursor.getColumnName(index)
+                    }
+                    val rowCount = if (cursor.moveToFirst()) 1 else 0
+                    val debugValues = if (rowCount > 0) {
+                        (0 until cursor.columnCount).joinToString(", ") { index ->
+                            val value = runCatching { cursor.getString(index) }.getOrNull()
+                            "${cursor.getColumnName(index)}=${value ?: "<null>"}"
+                        }
+                    } else {
+                        "<empty>"
+                    }
+                    Log.d(
+                        "RearStorePostInstall",
+                        "query content uri=$uri columns=[$columns] rows=$rowCount values=[$debugValues]",
+                    )
+                } ?: Log.d("RearStorePostInstall", "query content uri=$uri result=<null cursor>")
+        }.onFailure { error ->
+            Log.e("RearStorePostInstall", "query content uri=$uri failed", error)
         }
         return
     }
