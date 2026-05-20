@@ -42,6 +42,12 @@ class PrefsManager(val prefs: YukiHookPrefsBridge) {
         return prefs.getFloat(key, defValue)
     }
 
+    fun getRequirementValue(key: String): Any? {
+        val nativePrefs = prefs.native()
+        if (!nativePrefs.contains(key)) return null
+        return nativePrefs.all()[key]
+    }
+
     fun putFloat(key: String, value: Float) {
         prefs.edit().putFloat(key, value).apply()
     }

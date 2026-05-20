@@ -23,9 +23,14 @@ object ConfigKeys {
     const val ACTIVITIES_WHITELIST_APPS = "activities_whitelist_apps"
     const val ALLOW_ALL_ACTIVITIES = "allow_all_activities"
     const val HOOK_SKIP_LOCK_BACK_HOME = "enable_skip_lock_back_home"
+    const val CFG_CUSTOM_BOUNDS_COMPAT_MANAGER = "cfg_custom_bounds_compat_manager"
+    const val CUSTOM_BOUNDS_COMPAT_APPS = "custom_bounds_compat_apps"
+    const val CUSTOM_BOUNDS_COMPAT_CONFIG_DATA = "custom_bounds_compat_config_data"
 
     const val HOOK_MUSIC_CONTROLS_WHITELIST = "enable_music_controls_whitelist_hook"
     const val MUSIC_CONTROLS_WHITELIST_APPS = "music_controls_whitelist_apps"
+    const val SUBSCREEN_LOCK_BACK_HOME_WHITELIST_APPS =
+        "subscreen_lock_back_home_whitelist_apps"
     const val HOOK_MUSIC_CONTROLS_FORCE_UPDATE = "enable_music_controls_force_update"
     const val HOOK_VIDEO_LOOPING = "enable_video_looping"
 
@@ -73,9 +78,16 @@ object ConfigKeys {
         "enable_take_over_builtin_lyric_handling"
 
     const val HOOK_DISABLE_REAR_SCREEN_COVER = "enable_hook_rear_screen_cover"
+    const val SUBSCREEN_DOUBLE_TAP_SLEEP_DISABLED_APPS =
+        "subscreen_double_tap_sleep_disabled_apps"
+    const val SUBSCREEN_DOUBLE_TAP_WAKE_DISABLED_APPS =
+        "subscreen_double_tap_wake_disabled_apps"
+    const val SUBSCREEN_HIGH_LOAD_MODE_DISABLED_APPS =
+        "subscreen_high_load_mode_disabled_apps"
 
     const val MORE_DEBUG = "enable_more_debug_logging"
     const val MODULE_FAVORITE_CONFIG_NODES = "module_favorite_config_nodes"
+    const val MODULE_NAVIGATION_QUICK_ACTIONS = "module_navigation_quick_actions"
 }
 
 enum class ModuleNavigationBarMode(
@@ -93,6 +105,11 @@ enum class ModuleNavigationBarMode(
     FLOATING_GLASS(
         value = 2,
         titleRes = R.string.module_navigation_bar_mode_floating_glass,
+    ),
+
+    SEMI_TRANSPARENT(
+        value = 3,
+        titleRes = R.string.module_navigation_bar_mode_semi_transparent,
     );
 
     companion object {
@@ -101,6 +118,7 @@ enum class ModuleNavigationBarMode(
             NORMAL,
             FLOATING,
             FLOATING_GLASS,
+            SEMI_TRANSPARENT,
         )
 
         fun fromValue(value: Int): ModuleNavigationBarMode {
@@ -290,10 +308,34 @@ val REAREyeConfig = listOf(
                 type = ConfigType.BooleanVal(defaultValue = false)
             ),
             ConfigItem(
+                key = ConfigKeys.CFG_CUSTOM_BOUNDS_COMPAT_MANAGER,
+                titleRes = R.string.custom_bounds_compat_manager,
+                descriptionRes = R.string.custom_bounds_compat_manager_desc,
+                type = ConfigType.Manager(ConfigType.ManagerType.BOUNDS),
+            ),
+            ConfigItem(
                 key = ConfigKeys.HOOK_DISABLE_REAR_SCREEN_COVER,
                 titleRes = R.string.cfg_disable_rear_screen_cover,
                 descriptionRes = R.string.cfg_disable_rear_screen_cover_desc,
                 type = ConfigType.BooleanVal(defaultValue = false)
+            ),
+            ConfigItem(
+                key = ConfigKeys.SUBSCREEN_DOUBLE_TAP_SLEEP_DISABLED_APPS,
+                titleRes = R.string.cfg_disable_subscreen_double_tap_sleep,
+                descriptionRes = R.string.cfg_disable_subscreen_double_tap_sleep_desc,
+                type = ConfigType.AppList(defaultValues = emptySet())
+            ),
+            ConfigItem(
+                key = ConfigKeys.SUBSCREEN_DOUBLE_TAP_WAKE_DISABLED_APPS,
+                titleRes = R.string.cfg_disable_subscreen_double_tap_wake,
+                descriptionRes = R.string.cfg_disable_subscreen_double_tap_wake_desc,
+                type = ConfigType.AppList(defaultValues = emptySet())
+            ),
+            ConfigItem(
+                key = ConfigKeys.SUBSCREEN_HIGH_LOAD_MODE_DISABLED_APPS,
+                titleRes = R.string.cfg_disable_subscreen_high_load_mode,
+                descriptionRes = R.string.cfg_disable_subscreen_high_load_mode_desc,
+                type = ConfigType.AppList(defaultValues = emptySet())
             )
         )
     ),
@@ -367,6 +409,18 @@ val REAREyeConfig = listOf(
                         titleRes = R.string.enable_music_control_force_update,
                         descriptionRes = R.string.enable_music_control_force_update_desc,
                         type = ConfigType.BooleanVal(defaultValue = false)
+                    )
+                )
+            ),
+            ConfigCategory(
+                titleRes = R.string.cfg_subscreen_lock_back_home_whitelist,
+                descriptionRes = R.string.cfg_subscreen_lock_back_home_whitelist_desc,
+                children = listOf(
+                    ConfigItem(
+                        key = ConfigKeys.SUBSCREEN_LOCK_BACK_HOME_WHITELIST_APPS,
+                        titleRes = R.string.subscreen_lock_back_home_whitelist_apps,
+                        descriptionRes = R.string.subscreen_lock_back_home_whitelist_apps_desc,
+                        type = ConfigType.AppList(defaultValues = emptySet())
                     )
                 )
             ),

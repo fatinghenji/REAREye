@@ -1,11 +1,15 @@
 package hk.uwu.reareye.repository.rearstore
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.util.Base64
 import androidx.annotation.Keep
+import androidx.core.content.ContextCompat
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import hk.uwu.reareye.BuildConfig
+import hk.uwu.reareye.R
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperMetadataOptions
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperOperationResult
 import hk.uwu.reareye.repository.rearwallpaper.RearWallpaperRepository
@@ -14,8 +18,14 @@ import hk.uwu.reareye.repository.rearwidget.RearCardConfig
 import hk.uwu.reareye.repository.rearwidget.RearWidgetConfigCodec
 import hk.uwu.reareye.repository.rearwidget.RearWidgetManagerRepository
 import hk.uwu.reareye.repository.rearwidget.RearWidgetSceneRouteConfig
+import hk.uwu.reareye.ui.config.ConfigCategory
+import hk.uwu.reareye.ui.config.ConfigGroup
+import hk.uwu.reareye.ui.config.ConfigItem
 import hk.uwu.reareye.ui.config.ConfigKeys
+import hk.uwu.reareye.ui.config.ConfigNode
+import hk.uwu.reareye.ui.config.ConfigType
 import hk.uwu.reareye.ui.config.PrefsManager
+import hk.uwu.reareye.ui.config.REAREyeConfig
 import hk.uwu.reareye.ui.config.resolveRearStoreApiBaseUrl
 import hk.uwu.reareye.widgetapi.RearWidgetSceneRouteSpec
 import kotlinx.coroutines.Dispatchers
@@ -31,14 +41,68 @@ import okhttp3.logging.HttpLoggingInterceptor
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 
 private const val DEFAULT_COMPONENT_ROUTE_PACKAGE = "com.xiaomi.subscreencenter"
+private const val MIUI_GET_INSTALLED_APPS_PERMISSION = "com.android.permission.GET_INSTALLED_APPS"
 private const val WIDGET_VERSION_CHECK_DISABLED = -1L
+
+@Keep
+data class RearStoreWidgetRequirements(
+    @SerializedName("packages")
+    val packages: List<String> = emptyList(),
+    @SerializedName("configs")
+    val configs: Map<String, Any> = emptyMap(),
+)
+
+@Keep
+data class RearStorePostInstall(
+    @SerializedName("uri")
+    val uri: String = "",
+)
+
+data class RearStoreWidgetRequirementsResult(
+    val satisfied: Boolean,
+    val appListPermissionGranted: Boolean = true,
+    val missingPackages: List<String> = emptyList(),
+    val failedConfigKeys: List<String> = emptyList(),
+    val failedConfigRequirements: Map<String, String> = emptyMap(),
+    val failedConfigReasons: Map<String, String> = emptyMap(),
+)
+
+private data class RearStoreConfigNodeIndex(
+    val titleResByKey: Map<String, Int>,
+    val itemTypeByKey: Map<String, ConfigType>,
+)
+
+private enum class RearStoreRequirementOperator(val token: String) {
+    GTE(">="),
+    LTE("<="),
+    EQ("=="),
+    NE("!="),
+    GT(">"),
+    LT("<");
+
+    companion object {
+        private val ordered = entries.sortedByDescending { it.token.length }
+
+        fun parse(expression: String): Pair<RearStoreRequirementOperator, String> {
+            val normalized = expression.trim()
+            ordered.forEach { operator ->
+                if (normalized.startsWith(operator.token)) {
+                    return operator to normalized.removePrefix(operator.token).trim()
+                }
+            }
+            return EQ to normalized
+        }
+    }
+}
 
 private fun String?.normalizedOrNull(): String? {
     return this?.trim()?.takeIf { it.isNotEmpty() }
@@ -94,8 +158,473 @@ fun RearStoreWidgetInfo?.supportsModuleVersion(
             (maxVersion == WIDGET_VERSION_CHECK_DISABLED || versionCode <= maxVersion)
 }
 
+fun RearStoreWidgetInfo?.evaluateRequirements(
+    context: Context,
+    prefsManager: PrefsManager,
+): RearStoreWidgetRequirementsResult {
+    val requirements = this?.requirements
+    val requiredPackages = requirements.normalizedPackages()
+    val requiredConfigs = requirements.normalizedConfigExpressions()
+    val configNodeIndex = buildConfigNodeIndex()
+    if (requiredPackages.isEmpty() && requiredConfigs.isEmpty()) {
+        return RearStoreWidgetRequirementsResult(satisfied = true)
+    }
+
+    val installedPackages = if (requiredPackages.isEmpty()) {
+        emptySet()
+    } else {
+        loadInstalledPackagesOrNull(context)
+    }
+    val missingPackages = when {
+        requiredPackages.isEmpty() -> emptyList()
+        installedPackages == null -> requiredPackages
+        else -> requiredPackages.filterNot(installedPackages::contains)
+    }
+    val failedConfigReasons = linkedMapOf<String, String>()
+    requiredConfigs.forEach { (key, expression) ->
+        if (!configNodeIndex.titleResByKey.containsKey(key)) {
+            failedConfigReasons[key] = context.getString(
+                R.string.rear_store_requirement_config_unknown_item,
+                key,
+            )
+            return@forEach
+        }
+        val actualValue = prefsManager.getRequirementValue(key)
+        val result = evaluateConfigRequirement(
+            context = context,
+            key = key,
+            actualValue = actualValue,
+            expression = expression,
+            configNodeIndex = configNodeIndex,
+        )
+        if (!result.satisfied) {
+            failedConfigReasons[key] = result.reason
+        }
+    }
+    val failedConfigKeys = failedConfigReasons.keys.toList()
+
+    return RearStoreWidgetRequirementsResult(
+        satisfied = missingPackages.isEmpty() && failedConfigKeys.isEmpty(),
+        appListPermissionGranted = requiredPackages.isEmpty() || installedPackages != null,
+        missingPackages = missingPackages,
+        failedConfigKeys = failedConfigKeys,
+        failedConfigRequirements = requiredConfigs.filterKeys(failedConfigKeys::contains),
+        failedConfigReasons = failedConfigReasons,
+    )
+}
+
 fun RearStoreWidgetMetadata?.resolvedType(): RearStoreWidgetMetadataType {
     return RearStoreWidgetMetadataType.fromRaw(this?.type)
+}
+
+private fun RearStoreWidgetRequirements?.normalizedPackages(): List<String> {
+    return this?.packages
+        ?.mapNotNull(String::normalizedOrNull)
+        ?.distinct()
+        .orEmpty()
+}
+
+private fun RearStoreWidgetRequirements?.normalizedConfigExpressions(): Map<String, String> {
+    return this?.configs
+        ?.mapNotNull { (key, value) ->
+            val normalizedKey = key.normalizedOrNull() ?: return@mapNotNull null
+            val expression = value.toRequirementExpression() ?: return@mapNotNull null
+            normalizedKey to expression
+        }
+        ?.toMap(linkedMapOf())
+        .orEmpty()
+}
+
+private fun Any?.toRequirementExpression(): String? {
+    return when (this) {
+        null -> null
+        is String -> normalizedOrNull()
+        is Boolean, is Number -> "== $this"
+        is Collection<*> -> null
+        else -> toString().normalizedOrNull()
+    }
+}
+
+private fun loadInstalledPackagesOrNull(context: Context): Set<String>? {
+    val canReadAppList = ContextCompat.checkSelfPermission(
+        context,
+        MIUI_GET_INSTALLED_APPS_PERMISSION,
+    ) == PackageManager.PERMISSION_GRANTED
+    if (!canReadAppList) return null
+    return runCatching {
+        context.packageManager
+            .getInstalledApplications(PackageManager.GET_META_DATA)
+            .mapNotNullTo(linkedSetOf()) { it.packageName.normalizedOrNull() }
+    }.getOrNull()
+}
+
+private data class RearStoreRequirementCheckResult(
+    val satisfied: Boolean,
+    val reason: String,
+)
+
+private fun evaluateConfigRequirement(
+    context: Context,
+    key: String,
+    actualValue: Any?,
+    expression: String,
+    configNodeIndex: RearStoreConfigNodeIndex,
+): RearStoreRequirementCheckResult {
+    if (actualValue == null) {
+        return RearStoreRequirementCheckResult(
+            satisfied = false,
+            reason = buildConfigMissingReason(context, key, configNodeIndex),
+        )
+    }
+    val (operator, operand) = RearStoreRequirementOperator.parse(expression)
+    return when (actualValue) {
+        is Boolean -> evaluateBooleanRequirement(
+            context,
+            key,
+            actualValue,
+            operator,
+            operand,
+            configNodeIndex
+        )
+
+        is Int -> evaluateNumericRequirement(
+            context,
+            key,
+            actualValue.toDouble(),
+            operator,
+            operand,
+            configNodeIndex
+        )
+
+        is Long -> evaluateNumericRequirement(
+            context,
+            key,
+            actualValue.toDouble(),
+            operator,
+            operand,
+            configNodeIndex
+        )
+
+        is Float -> evaluateNumericRequirement(
+            context,
+            key,
+            actualValue.toDouble(),
+            operator,
+            operand,
+            configNodeIndex
+        )
+
+        is Double -> evaluateNumericRequirement(
+            context,
+            key,
+            actualValue,
+            operator,
+            operand,
+            configNodeIndex
+        )
+
+        is Set<*> -> evaluateCollectionRequirement(
+            context,
+            key,
+            actualValue,
+            operator,
+            operand,
+            configNodeIndex
+        )
+
+        is Collection<*> -> evaluateCollectionRequirement(
+            context,
+            key,
+            actualValue,
+            operator,
+            operand,
+            configNodeIndex
+        )
+
+        else -> evaluateStringRequirement(
+            context,
+            key,
+            actualValue.toString(),
+            operator,
+            operand,
+            configNodeIndex
+        )
+    }
+}
+
+private fun evaluateBooleanRequirement(
+    context: Context,
+    key: String,
+    actual: Boolean,
+    operator: RearStoreRequirementOperator,
+    operand: String,
+    configNodeIndex: RearStoreConfigNodeIndex,
+): RearStoreRequirementCheckResult {
+    val expected = operand.toBooleanStrictOrNull()
+    val satisfied = when (operator) {
+        RearStoreRequirementOperator.EQ -> expected != null && actual == expected
+        RearStoreRequirementOperator.NE -> expected != null && actual != expected
+        else -> false
+    }
+    if (satisfied) return RearStoreRequirementCheckResult(true, "")
+
+    val reason = when {
+        expected == true && operator == RearStoreRequirementOperator.EQ -> {
+            buildConfigNeedEnabledReason(context, key, configNodeIndex)
+        }
+
+        expected == false && operator == RearStoreRequirementOperator.EQ -> {
+            buildConfigNeedDisabledReason(context, key, configNodeIndex)
+        }
+
+        expected == true && operator == RearStoreRequirementOperator.NE -> {
+            buildConfigNotEnabledReason(context, key, configNodeIndex)
+        }
+
+        expected == false && operator == RearStoreRequirementOperator.NE -> {
+            buildConfigNotDisabledReason(context, key, configNodeIndex)
+        }
+
+        else -> buildConfigNeedEnabledReason(context, key, configNodeIndex)
+    }
+    return RearStoreRequirementCheckResult(false, reason)
+}
+
+private fun buildConfigNodeIndex(): RearStoreConfigNodeIndex {
+    val titleResByKey = linkedMapOf<String, Int>()
+    val itemTypeByKey = linkedMapOf<String, ConfigType>()
+
+    fun walk(nodes: List<ConfigNode>) {
+        nodes.forEach { node ->
+            when (node) {
+                is ConfigItem -> {
+                    titleResByKey[node.key] = node.titleRes
+                    itemTypeByKey[node.key] = node.type
+                }
+
+                is ConfigCategory -> walk(node.children)
+                is ConfigGroup -> walk(node.children)
+            }
+        }
+    }
+
+    walk(REAREyeConfig)
+    return RearStoreConfigNodeIndex(titleResByKey = titleResByKey, itemTypeByKey = itemTypeByKey)
+}
+
+private fun buildConfigMissingReason(
+    context: Context,
+    key: String,
+    configNodeIndex: RearStoreConfigNodeIndex,
+): String {
+    val titleRes = configNodeIndex.titleResByKey[key]
+    return if (titleRes != null) {
+        context.getString(
+            R.string.rear_store_requirement_config_missing_named_item,
+            quotedConfigTitle(context.getString(titleRes)),
+        )
+    } else {
+        context.getString(R.string.rear_store_requirement_config_unknown_item, key)
+    }
+}
+
+private fun quotedConfigTitle(title: String): String {
+    return "\"$title\""
+}
+
+private fun buildConfigNeedEnabledReason(
+    context: Context,
+    key: String,
+    configNodeIndex: RearStoreConfigNodeIndex,
+): String {
+    val title =
+        configNodeIndex.titleResByKey[key]?.let(context::getString)?.let(::quotedConfigTitle)
+            .orEmpty()
+    return context.getString(R.string.rear_store_requirement_config_need_enabled_named_item, title)
+}
+
+private fun buildConfigNeedDisabledReason(
+    context: Context,
+    key: String,
+    configNodeIndex: RearStoreConfigNodeIndex,
+): String {
+    val title =
+        configNodeIndex.titleResByKey[key]?.let(context::getString)?.let(::quotedConfigTitle)
+            .orEmpty()
+    return context.getString(R.string.rear_store_requirement_config_need_disabled_named_item, title)
+}
+
+private fun buildConfigNotEnabledReason(
+    context: Context,
+    key: String,
+    configNodeIndex: RearStoreConfigNodeIndex,
+): String {
+    val title =
+        configNodeIndex.titleResByKey[key]?.let(context::getString)?.let(::quotedConfigTitle)
+            .orEmpty()
+    return context.getString(R.string.rear_store_requirement_config_not_enabled_named_item, title)
+}
+
+private fun buildConfigNotDisabledReason(
+    context: Context,
+    key: String,
+    configNodeIndex: RearStoreConfigNodeIndex,
+): String {
+    val title =
+        configNodeIndex.titleResByKey[key]?.let(context::getString)?.let(::quotedConfigTitle)
+            .orEmpty()
+    return context.getString(R.string.rear_store_requirement_config_not_disabled_named_item, title)
+}
+
+private fun evaluateNumericRequirement(
+    context: Context,
+    key: String,
+    actual: Double,
+    operator: RearStoreRequirementOperator,
+    operand: String,
+    configNodeIndex: RearStoreConfigNodeIndex,
+): RearStoreRequirementCheckResult {
+    val expected = operand.toDoubleOrNull()
+    val satisfied = when (operator) {
+        RearStoreRequirementOperator.GTE -> expected != null && actual >= expected
+        RearStoreRequirementOperator.LTE -> expected != null && actual <= expected
+        RearStoreRequirementOperator.EQ -> expected != null && actual == expected
+        RearStoreRequirementOperator.NE -> expected != null && actual != expected
+        RearStoreRequirementOperator.GT -> expected != null && actual > expected
+        RearStoreRequirementOperator.LT -> expected != null && actual < expected
+    }
+    if (satisfied) return RearStoreRequirementCheckResult(true, "")
+
+    val reason = when (operator) {
+        RearStoreRequirementOperator.GTE -> context.getString(
+            R.string.rear_store_requirement_config_number_gte_item,
+            configNodeIndex.titleResByKey[key]?.let(context::getString)?.let(::quotedConfigTitle)
+                .orEmpty(),
+            operand,
+        )
+
+        RearStoreRequirementOperator.LTE -> context.getString(
+            R.string.rear_store_requirement_config_number_lte_item,
+            configNodeIndex.titleResByKey[key]?.let(context::getString)?.let(::quotedConfigTitle)
+                .orEmpty(),
+            operand,
+        )
+
+        RearStoreRequirementOperator.EQ -> context.getString(
+            R.string.rear_store_requirement_config_number_eq_item,
+            configNodeIndex.titleResByKey[key]?.let(context::getString)?.let(::quotedConfigTitle)
+                .orEmpty(),
+            operand,
+        )
+
+        RearStoreRequirementOperator.NE -> context.getString(
+            R.string.rear_store_requirement_config_number_ne_item,
+            configNodeIndex.titleResByKey[key]?.let(context::getString)?.let(::quotedConfigTitle)
+                .orEmpty(),
+            operand,
+        )
+
+        RearStoreRequirementOperator.GT -> context.getString(
+            R.string.rear_store_requirement_config_number_gt_item,
+            configNodeIndex.titleResByKey[key]?.let(context::getString)?.let(::quotedConfigTitle)
+                .orEmpty(),
+            operand,
+        )
+
+        RearStoreRequirementOperator.LT -> context.getString(
+            R.string.rear_store_requirement_config_number_lt_item,
+            configNodeIndex.titleResByKey[key]?.let(context::getString)?.let(::quotedConfigTitle)
+                .orEmpty(),
+            operand,
+        )
+    }
+    return RearStoreRequirementCheckResult(false, reason)
+}
+
+private fun evaluateCollectionRequirement(
+    context: Context,
+    key: String,
+    actual: Collection<*>,
+    operator: RearStoreRequirementOperator,
+    operand: String,
+    configNodeIndex: RearStoreConfigNodeIndex,
+): RearStoreRequirementCheckResult {
+    val normalizedValues = actual.mapNotNull { it?.toString().normalizedOrNull() }.toSet()
+    val target = operand.normalizedOrNull() ?: return RearStoreRequirementCheckResult(
+        satisfied = false,
+        reason = buildConfigNeedEnabledReason(context, key, configNodeIndex),
+    )
+    val satisfied = when (operator) {
+        RearStoreRequirementOperator.EQ -> target in normalizedValues
+        RearStoreRequirementOperator.NE -> target !in normalizedValues
+        else -> false
+    }
+    if (satisfied) return RearStoreRequirementCheckResult(true, "")
+
+    val reason = when (operator) {
+        RearStoreRequirementOperator.EQ -> context.getString(
+            R.string.rear_store_requirement_config_contains_item,
+            configNodeIndex.titleResByKey[key]?.let(context::getString)?.let(::quotedConfigTitle)
+                .orEmpty(),
+            target,
+        )
+
+        RearStoreRequirementOperator.NE -> context.getString(
+            R.string.rear_store_requirement_config_not_contains_item,
+            configNodeIndex.titleResByKey[key]?.let(context::getString)?.let(::quotedConfigTitle)
+                .orEmpty(),
+            target,
+        )
+
+        else -> context.getString(
+            R.string.rear_store_requirement_config_contains_item,
+            configNodeIndex.titleResByKey[key]?.let(context::getString)?.let(::quotedConfigTitle)
+                .orEmpty(),
+            target,
+        )
+    }
+    return RearStoreRequirementCheckResult(false, reason)
+}
+
+private fun evaluateStringRequirement(
+    context: Context,
+    key: String,
+    actual: String,
+    operator: RearStoreRequirementOperator,
+    operand: String,
+    configNodeIndex: RearStoreConfigNodeIndex,
+): RearStoreRequirementCheckResult {
+    val normalizedActual = actual.trim()
+    val satisfied = when (operator) {
+        RearStoreRequirementOperator.EQ -> normalizedActual == operand
+        RearStoreRequirementOperator.NE -> normalizedActual != operand
+        else -> false
+    }
+    if (satisfied) return RearStoreRequirementCheckResult(true, "")
+
+    val reason = when (operator) {
+        RearStoreRequirementOperator.EQ -> context.getString(
+            R.string.rear_store_requirement_config_string_eq_item,
+            configNodeIndex.titleResByKey[key]?.let(context::getString)?.let(::quotedConfigTitle)
+                .orEmpty(),
+            operand,
+        )
+
+        RearStoreRequirementOperator.NE -> context.getString(
+            R.string.rear_store_requirement_config_string_ne_item,
+            configNodeIndex.titleResByKey[key]?.let(context::getString)?.let(::quotedConfigTitle)
+                .orEmpty(),
+            operand,
+        )
+
+        else -> context.getString(
+            R.string.rear_store_requirement_config_string_eq_item,
+            configNodeIndex.titleResByKey[key]?.let(context::getString)?.let(::quotedConfigTitle)
+                .orEmpty(),
+            operand,
+        )
+    }
+    return RearStoreRequirementCheckResult(false, reason)
 }
 
 private fun parseMetadataType(rawType: String?): RearStoreWidgetMetadataType {
@@ -298,6 +827,10 @@ data class RearStoreWidgetInfo(
     val minVersion: Long = WIDGET_VERSION_CHECK_DISABLED,
     @SerializedName(value = "maxVersion", alternate = ["max_version"])
     val maxVersion: Long = WIDGET_VERSION_CHECK_DISABLED,
+    @SerializedName("requirements")
+    val requirements: RearStoreWidgetRequirements? = null,
+    @SerializedName("postinstall")
+    val postInstall: RearStorePostInstall? = null,
 )
 
 @Keep
@@ -369,6 +902,8 @@ data class RearStoreRelease(
     val publishedAt: String = "",
     @SerializedName("url")
     val url: String = "",
+    @SerializedName(value = "widgetInfo", alternate = ["widget_info"])
+    val widgetInfo: RearStoreWidgetInfo? = null,
     @SerializedName("assets")
     val assets: List<RearStoreReleaseAsset> = emptyList(),
 )
@@ -435,6 +970,16 @@ data class RearStoreQuickInstallResult(
     val cardInstalled: Boolean,
     val fallbackUsed: Boolean,
     val updatedExistingInstall: Boolean,
+    val businessConfigId: String? = null,
+    val cardId: String? = null,
+)
+
+data class RearStoreInstalledArchiveSource(
+    val storeWidgetId: String?,
+    val businessConfigId: String,
+    val businessName: String,
+    val cardId: String?,
+    val filePath: String,
 )
 
 data class RearStorePreparedInstallAsset(
@@ -585,18 +1130,19 @@ object RearStoreRepository {
 
     suspend fun loadWidgetDetail(
         prefsManager: PrefsManager,
-        widgetId: String
+        widgetId: String,
+        widgetInfoVersion: String? = null,
     ): RearStoreWidgetDetail? {
         val normalizedWidgetId = widgetId.normalizedOrNull() ?: return null
+        val normalizedWidgetInfoVersion = widgetInfoVersion.normalizedOrNull()
         val baseUrl = resolveRearStoreApiBaseUrl(prefsManager)
-        val detailCacheKey = cacheKey(baseUrl, normalizedWidgetId)
+        val detailCacheKey = cacheKey(baseUrl, normalizedWidgetId, normalizedWidgetInfoVersion)
         detailCache[detailCacheKey]?.let { return it }
         return withContext(Dispatchers.IO) {
             coroutineScope {
                 val descriptionDeferred =
                     async { loadDescriptionCached(baseUrl, normalizedWidgetId) }
                 val authorDeferred = async { loadAuthorCached(baseUrl, normalizedWidgetId) }
-                val infoDeferred = async { loadWidgetInfoCached(baseUrl, normalizedWidgetId) }
                 val releasesDeferred = async { loadReleasesCached(baseUrl, normalizedWidgetId) }
 
                 val description = descriptionDeferred.await()
@@ -607,12 +1153,17 @@ object RearStoreRepository {
                     }
                     ?: return@coroutineScope null
                 val repository = description.repository
-                val widgetInfo = infoDeferred.await()
+                val releases = releasesDeferred.await().orEmpty()
+                val widgetInfo = loadWidgetInfoForVersionCached(
+                    baseUrl = baseUrl,
+                    widgetId = normalizedWidgetId,
+                    version = normalizedWidgetInfoVersion,
+                    releases = releases,
+                )
                 val metadata = description.metadata
-                val widgetType = loadWidgetTypeFromInfoCached(baseUrl, normalizedWidgetId)
                 val resolvedAuthor = resolveAuthor(authorDeferred.await(), repository)
                 val detail = RearStoreWidgetDetail(
-                    type = widgetType ?: metadata?.type.normalizedOrNull(),
+                    type = widgetInfo?.type.normalizedOrNull() ?: metadata?.type.normalizedOrNull(),
                     widgetId = normalizedWidgetId,
                     name = description.name.normalizedOrNull()
                         ?: widgetInfo?.name.normalizedOrNull()
@@ -623,12 +1174,28 @@ object RearStoreRepository {
                     widgetInfo = widgetInfo,
                     metadata = metadata,
                     readme = readmeCache[detailCacheKey],
-                    releases = releasesDeferred.await().orEmpty(),
+                    releases = releases,
                 )
                 detailCache[detailCacheKey] = detail
                 detail
             }
         }
+    }
+
+    suspend fun loadWidgetDetailForRelease(
+        prefsManager: PrefsManager,
+        detail: RearStoreWidgetDetail,
+        releaseTag: String?,
+    ): RearStoreWidgetDetail = withContext(Dispatchers.IO) {
+        val normalizedWidgetId = detail.widgetId.normalizedOrNull() ?: return@withContext detail
+        val baseUrl = resolveRearStoreApiBaseUrl(prefsManager)
+        val widgetInfo = loadWidgetInfoForVersionCached(
+            baseUrl = baseUrl,
+            widgetId = normalizedWidgetId,
+            version = releaseTag,
+            releases = detail.releases,
+        )
+        detail.copy(widgetInfo = widgetInfo ?: detail.widgetInfo)
     }
 
     suspend fun loadWidgetReadme(prefsManager: PrefsManager, widgetId: String): RearStoreReadme? {
@@ -691,6 +1258,85 @@ object RearStoreRepository {
                 )
             }
         }
+    }
+
+    fun resolveInstalledArchiveSourceByStoreWidgetId(
+        prefsManager: PrefsManager,
+        widgetId: String,
+    ): RearStoreInstalledArchiveSource? {
+        val normalizedWidgetId = widgetId.normalizedOrNull() ?: return null
+        val businesses = RearWidgetManagerRepository.loadBusinesses(prefsManager)
+        val cards = RearWidgetManagerRepository.loadCards(prefsManager)
+        val business = businesses.firstOrNull {
+            it.downloadedFromStore &&
+                    it.storeWidgetId.normalizedOrNull() == normalizedWidgetId &&
+                    it.filePath.normalizedOrNull() != null
+        } ?: return null
+        val cardId = cards.firstOrNull {
+            it.downloadedFromStore && it.storeWidgetId.normalizedOrNull() == normalizedWidgetId
+        }?.id
+        return RearStoreInstalledArchiveSource(
+            storeWidgetId = normalizedWidgetId,
+            businessConfigId = business.id,
+            businessName = business.business,
+            cardId = cardId,
+            filePath = business.filePath,
+        )
+    }
+
+    fun resolveInstalledArchiveSourceByBusinessConfigId(
+        prefsManager: PrefsManager,
+        businessConfigId: String,
+    ): RearStoreInstalledArchiveSource? {
+        val normalizedBusinessConfigId = businessConfigId.normalizedOrNull() ?: return null
+        val businesses = RearWidgetManagerRepository.loadBusinesses(prefsManager)
+        val cards = RearWidgetManagerRepository.loadCards(prefsManager)
+        val business = businesses.firstOrNull {
+            it.id.normalizedOrNull() == normalizedBusinessConfigId && it.filePath.normalizedOrNull() != null
+        } ?: return null
+        val cardId = cards.firstOrNull {
+            it.business == business.business &&
+                    it.storeWidgetId.normalizedOrNull() == business.storeWidgetId.normalizedOrNull()
+        }?.id
+        return RearStoreInstalledArchiveSource(
+            storeWidgetId = business.storeWidgetId.normalizedOrNull(),
+            businessConfigId = business.id,
+            businessName = business.business,
+            cardId = cardId,
+            filePath = business.filePath,
+        )
+    }
+
+    fun readInstalledArchiveFileBase64(
+        filePath: String,
+        entryName: String? = null,
+    ): String {
+        val targetFile = File(filePath)
+        require(targetFile.exists() && targetFile.isFile) { "Archive file not found" }
+        val bytes = if (entryName.normalizedOrNull() == null) {
+            targetFile.readBytes()
+        } else {
+            readZipEntryBytes(targetFile, entryName.normalizedOrNull()!!)
+                ?: error("Entry '$entryName' not found in archive")
+        }
+        return Base64.encodeToString(bytes, Base64.NO_WRAP)
+    }
+
+    fun listInstalledArchiveEntries(filePath: String): List<String> {
+        val targetFile = File(filePath)
+        require(targetFile.exists() && targetFile.isFile) { "Archive file not found" }
+        return runCatching {
+            ZipFile(targetFile).use { zipFile ->
+                buildList {
+                    val entries = zipFile.entries()
+                    while (entries.hasMoreElements()) {
+                        val entry = entries.nextElement()
+                        if (entry.isDirectory) continue
+                        add(entry.name.replace('\\', '/').trimStart('/'))
+                    }
+                }.sorted()
+            }
+        }.getOrElse { emptyList() }
     }
 
     fun loadInstalledWallpaperSources(
@@ -855,6 +1501,11 @@ object RearStoreRepository {
             preferredAssetName = assetName,
         )
             ?: error("No downloadable release asset found")
+        val installDetail = loadWidgetDetailForRelease(
+            prefsManager = prefsManager,
+            detail = detail,
+            releaseTag = selectedAsset.release.tagName,
+        )
         val assetBytes = downloadAssetBytes(
             baseUrl = baseUrl,
             widgetId = detail.widgetId,
@@ -862,10 +1513,11 @@ object RearStoreRepository {
             onProgress = onProgress,
         )
             ?: error("Failed to download widget asset")
-        val isWallpaper = detail.widgetInfo.resolvedType() == RearStoreWidgetInfoType.WALLPAPER
+        val isWallpaper =
+            installDetail.widgetInfo.resolvedType() == RearStoreWidgetInfoType.WALLPAPER
         val embeddedMetadataBytes = if (isWallpaper) extractRootMetadataMrm(assetBytes) else null
         val defaultWallpaperOptions = if (isWallpaper) {
-            detail.toWallpaperMetadataOptions(detail.defaultWallpaperName())
+            installDetail.toWallpaperMetadataOptions(installDetail.defaultWallpaperName())
         } else {
             null
         }
@@ -897,20 +1549,63 @@ object RearStoreRepository {
         wallpaperMetadataOptions: RearWallpaperMetadataOptions? = null,
         onProgress: (RearStoreInstallProgress) -> Unit = {},
     ): RearStoreQuickInstallResult = withContext(Dispatchers.IO) {
-        val widgetInfoType = detail.widgetInfo.resolvedType()
+        val selectedReleaseTag = preparedAsset?.release?.tagName.normalizedOrNull()
+            ?: releaseTag.normalizedOrNull()
+            ?: selectAsset(
+                releases = detail.releases,
+                preferredReleaseTag = releaseTag,
+                preferredAssetName = assetName,
+            )?.release?.tagName.normalizedOrNull()
+        val installDetail = loadWidgetDetailForRelease(
+            prefsManager = prefsManager,
+            detail = detail,
+            releaseTag = selectedReleaseTag,
+        )
+        val widgetInfoType = installDetail.widgetInfo.resolvedType()
         if (!widgetInfoType.supportedInCurrentVersion) {
             error("Install mode '${widgetInfoType.rawValue}' is not supported by current version")
         }
-        if (!detail.widgetInfo.supportsModuleVersion()) {
+        if (!installDetail.widgetInfo.supportsModuleVersion()) {
             error("Current module version does not support installing this component")
         }
-        val conflict = resolveInstallConflict(prefsManager, detail)
+        val requirementsResult =
+            installDetail.widgetInfo.evaluateRequirements(context, prefsManager)
+        if (!requirementsResult.satisfied) {
+            when {
+                !requirementsResult.appListPermissionGranted && requirementsResult.missingPackages.isNotEmpty() -> {
+                    error("Installed apps permission is required to verify widget package requirements")
+                }
+
+                requirementsResult.missingPackages.isNotEmpty() -> {
+                    error(
+                        "Missing required packages: ${
+                            requirementsResult.missingPackages.joinToString(
+                                ", "
+                            )
+                        }"
+                    )
+                }
+
+                requirementsResult.failedConfigKeys.isNotEmpty() -> {
+                    error(
+                        "Unsatisfied required configs: ${
+                            requirementsResult.failedConfigKeys.joinToString(
+                                ", "
+                            )
+                        }"
+                    )
+                }
+
+                else -> error("Widget requirements are not satisfied")
+            }
+        }
+        val conflict = resolveInstallConflict(prefsManager, installDetail)
         if (conflict != null && !forceOverwrite) {
             error(buildInstallConflictMessage(conflict))
         }
         val prepared = preparedAsset ?: prepareInstallAsset(
             prefsManager = prefsManager,
-            detail = detail,
+            detail = installDetail,
             releaseTag = releaseTag,
             assetName = assetName,
             onProgress = onProgress,
@@ -924,7 +1619,7 @@ object RearStoreRepository {
             RearStoreWidgetInfoType.WIDGET -> installWidgetAsset(
                 context = context,
                 prefsManager = prefsManager,
-                detail = detail,
+                detail = installDetail,
                 selectedAsset = RearStoreSelectedAsset(prepared.release, prepared.asset),
                 assetBytes = prepared.assetBytes,
                 conflict = conflict,
@@ -933,7 +1628,7 @@ object RearStoreRepository {
             RearStoreWidgetInfoType.WALLPAPER -> installWallpaperAsset(
                 context = context,
                 prefsManager = prefsManager,
-                detail = detail,
+                detail = installDetail,
                 selectedAsset = RearStoreSelectedAsset(prepared.release, prepared.asset),
                 assetBytes = prepared.assetBytes,
                 metadataBytes = prepared.embeddedMetadataBytes,
@@ -1001,34 +1696,33 @@ object RearStoreRepository {
                     (conflictingStoreWidgetId != null &&
                             it.storeWidgetId.normalizedOrNull() == conflictingStoreWidgetId)
         }
+        val installedBusiness = RearBusinessConfig(
+            id = previousBusiness?.id
+                ?: RearWidgetConfigCodec.newBusinessId(
+                    DEFAULT_COMPONENT_ROUTE_PACKAGE,
+                    businessId,
+                ),
+            packageName = DEFAULT_COMPONENT_ROUTE_PACKAGE,
+            business = businessId,
+            filePath = targetPath,
+            defaultIndex = previousBusiness?.defaultIndex ?: 0,
+            defaultPriority = previousBusiness?.defaultPriority ?: 500,
+            renameable = businessSetup?.renameable ?: true,
+            downloadedFromStore = true,
+            storeWidgetId = detail.widgetId,
+            storeWidgetName = businessName,
+            storeReleaseTag = storeReleaseTag,
+            storeReleaseAssetName = storeReleaseAssetName,
+            storeReleasePublishedAt = storeReleasePublishedAt,
+            storeInstalledAt = installedAt,
+        )
         val nextBusinesses = businesses
             .filterNot {
                 it.matchesStoreBusiness(detail.widgetId, businessId) ||
                         (conflictingStoreWidgetId != null &&
                                 it.storeWidgetId.normalizedOrNull() == conflictingStoreWidgetId)
             }
-            .plus(
-                RearBusinessConfig(
-                    id = previousBusiness?.id
-                        ?: RearWidgetConfigCodec.newBusinessId(
-                            DEFAULT_COMPONENT_ROUTE_PACKAGE,
-                            businessId,
-                        ),
-                    packageName = DEFAULT_COMPONENT_ROUTE_PACKAGE,
-                    business = businessId,
-                    filePath = targetPath,
-                    defaultIndex = previousBusiness?.defaultIndex ?: 0,
-                    defaultPriority = previousBusiness?.defaultPriority ?: 500,
-                    renameable = businessSetup?.renameable ?: true,
-                    downloadedFromStore = true,
-                    storeWidgetId = detail.widgetId,
-                    storeWidgetName = businessName,
-                    storeReleaseTag = storeReleaseTag,
-                    storeReleaseAssetName = storeReleaseAssetName,
-                    storeReleasePublishedAt = storeReleasePublishedAt,
-                    storeInstalledAt = installedAt,
-                )
-            )
+            .plus(installedBusiness)
         RearWidgetManagerRepository.saveBusinesses(
             context = context,
             prefsManager = prefsManager,
@@ -1097,6 +1791,7 @@ object RearStoreRepository {
             }
         }
         var cardInstalled = false
+        var installedCardId: String? = null
         val nextCards = cards
             .filterNot {
                 (cardPackage != null && it.matchesStoreCard(
@@ -1111,7 +1806,7 @@ object RearStoreRepository {
                 val cardSetup = detail.widgetInfo?.cardSetup ?: return@let existingCards
                 val normalizedCardPackage = cardPackage ?: return@let existingCards
                 cardInstalled = true
-                existingCards + RearCardConfig(
+                val installedCard = RearCardConfig(
                     id = previousCard?.id ?: RearWidgetConfigCodec.newCardId(),
                     title = cardSetup.name.normalizedOrNull() ?: businessName,
                     packageName = normalizedCardPackage,
@@ -1133,6 +1828,8 @@ object RearStoreRepository {
                     storeReleaseAssetName = storeReleaseAssetName,
                     storeReleasePublishedAt = storeReleasePublishedAt,
                 )
+                installedCardId = installedCard.id
+                existingCards + installedCard
             }
         if (nextCards != cards) {
             RearWidgetManagerRepository.saveCards(
@@ -1150,6 +1847,8 @@ object RearStoreRepository {
             cardInstalled = cardInstalled,
             fallbackUsed = false,
             updatedExistingInstall = previousBusiness != null || conflict != null,
+            businessConfigId = installedBusiness.id,
+            cardId = installedCardId,
         )
     }
 
@@ -1222,6 +1921,8 @@ object RearStoreRepository {
             cardInstalled = false,
             fallbackUsed = false,
             updatedExistingInstall = previousRecords.isNotEmpty(),
+            businessConfigId = null,
+            cardId = null,
         )
     }
 
@@ -1390,6 +2091,19 @@ object RearStoreRepository {
         return optString(key).trim().takeIf { it.isNotBlank() }
     }
 
+    private fun readZipEntryBytes(file: File, entryName: String): ByteArray? {
+        val normalizedEntryName = entryName.replace('\\', '/').trimStart('/')
+        return runCatching {
+            ZipFile(file).use { zipFile ->
+                val entry = zipFile.entries().asSequence().firstOrNull {
+                    !it.isDirectory && it.name.replace('\\', '/')
+                        .trimStart('/') == normalizedEntryName
+                } ?: return@runCatching null
+                zipFile.getInputStream(entry).use { input -> input.readBytes() }
+            }
+        }.getOrNull()
+    }
+
     private suspend fun fetchBytes(
         url: String,
         onProgress: (RearStoreInstallProgress) -> Unit,
@@ -1516,6 +2230,38 @@ object RearStoreRepository {
         return loadedWidgetInfo ?: widgetInfoCache[cacheKey]
     }
 
+    private fun loadWidgetInfoForVersionCached(
+        baseUrl: String,
+        widgetId: String,
+        version: String?,
+        releases: List<RearStoreRelease> = emptyList(),
+    ): RearStoreWidgetInfo? {
+        val normalizedVersion = version.normalizedOrNull()
+            ?: return loadWidgetInfoCached(baseUrl, widgetId)
+        val cacheKey = cacheKey(baseUrl, widgetId, normalizedVersion)
+        widgetInfoCache[cacheKey]?.let { return it }
+
+        val releaseWidgetInfo = releases.firstOrNull { release ->
+            release.tagName.normalizedOrNull() == normalizedVersion ||
+                    release.name.normalizedOrNull() == normalizedVersion
+        }?.widgetInfo
+        if (releaseWidgetInfo != null) {
+            widgetInfoCache[cacheKey] = releaseWidgetInfo
+            return releaseWidgetInfo
+        }
+
+        val loadedWidgetInfo = fetchJson<RearStoreWidgetInfoResponse>(
+            baseUrl,
+            "/widget/${Uri.encode(widgetId)}/releases/${Uri.encode(normalizedVersion)}/widget-info"
+        )?.widgetInfo
+        if (loadedWidgetInfo != null) {
+            widgetInfoCache[cacheKey] = loadedWidgetInfo
+            return loadedWidgetInfo
+        }
+
+        return loadWidgetInfoCached(baseUrl, widgetId)
+    }
+
     private fun loadWidgetTypeFromInfoCached(baseUrl: String, widgetId: String): String? {
         val cacheKey = cacheKey(baseUrl, widgetId)
         widgetTypeCache[cacheKey]?.let { return it }
@@ -1579,6 +2325,11 @@ object RearStoreRepository {
 
     private fun cacheKey(baseUrl: String, widgetId: String): String {
         return "$baseUrl\u0000$widgetId"
+    }
+
+    private fun cacheKey(baseUrl: String, widgetId: String, version: String?): String {
+        val normalizedVersion = version.normalizedOrNull() ?: return cacheKey(baseUrl, widgetId)
+        return "$baseUrl\u0000$widgetId\u0000$normalizedVersion"
     }
 
     private fun selectAsset(

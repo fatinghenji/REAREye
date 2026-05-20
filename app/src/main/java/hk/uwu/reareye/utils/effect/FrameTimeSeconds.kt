@@ -31,7 +31,7 @@ fun rememberFrameTimeSeconds(
 
             time =
                 startOffset +
-                (now - start) / 1_000_000_000f
+                        (now - start) / 1_000_000_000f
         }
     }
 

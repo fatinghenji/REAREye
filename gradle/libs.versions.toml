@@ -1,6 +1,7 @@
 [versions]
 agp = "9.1.1"
-kotlin = "2.3.20"
+kotlin = "2.3.21"
+kotlinx-serialization-json = "1.11.0"
 ksp = "2.3.6"
 rovo89-xposed-api = "82"
 yukihookapi = "1.3.1"
@@ -11,8 +12,8 @@ okhttp-logging = "5.3.2"
 junit = "4.13.2"
 androidx-test-junit = "1.3.0"
 androidx-test-espresso-core = "3.7.0"
-compose-bom = "2026.03.01"
-compose-foundation-style = "1.11.0-rc01"
+compose-bom = "2026.05.00"
+compose-foundation-style = "1.11.1"
 androidx-activity-compose = "1.13.0"
 androidx-lifecycle-runtime-compose = "2.10.0"
 miuix = "0.9.0"
@@ -21,12 +22,14 @@ backdrop = "1.0.6"
 capsule = "2.1.3"
 lyricon = "0.1.70"
 superlyric = "3.3"
-gson = "2.13.2"
-dexkit = "2.1.0"
-foundation-layout = "1.10.6"
+gson = "2.14.0"
+dexkit = "2.2.0"
+foundation-layout = "1.11.1"
 mmkv = "2.4.0"
+compose-icons = "2.2.1"
 
 [plugins]
+serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
@@ -34,6 +37,7 @@ compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "
 
 [libraries]
 androidx-compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization-json" }
 rovo89-xposed-api = { group = "de.robv.android.xposed", name = "api", version.ref = "rovo89-xposed-api" }
 yukihookapi = { group = "com.highcapable.yukihookapi", name = "api", version.ref = "yukihookapi" }
 yukihookapi-ksp-xposed = { group = "com.highcapable.yukihookapi", name = "ksp-xposed", version.ref = "yukihookapi" }
@@ -69,3 +73,10 @@ gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
 dexkit = { group = "org.luckypray", name = "dexkit", version.ref = "dexkit" }
 androidx-compose-foundation-layout = { group = "androidx.compose.foundation", name = "foundation-layout", version.ref = "foundation-layout" }
 mmkv = { group = "com.tencent", name = "mmkv-static", version.ref = "mmkv" }
+compose-icons-material-symbols-outlined-cmp = { group = "com.composables", name = "icons-material-symbols-outlined-cmp", version.ref = "compose-icons" }
+compose-icons-material-symbols-rounded-cmp = { group = "com.composables", name = "icons-material-symbols-rounded-cmp", version.ref = "compose-icons" }
+compose-icons-material-symbols-sharp-cmp = { group = "com.composables", name = "icons-material-symbols-sharp-cmp", version.ref = "compose-icons" }
+compose-icons-material-symbols-outlined-filled-cmp = { group = "com.composables", name = "icons-material-symbols-outlined-filled-cmp", version.ref = "compose-icons" }
+compose-icons-material-symbols-rounded-filled-cmp = { group = "com.composables", name = "icons-material-symbols-rounded-filled-cmp", version.ref = "compose-icons" }
+compose-icons-material-symbols-sharp-filled-cmp = { group = "com.composables", name = "icons-material-symbols-sharp-filled-cmp", version.ref = "compose-icons" }
+

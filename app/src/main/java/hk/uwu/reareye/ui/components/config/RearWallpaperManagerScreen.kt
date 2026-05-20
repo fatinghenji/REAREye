@@ -112,9 +112,9 @@ import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Switch
@@ -488,546 +488,553 @@ fun RearWallpaperManagerScreen(
         },
     ) {
         Scaffold(
-        topBar = {
-            TopAppBar(
-                modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
-                color = Color.Transparent,
-                title = stringResource(
-                    if (activePage == RearWallpaperPage.MANAGEMENT) {
-                        R.string.rear_wallpaper_manage_title
-                    } else {
-                        R.string.rear_wallpaper_manager
-                    }
-                ),
-                navigationIconPadding = 12.dp,
-                actionIconPadding = 12.dp,
-                navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            if (activePage == RearWallpaperPage.MANAGEMENT) {
-                                activePage = RearWallpaperPage.ROTATION
-                            } else {
-                                onBack()
-                            }
-                        },
-                    ) {
-                        Icon(
-                            modifier = Modifier.graphicsLayer {
-                                if (layoutDirection == LayoutDirection.Rtl) scaleX = -1f
-                            },
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = null,
-                        )
-                    }
-                },
-                actions = {
-                    if (activePage == RearWallpaperPage.ROTATION) {
+            topBar = {
+                TopAppBar(
+                    modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
+                    color = Color.Transparent,
+                    title = stringResource(
+                        if (activePage == RearWallpaperPage.MANAGEMENT) {
+                            R.string.rear_wallpaper_manage_title
+                        } else {
+                            R.string.rear_wallpaper_manager
+                        }
+                    ),
+                    navigationIconPadding = 12.dp,
+                    actionIconPadding = 12.dp,
+                    navigationIcon = {
                         IconButton(
-                            onClick = { clearAllRotatingWallpapers() },
+                            onClick = {
+                                if (activePage == RearWallpaperPage.MANAGEMENT) {
+                                    activePage = RearWallpaperPage.ROTATION
+                                } else {
+                                    onBack()
+                                }
+                            },
                         ) {
                             Icon(
-                                imageVector = Icons.Outlined.Delete,
-                                contentDescription = stringResource(R.string.rear_wallpaper_clear_schedule),
+                                modifier = Modifier.graphicsLayer {
+                                    if (layoutDirection == LayoutDirection.Rtl) scaleX = -1f
+                                },
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = null,
                             )
                         }
-                    }
-                    IconButton(
-                        onClick = { if (!refreshing) refreshCatalog(showSuccessToast = true) },
-                    ) {
-                        Icon(imageVector = Icons.Rounded.Refresh, contentDescription = null)
-                    }
-                },
-                scrollBehavior = scrollBehavior,
-            )
-        },
-    ) { paddingValues ->
-        AnimatedContent(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer { clip = true },
-            targetState = activePage,
-            contentKey = { it },
-            transitionSpec = {
-                val forward = targetState == RearWallpaperPage.MANAGEMENT
-
-                fadeIn(
-                    animationSpec = tween(
-                        durationMillis = 210,
-                        delayMillis = 50,
-                        easing = LinearOutSlowInEasing,
-                    )
-                ) + slideInHorizontally(
-                    animationSpec = tween(
-                        durationMillis = 280,
-                        easing = FastOutSlowInEasing,
-                    )
-                ) { fullWidth ->
-                    if (forward) fullWidth / 9 else -fullWidth / 9
-                } togetherWith (
-                        fadeOut(
-                            animationSpec = tween(
-                                durationMillis = 110,
-                                easing = FastOutLinearInEasing,
-                            )
-                        ) + slideOutHorizontally(
-                            animationSpec = tween(
-                                durationMillis = 190,
-                                easing = FastOutLinearInEasing,
-                            )
-                        ) { fullWidth ->
-                            if (forward) -fullWidth / 12 else fullWidth / 12
-                        }
-                        )
-            },
-            label = "RearWallpaperPageTransition",
-        ) { currentPage ->
-            when (currentPage) {
-                RearWallpaperPage.MANAGEMENT -> {
-                    RearWallpaperManagementContent(
-                        paddingValues = paddingValues,
-                        scrollBehavior = scrollBehavior,
-                        hazeState = hazeState,
-                        wallpapers = wallpapers,
-                        storeWallpaperSources = storeWallpaperSources,
-                        currentWallpaperId = currentWallpaperId,
-                        loading = loading,
-                        refreshing = refreshing,
-                        onRefresh = { if (!refreshing) refreshCatalog(showSuccessToast = true) },
-                        onSetCurrent = ::switchWallpaper,
-                        onImport = ::importWallpaperPackage,
-                        onUpdateMetadata = ::updateWallpaperMetadata,
-                        onEditTemplate = { activeTemplateWallpaperId = it.wallpaperId },
-                        onGeneratePreview = ::generateWallpaperPreview,
-                        onDelete = ::deleteWallpaper,
-                    )
-                }
-
-                RearWallpaperPage.ROTATION -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .onGloballyPositioned { coordinates ->
-                                contentTopInRoot = coordinates.positionInRoot().y
+                    },
+                    actions = {
+                        if (activePage == RearWallpaperPage.ROTATION) {
+                            IconButton(
+                                onClick = { clearAllRotatingWallpapers() },
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Delete,
+                                    contentDescription = stringResource(R.string.rear_wallpaper_clear_schedule),
+                                )
                             }
-                    ) {
-                        LazyColumn(
+                        }
+                        IconButton(
+                            onClick = { if (!refreshing) refreshCatalog(showSuccessToast = true) },
+                        ) {
+                            Icon(imageVector = Icons.Rounded.Refresh, contentDescription = null)
+                        }
+                    },
+                    scrollBehavior = scrollBehavior,
+                )
+            },
+        ) { paddingValues ->
+            AnimatedContent(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { clip = true },
+                targetState = activePage,
+                contentKey = { it },
+                transitionSpec = {
+                    val forward = targetState == RearWallpaperPage.MANAGEMENT
+
+                    fadeIn(
+                        animationSpec = tween(
+                            durationMillis = 210,
+                            delayMillis = 50,
+                            easing = LinearOutSlowInEasing,
+                        )
+                    ) + slideInHorizontally(
+                        animationSpec = tween(
+                            durationMillis = 280,
+                            easing = FastOutSlowInEasing,
+                        )
+                    ) { fullWidth ->
+                        if (forward) fullWidth / 9 else -fullWidth / 9
+                    } togetherWith (
+                            fadeOut(
+                                animationSpec = tween(
+                                    durationMillis = 110,
+                                    easing = FastOutLinearInEasing,
+                                )
+                            ) + slideOutHorizontally(
+                                animationSpec = tween(
+                                    durationMillis = 190,
+                                    easing = FastOutLinearInEasing,
+                                )
+                            ) { fullWidth ->
+                                if (forward) -fullWidth / 12 else fullWidth / 12
+                            }
+                            )
+                },
+                label = "RearWallpaperPageTransition",
+            ) { currentPage ->
+                when (currentPage) {
+                    RearWallpaperPage.MANAGEMENT -> {
+                        RearWallpaperManagementContent(
+                            paddingValues = paddingValues,
+                            scrollBehavior = scrollBehavior,
+                            hazeState = hazeState,
+                            wallpapers = wallpapers,
+                            storeWallpaperSources = storeWallpaperSources,
+                            currentWallpaperId = currentWallpaperId,
+                            loading = loading,
+                            refreshing = refreshing,
+                            onRefresh = { if (!refreshing) refreshCatalog(showSuccessToast = true) },
+                            onSetCurrent = ::switchWallpaper,
+                            onImport = ::importWallpaperPackage,
+                            onUpdateMetadata = ::updateWallpaperMetadata,
+                            onEditTemplate = { activeTemplateWallpaperId = it.wallpaperId },
+                            onGeneratePreview = ::generateWallpaperPreview,
+                            onDelete = ::deleteWallpaper,
+                        )
+                    }
+
+                    RearWallpaperPage.ROTATION -> {
+                        Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                                .scrollEndHaptic()
-                                .overScrollVertical()
-                                .rearAcrylicSource(hazeState)
-                                .padding(horizontal = 12.dp),
-                            state = listState,
-                            contentPadding = PaddingValues(
-                                top = paddingValues.calculateTopPadding() + 12.dp,
-                                bottom = paddingValues.calculateBottomPadding() + 12.dp,
-                            ),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            overscrollEffect = null,
-                            userScrollEnabled = draggedId == null,
-                        ) {
-                            item {
-                                Card(modifier = Modifier.fillMaxWidth()) {
-                                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        SuperCard(
-                                            title = stringResource(R.string.rear_wallpaper_status_title),
-                                            onClick = {},
-                                            bottomAction = {
-                                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                                    RearBadgeGroup(badges = statusBadges)
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                        horizontalArrangement = Arrangement.spacedBy(
-                                                            8.dp
-                                                        ),
-                                                    ) {
-                                                        Button(
-                                                            onClick = {
-                                                                pickerMode.value =
-                                                                    WallpaperPickerMode.ADD_TO_SCHEDULE
-                                                            },
-                                                            colors = ButtonDefaults.buttonColorsPrimary(),
-                                                            modifier = Modifier.weight(1f),
-                                                        ) {
-                                                            Icon(
-                                                                imageVector = Icons.Filled.Add,
-                                                                contentDescription = null,
-                                                                modifier = Modifier.padding(end = 6.dp),
-                                                            )
-                                                            Text(stringResource(R.string.rear_wallpaper_add_sheet_trigger))
-                                                        }
-                                                        Button(
-                                                            onClick = {
-                                                                activePage =
-                                                                    RearWallpaperPage.MANAGEMENT
-                                                            },
-                                                            modifier = Modifier.weight(1f),
-                                                        ) {
-                                                            Text(stringResource(R.string.rear_wallpaper_manage_title))
-                                                        }
-                                                    }
-                                                }
-                                            },
-                                        )
-                                    }
+                                .onGloballyPositioned { coordinates ->
+                                    contentTopInRoot = coordinates.positionInRoot().y
                                 }
-                            }
-
-                            item {
-                                Card(modifier = Modifier.fillMaxWidth()) {
-                                    BasicComponent(
-                                        title = stringResource(R.string.rear_wallpaper_schedule_feature_title),
-                                        summary = stringResource(R.string.rear_wallpaper_schedule_hint),
-                                        summaryColor = BasicComponentDefaults.summaryColor(),
-                                        onClick = {},
-                                        endActions = {
-                                            Switch(
-                                                checked = scheduleEnabled,
-                                                onCheckedChange = { checked ->
-                                                    if (checked && schedule.isEmpty()) {
-                                                        toast(R.string.rear_wallpaper_schedule_empty)
-                                                    } else {
-                                                        scheduleEnabled = checked
-                                                        persistSchedule()
+                        ) {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                                    .scrollEndHaptic()
+                                    .overScrollVertical()
+                                    .rearAcrylicSource(hazeState)
+                                    .padding(horizontal = 12.dp),
+                                state = listState,
+                                contentPadding = PaddingValues(
+                                    top = paddingValues.calculateTopPadding() + 12.dp,
+                                    bottom = paddingValues.calculateBottomPadding() + 12.dp,
+                                ),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                overscrollEffect = null,
+                                userScrollEnabled = draggedId == null,
+                            ) {
+                                item {
+                                    Card(modifier = Modifier.fillMaxWidth()) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            SuperCard(
+                                                title = stringResource(R.string.rear_wallpaper_status_title),
+                                                onClick = {},
+                                                bottomAction = {
+                                                    Column(
+                                                        verticalArrangement = Arrangement.spacedBy(
+                                                            10.dp
+                                                        )
+                                                    ) {
+                                                        RearBadgeGroup(badges = statusBadges)
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.spacedBy(
+                                                                8.dp
+                                                            ),
+                                                        ) {
+                                                            Button(
+                                                                onClick = {
+                                                                    pickerMode.value =
+                                                                        WallpaperPickerMode.ADD_TO_SCHEDULE
+                                                                },
+                                                                colors = ButtonDefaults.buttonColorsPrimary(),
+                                                                modifier = Modifier.weight(1f),
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = Icons.Filled.Add,
+                                                                    contentDescription = null,
+                                                                    modifier = Modifier.padding(end = 6.dp),
+                                                                )
+                                                                Text(stringResource(R.string.rear_wallpaper_add_sheet_trigger))
+                                                            }
+                                                            Button(
+                                                                onClick = {
+                                                                    activePage =
+                                                                        RearWallpaperPage.MANAGEMENT
+                                                                },
+                                                                modifier = Modifier.weight(1f),
+                                                            ) {
+                                                                Text(stringResource(R.string.rear_wallpaper_manage_title))
+                                                            }
+                                                        }
                                                     }
                                                 },
                                             )
-                                        },
-                                    )
-                                }
-                            }
-
-                            item {
-                                Card(modifier = Modifier.fillMaxWidth()) {
-                                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        BasicComponent(
-                                            title = stringResource(R.string.rear_wallpaper_schedule_title),
-                                            summary = if (schedule.isEmpty()) {
-                                                stringResource(R.string.rear_wallpaper_schedule_empty)
-                                            } else {
-                                                stringResource(R.string.rear_wallpaper_schedule_order_hint)
-                                            },
-                                            summaryColor = BasicComponentDefaults.summaryColor(),
-                                            onClick = {},
-                                        )
+                                        }
                                     }
                                 }
-                            }
 
-                            if (schedule.isNotEmpty()) {
-                                items(renderedSchedule, key = { it.wallpaperId }) { entry ->
-                                    val wallpaper = wallpaperMap[entry.wallpaperId]
-                                    val isDragged = draggedId == entry.wallpaperId
-                                    val isSettling = settlingWallpaperId == entry.wallpaperId
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .then(
-                                                if (isDragged || isSettling) {
-                                                    Modifier
-                                                } else {
-                                                    Modifier.animateItem(
-                                                        placementSpec = tween(
-                                                            durationMillis = SETTLING_OVERLAY_DURATION_MS.toInt(),
-                                                            easing = FastOutSlowInEasing,
-                                                        )
-                                                    )
-                                                }
-                                            )
-                                            .zIndex(if (isDragged) 1f else 0f)
-                                            .onGloballyPositioned { coordinates ->
-                                                scheduleItemBounds[entry.wallpaperId] = ItemBounds(
-                                                    top = coordinates.positionInRoot().y,
-                                                    height = coordinates.size.height.toFloat(),
-                                                )
-                                            }
-                                            .pointerInput(entry.wallpaperId) {
-                                                detectDragGesturesAfterLongPress(
-                                                    onDragStart = {
-                                                        settlingOverlay = null
-                                                        settlingWallpaperId = null
-                                                        draggedId = entry.wallpaperId
-                                                        val bounds =
-                                                            scheduleItemBounds[entry.wallpaperId]
-                                                        draggedInsertIndex =
-                                                            schedule.indexOfFirst { it.wallpaperId == entry.wallpaperId }
-                                                        draggedStartTop = bounds?.top ?: 0f
-                                                        draggedItemHeight = bounds?.height ?: 0f
-                                                        draggedOffsetY = 0f
-                                                    },
-                                                    onDragCancel = {
-                                                        draggedId = null
-                                                        draggedInsertIndex = null
-                                                        draggedItemHeight = 0f
-                                                        draggedOffsetY = 0f
-                                                    },
-                                                    onDragEnd = {
-                                                        val draggingId = draggedId
-                                                        val finalSchedule = previewScheduleEntries(
-                                                            schedule = schedule,
-                                                            draggingId = draggingId,
-                                                            insertIndex = draggedInsertIndex,
-                                                        )
-                                                        val draggedEntrySnapshot =
-                                                            draggingId?.let { wallpaperId ->
-                                                                schedule.firstOrNull { it.wallpaperId == wallpaperId }
-                                                            }
-                                                        val startTranslationY =
-                                                            draggedStartTop - contentTopInRoot + draggedOffsetY
-                                                        if (draggedEntrySnapshot != null) {
-                                                            settlingOverlay =
-                                                                SettlingScheduleOverlay(
-                                                                    entry = draggedEntrySnapshot,
-                                                                    isCurrent = currentWallpaperId == draggedEntrySnapshot.wallpaperId,
-                                                                    startTranslationY = startTranslationY,
-                                                                    targetTranslationY = startTranslationY,
-                                                                )
-                                                            settlingWallpaperId =
-                                                                draggedEntrySnapshot.wallpaperId
-                                                        }
-                                                        if (finalSchedule.map { it.wallpaperId } != schedule.map { it.wallpaperId }) {
-                                                            schedule.clear()
-                                                            schedule.addAll(finalSchedule)
-                                                            persistSchedule()
-                                                        }
-                                                        draggedId = null
-                                                        draggedInsertIndex = null
-                                                        draggedItemHeight = 0f
-                                                        draggedOffsetY = 0f
-
-                                                        if (draggingId != null) {
-                                                            scope.launch {
-                                                                withFrameNanos { }
-                                                                withFrameNanos { }
-                                                                val resolvedTarget =
-                                                                    scheduleItemBounds[draggingId]?.top?.minus(
-                                                                        contentTopInRoot
-                                                                    )
-                                                                if (resolvedTarget != null && settlingOverlay?.entry?.wallpaperId == draggingId) {
-                                                                    settlingOverlay =
-                                                                        settlingOverlay?.copy(
-                                                                            targetTranslationY = resolvedTarget
-                                                                        )
-                                                                }
-                                                            }
-                                                        }
-                                                    },
-                                                    onDrag = { change, dragAmount ->
-                                                        change.consume()
-                                                        val draggingId =
-                                                            draggedId
-                                                                ?: return@detectDragGesturesAfterLongPress
-                                                        val currentHeight =
-                                                            scheduleItemBounds[draggingId]?.height
-                                                                ?: draggedItemHeight
-                                                        draggedOffsetY += dragAmount.y
-                                                        val draggedCenter =
-                                                            draggedStartTop + draggedOffsetY + currentHeight / 2f
-                                                        draggedInsertIndex = findDraggedInsertIndex(
-                                                            schedule = schedule,
-                                                            bounds = scheduleItemBounds,
-                                                            draggedCenter = draggedCenter,
-                                                        )
-                                                    },
-                                                )
-                                            }
-                                    ) {
-                                        ScheduleItemCard(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            wallpaper = wallpaper,
-                                            scheduleEntry = entry,
-                                            isCurrent = currentWallpaperId == entry.wallpaperId,
-                                            isDragged = isDragged,
-                                            isDragPlaceholder = isDragged || isSettling,
-                                            dragOffsetY = 0f,
-                                            onEdit = {
-                                                editTargetId.value = entry.wallpaperId
-                                                delayInput = entry.delayMs.toString()
-                                            },
-                                            onDelete = {
-                                                schedule.removeAll { it.wallpaperId == entry.wallpaperId }
-                                                persistSchedule()
-                                            },
-                                        )
-                                    }
-                                }
-                            }
-
-                            if (loading) {
                                 item {
                                     Card(modifier = Modifier.fillMaxWidth()) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.Center,
-                                            verticalAlignment = Alignment.CenterVertically,
+                                        BasicComponent(
+                                            title = stringResource(R.string.rear_wallpaper_schedule_feature_title),
+                                            summary = stringResource(R.string.rear_wallpaper_schedule_hint),
+                                            summaryColor = BasicComponentDefaults.summaryColor(),
+                                            onClick = {},
+                                            endActions = {
+                                                Switch(
+                                                    checked = scheduleEnabled,
+                                                    onCheckedChange = { checked ->
+                                                        if (checked && schedule.isEmpty()) {
+                                                            toast(R.string.rear_wallpaper_schedule_empty)
+                                                        } else {
+                                                            scheduleEnabled = checked
+                                                            persistSchedule()
+                                                        }
+                                                    },
+                                                )
+                                            },
+                                        )
+                                    }
+                                }
+
+                                item {
+                                    Card(modifier = Modifier.fillMaxWidth()) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            BasicComponent(
+                                                title = stringResource(R.string.rear_wallpaper_schedule_title),
+                                                summary = if (schedule.isEmpty()) {
+                                                    stringResource(R.string.rear_wallpaper_schedule_empty)
+                                                } else {
+                                                    stringResource(R.string.rear_wallpaper_schedule_order_hint)
+                                                },
+                                                summaryColor = BasicComponentDefaults.summaryColor(),
+                                                onClick = {},
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (schedule.isNotEmpty()) {
+                                    items(renderedSchedule, key = { it.wallpaperId }) { entry ->
+                                        val wallpaper = wallpaperMap[entry.wallpaperId]
+                                        val isDragged = draggedId == entry.wallpaperId
+                                        val isSettling = settlingWallpaperId == entry.wallpaperId
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .then(
+                                                    if (isDragged || isSettling) {
+                                                        Modifier
+                                                    } else {
+                                                        Modifier.animateItem(
+                                                            placementSpec = tween(
+                                                                durationMillis = SETTLING_OVERLAY_DURATION_MS.toInt(),
+                                                                easing = FastOutSlowInEasing,
+                                                            )
+                                                        )
+                                                    }
+                                                )
+                                                .zIndex(if (isDragged) 1f else 0f)
+                                                .onGloballyPositioned { coordinates ->
+                                                    scheduleItemBounds[entry.wallpaperId] =
+                                                        ItemBounds(
+                                                            top = coordinates.positionInRoot().y,
+                                                            height = coordinates.size.height.toFloat(),
+                                                        )
+                                                }
+                                                .pointerInput(entry.wallpaperId) {
+                                                    detectDragGesturesAfterLongPress(
+                                                        onDragStart = {
+                                                            settlingOverlay = null
+                                                            settlingWallpaperId = null
+                                                            draggedId = entry.wallpaperId
+                                                            val bounds =
+                                                                scheduleItemBounds[entry.wallpaperId]
+                                                            draggedInsertIndex =
+                                                                schedule.indexOfFirst { it.wallpaperId == entry.wallpaperId }
+                                                            draggedStartTop = bounds?.top ?: 0f
+                                                            draggedItemHeight = bounds?.height ?: 0f
+                                                            draggedOffsetY = 0f
+                                                        },
+                                                        onDragCancel = {
+                                                            draggedId = null
+                                                            draggedInsertIndex = null
+                                                            draggedItemHeight = 0f
+                                                            draggedOffsetY = 0f
+                                                        },
+                                                        onDragEnd = {
+                                                            val draggingId = draggedId
+                                                            val finalSchedule =
+                                                                previewScheduleEntries(
+                                                                    schedule = schedule,
+                                                                    draggingId = draggingId,
+                                                                    insertIndex = draggedInsertIndex,
+                                                                )
+                                                            val draggedEntrySnapshot =
+                                                                draggingId?.let { wallpaperId ->
+                                                                    schedule.firstOrNull { it.wallpaperId == wallpaperId }
+                                                                }
+                                                            val startTranslationY =
+                                                                draggedStartTop - contentTopInRoot + draggedOffsetY
+                                                            if (draggedEntrySnapshot != null) {
+                                                                settlingOverlay =
+                                                                    SettlingScheduleOverlay(
+                                                                        entry = draggedEntrySnapshot,
+                                                                        isCurrent = currentWallpaperId == draggedEntrySnapshot.wallpaperId,
+                                                                        startTranslationY = startTranslationY,
+                                                                        targetTranslationY = startTranslationY,
+                                                                    )
+                                                                settlingWallpaperId =
+                                                                    draggedEntrySnapshot.wallpaperId
+                                                            }
+                                                            if (finalSchedule.map { it.wallpaperId } != schedule.map { it.wallpaperId }) {
+                                                                schedule.clear()
+                                                                schedule.addAll(finalSchedule)
+                                                                persistSchedule()
+                                                            }
+                                                            draggedId = null
+                                                            draggedInsertIndex = null
+                                                            draggedItemHeight = 0f
+                                                            draggedOffsetY = 0f
+
+                                                            if (draggingId != null) {
+                                                                scope.launch {
+                                                                    withFrameNanos { }
+                                                                    withFrameNanos { }
+                                                                    val resolvedTarget =
+                                                                        scheduleItemBounds[draggingId]?.top?.minus(
+                                                                            contentTopInRoot
+                                                                        )
+                                                                    if (resolvedTarget != null && settlingOverlay?.entry?.wallpaperId == draggingId) {
+                                                                        settlingOverlay =
+                                                                            settlingOverlay?.copy(
+                                                                                targetTranslationY = resolvedTarget
+                                                                            )
+                                                                    }
+                                                                }
+                                                            }
+                                                        },
+                                                        onDrag = { change, dragAmount ->
+                                                            change.consume()
+                                                            val draggingId =
+                                                                draggedId
+                                                                    ?: return@detectDragGesturesAfterLongPress
+                                                            val currentHeight =
+                                                                scheduleItemBounds[draggingId]?.height
+                                                                    ?: draggedItemHeight
+                                                            draggedOffsetY += dragAmount.y
+                                                            val draggedCenter =
+                                                                draggedStartTop + draggedOffsetY + currentHeight / 2f
+                                                            draggedInsertIndex =
+                                                                findDraggedInsertIndex(
+                                                                    schedule = schedule,
+                                                                    bounds = scheduleItemBounds,
+                                                                    draggedCenter = draggedCenter,
+                                                                )
+                                                        },
+                                                    )
+                                                }
                                         ) {
-                                            CircularProgressIndicator()
-                                            Spacer(Modifier.width(10.dp))
-                                            Text(text = stringResource(R.string.rear_wallpaper_loading))
+                                            ScheduleItemCard(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                wallpaper = wallpaper,
+                                                scheduleEntry = entry,
+                                                isCurrent = currentWallpaperId == entry.wallpaperId,
+                                                isDragged = isDragged,
+                                                isDragPlaceholder = isDragged || isSettling,
+                                                dragOffsetY = 0f,
+                                                onEdit = {
+                                                    editTargetId.value = entry.wallpaperId
+                                                    delayInput = entry.delayMs.toString()
+                                                },
+                                                onDelete = {
+                                                    schedule.removeAll { it.wallpaperId == entry.wallpaperId }
+                                                    persistSchedule()
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (loading) {
+                                    item {
+                                        Card(modifier = Modifier.fillMaxWidth()) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.Center,
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                InfiniteProgressIndicator()
+                                                Spacer(Modifier.width(10.dp))
+                                                Text(text = stringResource(R.string.rear_wallpaper_loading))
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (!loading && wallpapers.isEmpty()) {
+                                    item {
+                                        Card(modifier = Modifier.fillMaxWidth()) {
+                                            SuperCard(
+                                                title = stringResource(R.string.rear_wallpaper_catalog_empty)
+                                            )
                                         }
                                     }
                                 }
                             }
 
-                            if (!loading && wallpapers.isEmpty()) {
-                                item {
-                                    Card(modifier = Modifier.fillMaxWidth()) {
-                                        SuperCard(
-                                            title = stringResource(R.string.rear_wallpaper_catalog_empty)
-                                        )
+                            draggedEntry?.let { entry ->
+                                val draggedOverlayStyleState =
+                                    remember(entry.wallpaperId) { MutableStyleState(null) }
+                                val draggedOverlayStyle =
+                                    remember(draggedStartTop, contentTopInRoot, draggedOffsetY) {
+                                        Style {
+                                            translationY(draggedStartTop - contentTopInRoot + draggedOffsetY)
+                                        }
                                     }
-                                }
+                                ScheduleItemCard(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp)
+                                        .styleable(draggedOverlayStyleState, draggedOverlayStyle)
+                                        .zIndex(3f),
+                                    wallpaper = wallpaperMap[entry.wallpaperId],
+                                    scheduleEntry = entry,
+                                    isCurrent = currentWallpaperId == entry.wallpaperId,
+                                    isDragged = true,
+                                    isDragPlaceholder = false,
+                                    dragOffsetY = 0f,
+                                    externalShadow = 18.dp,
+                                    onEdit = {
+                                        editTargetId.value = entry.wallpaperId
+                                        delayInput = entry.delayMs.toString()
+                                    },
+                                    onDelete = {
+                                        schedule.removeAll { it.wallpaperId == entry.wallpaperId }
+                                        draggedId = null
+                                        draggedInsertIndex = null
+                                        draggedItemHeight = 0f
+                                        draggedOffsetY = 0f
+                                        persistSchedule()
+                                    },
+                                )
+                            } ?: settlingOverlay?.let { overlay ->
+                                SettlingScheduleItemOverlay(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp)
+                                        .zIndex(3f),
+                                    wallpaper = wallpaperMap[overlay.entry.wallpaperId],
+                                    scheduleEntry = overlay.entry,
+                                    isCurrent = overlay.isCurrent,
+                                    startTranslationY = overlay.startTranslationY,
+                                    targetTranslationY = overlay.targetTranslationY,
+                                    onEdit = {
+                                        editTargetId.value = overlay.entry.wallpaperId
+                                        delayInput = overlay.entry.delayMs.toString()
+                                    },
+                                    onDelete = {
+                                        schedule.removeAll { it.wallpaperId == overlay.entry.wallpaperId }
+                                        settlingOverlay = null
+                                        settlingWallpaperId = null
+                                        persistSchedule()
+                                    },
+                                )
                             }
                         }
+                    }
+                }
+            }
+        }
 
-                        draggedEntry?.let { entry ->
-                            val draggedOverlayStyleState =
-                                remember(entry.wallpaperId) { MutableStyleState(null) }
-                            val draggedOverlayStyle =
-                                remember(draggedStartTop, contentTopInRoot, draggedOffsetY) {
-                                    Style {
-                                        translationY(draggedStartTop - contentTopInRoot + draggedOffsetY)
-                                    }
-                                }
-                            ScheduleItemCard(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp)
-                                    .styleable(draggedOverlayStyleState, draggedOverlayStyle)
-                                    .zIndex(3f),
-                                wallpaper = wallpaperMap[entry.wallpaperId],
-                                scheduleEntry = entry,
-                                isCurrent = currentWallpaperId == entry.wallpaperId,
-                                isDragged = true,
-                                isDragPlaceholder = false,
-                                dragOffsetY = 0f,
-                                externalShadow = 18.dp,
-                                onEdit = {
-                                    editTargetId.value = entry.wallpaperId
-                                    delayInput = entry.delayMs.toString()
-                                },
-                                onDelete = {
-                                    schedule.removeAll { it.wallpaperId == entry.wallpaperId }
-                                    draggedId = null
-                                    draggedInsertIndex = null
-                                    draggedItemHeight = 0f
-                                    draggedOffsetY = 0f
-                                    persistSchedule()
-                                },
-                            )
-                        } ?: settlingOverlay?.let { overlay ->
-                            SettlingScheduleItemOverlay(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp)
-                                    .zIndex(3f),
-                                wallpaper = wallpaperMap[overlay.entry.wallpaperId],
-                                scheduleEntry = overlay.entry,
-                                isCurrent = overlay.isCurrent,
-                                startTranslationY = overlay.startTranslationY,
-                                targetTranslationY = overlay.targetTranslationY,
-                                onEdit = {
-                                    editTargetId.value = overlay.entry.wallpaperId
-                                    delayInput = overlay.entry.delayMs.toString()
-                                },
-                                onDelete = {
-                                    schedule.removeAll { it.wallpaperId == overlay.entry.wallpaperId }
-                                    settlingOverlay = null
-                                    settlingWallpaperId = null
-                                    persistSchedule()
-                                },
-                            )
+        OverlayBottomSheet(
+            show = pickerMode.value != null,
+            title = stringResource(
+                when (pickerMode.value) {
+                    WallpaperPickerMode.ADD_TO_SCHEDULE -> R.string.rear_wallpaper_picker_add
+                    null -> R.string.rear_wallpaper_manager
+                }
+            ),
+            onDismissRequest = { pickerMode.value = null },
+        ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 560.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(top = 4.dp, bottom = 34.dp),
+            ) {
+                if (loading) {
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            InfiniteProgressIndicator()
+                            Spacer(Modifier.width(10.dp))
+                            Text(text = stringResource(R.string.rear_wallpaper_loading))
                         }
                     }
                 }
-            }
-        }
-    }
 
-    OverlayBottomSheet(
-        show = pickerMode.value != null,
-        title = stringResource(
-            when (pickerMode.value) {
-                WallpaperPickerMode.ADD_TO_SCHEDULE -> R.string.rear_wallpaper_picker_add
-                null -> R.string.rear_wallpaper_manager
-            }
-        ),
-        onDismissRequest = { pickerMode.value = null },
-    ) {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 560.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            contentPadding = PaddingValues(top = 4.dp, bottom = 34.dp),
-        ) {
-            if (loading) {
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        CircularProgressIndicator()
-                        Spacer(Modifier.width(10.dp))
-                        Text(text = stringResource(R.string.rear_wallpaper_loading))
-                    }
+                items(wallpapers, key = { it.wallpaperId }) { wallpaper ->
+                    WallpaperPickerCard(
+                        wallpaper = wallpaper,
+                        isCurrent = wallpaper.wallpaperId == currentWallpaperId,
+                        inSchedule = schedule.any { it.wallpaperId == wallpaper.wallpaperId },
+                        onAddToSchedule = { addToSchedule(wallpaper.wallpaperId) },
+                    )
                 }
             }
+        }
 
-            items(wallpapers, key = { it.wallpaperId }) { wallpaper ->
-                WallpaperPickerCard(
-                    wallpaper = wallpaper,
-                    isCurrent = wallpaper.wallpaperId == currentWallpaperId,
-                    inSchedule = schedule.any { it.wallpaperId == wallpaper.wallpaperId },
-                    onAddToSchedule = { addToSchedule(wallpaper.wallpaperId) },
+        OverlayDialog(
+            show = editTargetId.value != null,
+            title = stringResource(R.string.rear_wallpaper_edit_interval),
+            onDismissRequest = { editTargetId.value = null },
+        ) {
+            DialogFormColumn {
+                TextField(
+                    value = delayInput,
+                    onValueChange = { delayInput = it.filter(Char::isDigit) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = stringResource(R.string.rear_wallpaper_interval_millis),
+                    singleLine = true,
                 )
+                Button(
+                    onClick = {
+                        val targetId = editTargetId.value ?: return@Button
+                        val delayMs = delayInput.toLongOrNull()
+                        if (delayMs == null || delayMs < RearWallpaperScheduleCodec.MIN_DELAY_MS) {
+                            toast(R.string.rear_wallpaper_interval_invalid)
+                            return@Button
+                        }
+                        val index = schedule.indexOfFirst { it.wallpaperId == targetId }
+                        if (index >= 0) {
+                            schedule[index] = schedule[index].copy(delayMs = delayMs)
+                            persistSchedule()
+                        }
+                        editTargetId.value = null
+                    },
+                    colors = ButtonDefaults.buttonColorsPrimary(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.rear_widget_confirm))
+                }
+                Button(
+                    onClick = { editTargetId.value = null },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.rear_widget_cancel))
+                }
             }
         }
-    }
-
-    OverlayDialog(
-        show = editTargetId.value != null,
-        title = stringResource(R.string.rear_wallpaper_edit_interval),
-        onDismissRequest = { editTargetId.value = null },
-    ) {
-        DialogFormColumn {
-            TextField(
-                value = delayInput,
-                onValueChange = { delayInput = it.filter(Char::isDigit) },
-                modifier = Modifier.fillMaxWidth(),
-                label = stringResource(R.string.rear_wallpaper_interval_millis),
-                singleLine = true,
-            )
-            Button(
-                onClick = {
-                    val targetId = editTargetId.value ?: return@Button
-                    val delayMs = delayInput.toLongOrNull()
-                    if (delayMs == null || delayMs < RearWallpaperScheduleCodec.MIN_DELAY_MS) {
-                        toast(R.string.rear_wallpaper_interval_invalid)
-                        return@Button
-                    }
-                    val index = schedule.indexOfFirst { it.wallpaperId == targetId }
-                    if (index >= 0) {
-                        schedule[index] = schedule[index].copy(delayMs = delayMs)
-                        persistSchedule()
-                    }
-                    editTargetId.value = null
-                },
-                colors = ButtonDefaults.buttonColorsPrimary(),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(R.string.rear_widget_confirm))
-            }
-            Button(
-                onClick = { editTargetId.value = null },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(R.string.rear_widget_cancel))
-            }
-        }
-    }
 
     }
 }

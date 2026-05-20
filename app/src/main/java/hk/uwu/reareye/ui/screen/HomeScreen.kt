@@ -275,6 +275,7 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
         EasterEggType.HUAWEI_ULTIMATE_DESIGN -> "ULTIMATE DESIGN"
         else -> AppProperties.BUILD_CHANNEL
     }
+    val versionCodename = AppProperties.PROJECT_APP_VERSION_CODENAME
 
     Scaffold(
         topBar = {
@@ -458,6 +459,7 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
                         ModuleInfoCard(
                             activated = isActivated,
                             moduleVersion = moduleVersion,
+                            versionCodename = versionCodename,
                             releaseChannel = releaseChannel,
                             easterEggType = easterEggType
                         )
@@ -818,6 +820,7 @@ private fun UpdateWarningCard(currentHash: String, latestHash: String, useMonetC
 private fun ModuleInfoCard(
     activated: Boolean,
     moduleVersion: String,
+    versionCodename: String,
     releaseChannel: String,
     easterEggType: EasterEggType
 ) {
@@ -855,6 +858,11 @@ private fun ModuleInfoCard(
         )
         Spacer(modifier = Modifier.height(12.dp))
         InfoLine(
+            title = androidx.compose.ui.res.stringResource(R.string.version_codename_label),
+            value = versionCodename,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        InfoLine(
             title = androidx.compose.ui.res.stringResource(R.string.home_status_channel),
             value = releaseChannel,
         )
@@ -889,12 +897,14 @@ private fun UpdateInfoCard(currentHash: String, latestHash: String?, checking: B
 }
 
 @Composable
-private fun InfoLine(title: String, value: String) {
-    Text(text = title, style = MiuixTheme.textStyles.headline1)
-    Spacer(modifier = Modifier.height(2.dp))
-    Text(
-        text = value,
-        style = MiuixTheme.textStyles.body2,
-        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-    )
+fun InfoLine(title: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        Text(text = title, style = MiuixTheme.textStyles.headline1)
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = value,
+            style = MiuixTheme.textStyles.body2,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        )
+    }
 }

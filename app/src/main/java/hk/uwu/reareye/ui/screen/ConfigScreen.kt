@@ -1,5 +1,6 @@
 package hk.uwu.reareye.ui.screen
 
+import android.annotation.SuppressLint
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutLinearInEasing
@@ -21,11 +22,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +42,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
@@ -49,6 +53,7 @@ import hk.uwu.reareye.ui.components.config.BusinessExtraConfigManagerScreen
 import hk.uwu.reareye.ui.components.config.BusinessManagerScreen
 import hk.uwu.reareye.ui.components.config.CardManagerScreen
 import hk.uwu.reareye.ui.components.config.ConfigNodeRow
+import hk.uwu.reareye.ui.components.config.CustomBoundsCompatManagerScreen
 import hk.uwu.reareye.ui.components.config.RearWallpaperManagerScreen
 import hk.uwu.reareye.ui.components.config.SceneRouteManagerScreen
 import hk.uwu.reareye.ui.config.ConfigCategory
@@ -98,6 +103,7 @@ private sealed interface ConfigRoute {
     data object SceneRouteManager : ConfigRoute
     data object CardManager : ConfigRoute
     data object BusinessExtraManager : ConfigRoute
+    data object CustomBoundsCompatManager : ConfigRoute
 }
 
 private const val NAV_BAR_EXIT_DURATION_MS = 220L
@@ -124,12 +130,16 @@ private fun ConfigRoute.isOverlayRoute(): Boolean {
             this is ConfigRoute.BusinessManager ||
             this is ConfigRoute.SceneRouteManager ||
             this is ConfigRoute.CardManager ||
-            this is ConfigRoute.BusinessExtraManager
+            this is ConfigRoute.BusinessExtraManager ||
+            this is ConfigRoute.CustomBoundsCompatManager
 }
 
+@SuppressLint("LocalContextResourcesRead")
 @Composable
 fun ConfigScreen(
     bottomInnerPadding: Dp = 0.dp,
+    quickManagerTarget: ConfigType.ManagerType? = null,
+    onQuickManagerTargetHandled: () -> Unit = {},
     onAppListModeChange: (Boolean) -> Unit = {},
     onThemeModeChange: (Int) -> Unit = {},
     onNavigationBarModeChange: (Int) -> Unit = {},
@@ -137,7 +147,33 @@ fun ConfigScreen(
     val context = LocalContext.current
     val prefsManager = remember { context.getPrefsManager() }
 
-    var routeStack by remember { mutableStateOf(listOf<ConfigRoute>(ConfigRoute.Root)) }
+    fun findLyricsCategoryRoute(): ConfigRoute? {
+        return findConfigCategoryByTitleRes(REAREyeConfig, R.string.subcategory_lyrics)?.let(
+            ConfigRoute::Category
+        )
+    }
+
+    fun managerRoute(managerType: ConfigType.ManagerType?): ConfigRoute? {
+        return when (managerType) {
+            ConfigType.ManagerType.REAR_WALLPAPER -> ConfigRoute.RearWallpaperManager
+            ConfigType.ManagerType.BUSINESS -> ConfigRoute.BusinessManager
+            ConfigType.ManagerType.SCENE_ROUTE -> ConfigRoute.SceneRouteManager
+            ConfigType.ManagerType.CARD -> ConfigRoute.CardManager
+            ConfigType.ManagerType.BUSINESS_EXTRA -> ConfigRoute.BusinessExtraManager
+            ConfigType.ManagerType.BOUNDS -> ConfigRoute.CustomBoundsCompatManager
+            ConfigType.ManagerType.LYRICS -> findLyricsCategoryRoute()
+            null -> null
+        }
+    }
+
+    var routeStack by remember {
+        mutableStateOf(
+            listOf(
+                ConfigRoute.Root,
+                managerRoute(quickManagerTarget)
+            ).filterNotNull()
+        )
+    }
     val currentRoute = routeStack.last()
     val isOverlayMode = currentRoute.isOverlayRoute()
     val animatedRoute = remember(currentRoute, routeStack.size) {
@@ -152,7 +188,10 @@ fun ConfigScreen(
     val routeScope = rememberCoroutineScope()
 
     val favoriteNodeIndex = remember(REAREyeConfig) {
-        buildFavoriteConfigNodeIndex(REAREyeConfig)
+        buildFavoriteConfigNodeIndex(
+            nodes = REAREyeConfig,
+            resolveResourceEntryName = context.resources::getResourceEntryName,
+        )
     }
     val availableFavoriteNodeIds = remember(favoriteNodeIndex.entries) {
         favoriteNodeIndex.entries.mapTo(mutableSetOf()) { it.id }
@@ -163,7 +202,9 @@ fun ConfigScreen(
     val initialFavoriteNodeIds = remember(storedFavoriteNodeIds, availableFavoriteNodeIds) {
         storedFavoriteNodeIds.filterTo(mutableSetOf()) { it in availableFavoriteNodeIds }
     }
-    var favoriteNodeIds by remember { mutableStateOf(initialFavoriteNodeIds.toSet()) }
+    var favoriteNodeIds by remember {
+        mutableStateOf(initialFavoriteNodeIds.toSet())
+    }
     val favoriteNodes = remember(favoriteNodeIds, favoriteNodeIndex.entries) {
         favoriteNodeIndex.entries
             .filter { favoriteNodeIds.contains(it.id) }
@@ -242,13 +283,31 @@ fun ConfigScreen(
 
     fun closeOverlayRoute() {
         routeScope.launch {
-            val newStack = routeStack.dropLast(1)
-            routeStack = newStack
+            routeStack = listOf(ConfigRoute.Root)
             delay(OVERLAY_ROUTE_EXIT_DURATION_MS)
-            if (!newStack.last().isOverlayRoute()) {
-                onAppListModeChange(false)
-            }
+            onAppListModeChange(false)
         }
+    }
+
+    fun openManagerRoute(managerType: ConfigType.ManagerType?) {
+        val route = managerRoute(managerType)
+        if (route != null) {
+            openOverlayRoute(route)
+        }
+    }
+
+    fun openManagerItem(item: ConfigItem) {
+        openManagerRoute((item.type as? ConfigType.Manager)?.managerType)
+    }
+
+    LaunchedEffect(quickManagerTarget) {
+        val managerType = quickManagerTarget ?: return@LaunchedEffect
+        val route = managerRoute(managerType) ?: return@LaunchedEffect
+        routeStack = listOf(ConfigRoute.Root, route)
+        if (route.isOverlayRoute()) {
+            onAppListModeChange(true)
+        }
+        onQuickManagerTargetHandled()
     }
 
     Scaffold(
@@ -324,31 +383,7 @@ fun ConfigScreen(
                     onOpenAppList = { item ->
                         openOverlayRoute(ConfigRoute.AppList(item))
                     },
-                    onOpenManager = { item ->
-                        when ((item.type as? ConfigType.Manager)?.managerType) {
-                            ConfigType.ManagerType.REAR_WALLPAPER -> {
-                                openOverlayRoute(ConfigRoute.RearWallpaperManager)
-                            }
-
-                            ConfigType.ManagerType.BUSINESS -> {
-                                openOverlayRoute(ConfigRoute.BusinessManager)
-                            }
-
-                            ConfigType.ManagerType.SCENE_ROUTE -> {
-                                openOverlayRoute(ConfigRoute.SceneRouteManager)
-                            }
-
-                            ConfigType.ManagerType.CARD -> {
-                                openOverlayRoute(ConfigRoute.CardManager)
-                            }
-
-                            ConfigType.ManagerType.BUSINESS_EXTRA -> {
-                                openOverlayRoute(ConfigRoute.BusinessExtraManager)
-                            }
-
-                            null -> Unit
-                        }
-                    },
+                    onOpenManager = { item -> openManagerItem(item) },
                     onPreferenceChanged = handlePreferenceChanged,
                     showFavoriteCategoryEntry = true,
                     favoriteNodeCount = favoriteNodes.size,
@@ -379,31 +414,7 @@ fun ConfigScreen(
                     onOpenAppList = { item ->
                         openOverlayRoute(ConfigRoute.AppList(item))
                     },
-                    onOpenManager = { item ->
-                        when ((item.type as? ConfigType.Manager)?.managerType) {
-                            ConfigType.ManagerType.REAR_WALLPAPER -> {
-                                openOverlayRoute(ConfigRoute.RearWallpaperManager)
-                            }
-
-                            ConfigType.ManagerType.BUSINESS -> {
-                                openOverlayRoute(ConfigRoute.BusinessManager)
-                            }
-
-                            ConfigType.ManagerType.SCENE_ROUTE -> {
-                                openOverlayRoute(ConfigRoute.SceneRouteManager)
-                            }
-
-                            ConfigType.ManagerType.CARD -> {
-                                openOverlayRoute(ConfigRoute.CardManager)
-                            }
-
-                            ConfigType.ManagerType.BUSINESS_EXTRA -> {
-                                openOverlayRoute(ConfigRoute.BusinessExtraManager)
-                            }
-
-                            null -> Unit
-                        }
-                    },
+                    onOpenManager = { item -> openManagerItem(item) },
                     onPreferenceChanged = handlePreferenceChanged,
                     favoriteNodeIds = favoriteNodeIds,
                     resolveFavoriteNodeId = { node ->
@@ -429,31 +440,7 @@ fun ConfigScreen(
                     onOpenAppList = { item ->
                         openOverlayRoute(ConfigRoute.AppList(item))
                     },
-                    onOpenManager = { item ->
-                        when ((item.type as? ConfigType.Manager)?.managerType) {
-                            ConfigType.ManagerType.REAR_WALLPAPER -> {
-                                openOverlayRoute(ConfigRoute.RearWallpaperManager)
-                            }
-
-                            ConfigType.ManagerType.BUSINESS -> {
-                                openOverlayRoute(ConfigRoute.BusinessManager)
-                            }
-
-                            ConfigType.ManagerType.SCENE_ROUTE -> {
-                                openOverlayRoute(ConfigRoute.SceneRouteManager)
-                            }
-
-                            ConfigType.ManagerType.CARD -> {
-                                openOverlayRoute(ConfigRoute.CardManager)
-                            }
-
-                            ConfigType.ManagerType.BUSINESS_EXTRA -> {
-                                openOverlayRoute(ConfigRoute.BusinessExtraManager)
-                            }
-
-                            null -> Unit
-                        }
-                    },
+                    onOpenManager = { item -> openManagerItem(item) },
                     onPreferenceChanged = handlePreferenceChanged,
                     emptyStateRes = R.string.config_favorites_empty,
                     favoriteNodeIds = favoriteNodeIds,
@@ -496,9 +483,29 @@ fun ConfigScreen(
                     prefsManager = prefsManager,
                     onBack = { closeOverlayRoute() },
                 )
+
+                ConfigRoute.CustomBoundsCompatManager -> CustomBoundsCompatManagerScreen(
+                    prefsManager = prefsManager,
+                    onBack = { closeOverlayRoute() },
+                )
             }
         }
     }
+}
+
+private fun findConfigCategoryByTitleRes(
+    nodes: List<ConfigNode>,
+    titleRes: Int,
+): ConfigCategory? {
+    nodes.forEach { node ->
+        if (node is ConfigCategory) {
+            if (node.titleRes == titleRes) return node
+            findConfigCategoryByTitleRes(node.children, titleRes)?.let { return it }
+        } else if (node is ConfigGroup) {
+            findConfigCategoryByTitleRes(node.children, titleRes)?.let { return it }
+        }
+    }
+    return null
 }
 
 @Composable
@@ -520,7 +527,13 @@ private fun ConfigNodeList(
     resolveFavoriteNodeId: (ConfigNode) -> String? = { null },
     onToggleFavorite: (ConfigNode) -> Unit = {},
 ) {
+    val listState = rememberLazyListState()
+    val isListScrolling by remember {
+        derivedStateOf { listState.isScrollInProgress }
+    }
+
     LazyColumn(
+        state = listState,
         modifier = Modifier
             .fillMaxHeight()
             .scrollEndHaptic()
@@ -596,6 +609,7 @@ private fun ConfigNodeList(
                         ConfigNodeRowWithFavoriteMenu(
                             node = child,
                             prefsManager = prefsManager,
+                            isListScrolling = isListScrolling,
                             onOpenCategory = onOpenCategory,
                             onOpenAppList = onOpenAppList,
                             onOpenManager = onOpenManager,
@@ -615,6 +629,7 @@ private fun ConfigNodeList(
                     ConfigNodeRowWithFavoriteMenu(
                         node = node,
                         prefsManager = prefsManager,
+                        isListScrolling = isListScrolling,
                         onOpenCategory = onOpenCategory,
                         onOpenAppList = onOpenAppList,
                         onOpenManager = onOpenManager,
@@ -633,6 +648,7 @@ private fun ConfigNodeList(
 private fun ConfigNodeRowWithFavoriteMenu(
     node: ConfigNode,
     prefsManager: PrefsManager,
+    isListScrolling: Boolean,
     onOpenCategory: (ConfigCategory) -> Unit,
     onOpenAppList: (ConfigItem) -> Unit,
     onOpenManager: (ConfigItem) -> Unit,
@@ -650,6 +666,7 @@ private fun ConfigNodeRowWithFavoriteMenu(
     Box(
         modifier = Modifier.configNodeLongPress(
             enabled = canFavorite,
+            isScrolling = isListScrolling,
             onLongPress = { showFavoritePopup = true },
         )
     ) {
@@ -745,16 +762,18 @@ private fun FavoritePopupIcon(
 
 private fun Modifier.configNodeLongPress(
     enabled: Boolean,
+    isScrolling: Boolean,
     onLongPress: () -> Unit,
 ): Modifier {
-    if (!enabled) return this
+    if (!enabled || isScrolling) return this
 
-    return this.pointerInput(onLongPress) {
+    return this.pointerInput(onLongPress, false) {
         awaitEachGesture {
             val down = awaitFirstDown(
                 requireUnconsumed = false,
                 pass = PointerEventPass.Initial,
             )
+            if (isScrolling) return@awaitEachGesture
             val longPressTriggered = withTimeoutOrNull(
                 timeMillis = viewConfiguration.longPressTimeoutMillis,
             ) {
@@ -762,7 +781,7 @@ private fun Modifier.configNodeLongPress(
                     val event = awaitPointerEvent(PointerEventPass.Initial)
                     val change = event.changes.firstOrNull { it.id == down.id }
                         ?: return@withTimeoutOrNull false
-                    if (!change.pressed || change.isConsumed) {
+                    if (!change.pressed || change.isConsumed || change.positionChanged() || isScrolling) {
                         return@withTimeoutOrNull false
                     }
                 }
@@ -788,14 +807,17 @@ private fun Modifier.configNodeLongPress(
     }
 }
 
-private fun buildFavoriteConfigNodeIndex(nodes: List<ConfigNode>): FavoriteConfigNodeIndex {
+private fun buildFavoriteConfigNodeIndex(
+    nodes: List<ConfigNode>,
+    resolveResourceEntryName: (Int) -> String,
+): FavoriteConfigNodeIndex {
     val entries = mutableListOf<FavoriteConfigNodeEntry>()
     val nodeIdLookup = IdentityHashMap<ConfigNode, String>()
     val idCounters = mutableMapOf<String, Int>()
 
-    fun nextNodeId(baseId: String): String {
-        val current = (idCounters[baseId] ?: 0) + 1
-        idCounters[baseId] = current
+    fun nextNodeId(counters: MutableMap<String, Int>, baseId: String): String {
+        val current = (counters[baseId] ?: 0) + 1
+        counters[baseId] = current
         return if (current == 1) {
             baseId
         } else {
@@ -803,16 +825,21 @@ private fun buildFavoriteConfigNodeIndex(nodes: List<ConfigNode>): FavoriteConfi
         }
     }
 
-    fun walk(currentNodes: List<ConfigNode>, categoryPath: List<Int>) {
+    fun registerNode(node: ConfigNode, nodeId: String) {
+        entries += FavoriteConfigNodeEntry(id = nodeId, node = node)
+        nodeIdLookup[node] = nodeId
+    }
+
+    fun walk(currentNodes: List<ConfigNode>, categoryPath: List<String>) {
         currentNodes.forEach { node ->
             when (node) {
                 is ConfigCategory -> {
-                    val baseNodeId = node.key?.let { "category:key:$it" }
-                        ?: "category:path:${(categoryPath + node.titleRes).joinToString("/")}"
-                    val nodeId = nextNodeId(baseNodeId)
-                    entries += FavoriteConfigNodeEntry(id = nodeId, node = node)
-                    nodeIdLookup[node] = nodeId
-                    walk(node.children, categoryPath + node.titleRes)
+                    val pathToken = node.key?.let { "key:$it" }
+                        ?: "title:${resolveResourceEntryName(node.titleRes)}"
+                    val baseId = "category:path:${(categoryPath + pathToken).joinToString("/")}"
+                    val nodeId = nextNodeId(idCounters, baseId)
+                    registerNode(node, nodeId)
+                    walk(node.children, categoryPath + pathToken)
                 }
 
                 is ConfigGroup -> {
@@ -820,14 +847,16 @@ private fun buildFavoriteConfigNodeIndex(nodes: List<ConfigNode>): FavoriteConfi
                 }
 
                 is ConfigItem -> {
-                    val nodeId = nextNodeId("item:key:${node.key}")
-                    entries += FavoriteConfigNodeEntry(id = nodeId, node = node)
-                    nodeIdLookup[node] = nodeId
+                    val nodeId = nextNodeId(idCounters, "item:key:${node.key}")
+                    registerNode(node, nodeId)
                 }
             }
         }
     }
 
     walk(nodes, emptyList())
-    return FavoriteConfigNodeIndex(entries = entries, nodeIdLookup = nodeIdLookup)
+    return FavoriteConfigNodeIndex(
+        entries = entries,
+        nodeIdLookup = nodeIdLookup,
+    )
 }

@@ -60,6 +60,12 @@
             </intent-filter>
         </activity-alias>
 
+        <provider
+            android:name=".provider.RearStoreArchiveContentProvider"
+            android:authorities="${applicationId}.archive.read"
+            android:exported="true"
+            tools:ignore="ExportedContentProvider" />
+
         <service
             android:name=".service.SwitchToRearTileService"
             android:exported="true"
@@ -88,5 +94,10 @@
                 android:value="false" />
         </service>
 
+
     </application>
+
+    <queries>
+        <package android:name="com.xiaomi.subscreencenter" />
+    </queries>
 </manifest>

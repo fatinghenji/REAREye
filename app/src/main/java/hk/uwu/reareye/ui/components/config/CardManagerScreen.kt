@@ -72,9 +72,9 @@ import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Switch
@@ -339,325 +339,328 @@ fun CardManagerScreen(
         },
     ) {
         Scaffold(
-        topBar = {
-            TopAppBar(
-                modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
-                color = Color.Transparent,
-                title = stringResource(R.string.rear_widget_card_manager),
-                navigationIconPadding = 12.dp,
-                actionIconPadding = 12.dp,
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            modifier = Modifier.graphicsLayer {
-                                if (layoutDirection == LayoutDirection.Rtl) scaleX = -1f
-                            },
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = null,
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = { if (cardsLoaded) openCreateDialog() }) {
-                        Icon(imageVector = Icons.Filled.Add, contentDescription = null)
-                    }
-                },
-                scrollBehavior = scrollBehavior,
-            )
-        },
-    ) { paddingValues ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .scrollEndHaptic()
-                .overScrollVertical()
-                .rearAcrylicSource(hazeState)
-                .padding(horizontal = 12.dp),
-            contentPadding = PaddingValues(
-                top = paddingValues.calculateTopPadding() + 12.dp,
-                bottom = paddingValues.calculateBottomPadding() + 12.dp,
-            ),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            overscrollEffect = null,
-        ) {
-            item {
-                Card(
-                    modifier = Modifier
-                        .padding(bottom = 12.dp)
-                        .fillMaxWidth()
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SuperCard(
-                            title = stringResource(R.string.rear_widget_card_dialog_hint_title),
-                            summary = stringResource(R.string.rear_widget_card_dialog_hint),
-                            onClick = {},
-                            bottomAction = {
-                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    if (cardsLoaded) {
-                                        RearBadgeGroup(
-                                            badges = listOf(rearWidgetCardCountBadge(cards.size)),
-                                        )
-                                    }
-                                    Button(
-                                        onClick = { openCreateDialog() },
-                                        colors = ButtonDefaults.buttonColorsPrimary(),
-                                        modifier = Modifier.fillMaxWidth(),
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Add,
-                                            contentDescription = null,
-                                            modifier = Modifier.padding(end = 6.dp),
-                                        )
-                                        Text(text = stringResource(R.string.rear_widget_add_card))
-                                    }
-                                }
-                            }
-                        )
-                    }
-                }
-            }
-
-            if (!dataCardsVisible) {
+            topBar = {
+                TopAppBar(
+                    modifier = Modifier.rearAcrylicEffect(hazeState, hazeStyle),
+                    color = Color.Transparent,
+                    title = stringResource(R.string.rear_widget_card_manager),
+                    navigationIconPadding = 12.dp,
+                    actionIconPadding = 12.dp,
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                modifier = Modifier.graphicsLayer {
+                                    if (layoutDirection == LayoutDirection.Rtl) scaleX = -1f
+                                },
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = null,
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(
+                            onClick = { if (cardsLoaded) openCreateDialog() }) {
+                            Icon(imageVector = Icons.Filled.Add, contentDescription = null)
+                        }
+                    },
+                    scrollBehavior = scrollBehavior,
+                )
+            },
+        ) { paddingValues ->
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                    .scrollEndHaptic()
+                    .overScrollVertical()
+                    .rearAcrylicSource(hazeState)
+                    .padding(horizontal = 12.dp),
+                contentPadding = PaddingValues(
+                    top = paddingValues.calculateTopPadding() + 12.dp,
+                    bottom = paddingValues.calculateBottomPadding() + 12.dp,
+                ),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                overscrollEffect = null,
+            ) {
                 item {
                     Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        insideMargin = PaddingValues(vertical = 24.dp),
+                        modifier = Modifier
+                            .padding(bottom = 12.dp)
+                            .fillMaxWidth()
                     ) {
-                        Box(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                CircularProgressIndicator()
-                                Text(text = stringResource(R.string.rear_widget_loading_data))
-                            }
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            SuperCard(
+                                title = stringResource(R.string.rear_widget_card_dialog_hint_title),
+                                summary = stringResource(R.string.rear_widget_card_dialog_hint),
+                                onClick = {},
+                                bottomAction = {
+                                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        if (cardsLoaded) {
+                                            RearBadgeGroup(
+                                                badges = listOf(rearWidgetCardCountBadge(cards.size)),
+                                            )
+                                        }
+                                        Button(
+                                            onClick = { openCreateDialog() },
+                                            colors = ButtonDefaults.buttonColorsPrimary(),
+                                            modifier = Modifier.fillMaxWidth(),
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Add,
+                                                contentDescription = null,
+                                                modifier = Modifier.padding(end = 6.dp),
+                                            )
+                                            Text(text = stringResource(R.string.rear_widget_add_card))
+                                        }
+                                    }
+                                }
+                            )
                         }
                     }
                 }
-            }
 
-            if (dataCardsVisible) {
-                itemsIndexed(
-                    items = cards,
-                    key = { _, item -> item.id },
-                    contentType = { _, _ -> "card_item" },
-                ) { _, item ->
-                    val normalizedBusiness = normalizeTemplateBusinessName(item.business)
-                    val hasTemplateConfig =
-                        templateAvailability[item.business] == true ||
-                                templateAvailability[normalizedBusiness] == true ||
-                                item.oneConfigJson.isNullOrBlank().not()
-                    if (prefsManager.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
-                        debugLog(
-                            "card template action id=${item.id} business=${item.business} normalized=$normalizedBusiness available=$hasTemplateConfig rawAvailable=${templateAvailability[item.business]} normalizedAvailable=${templateAvailability[normalizedBusiness]} hasConfig=${
-                                item.oneConfigJson.isNullOrBlank().not()
-                            }"
-                        )
-                    }
-                    ModuleStyleManagerCard(
-                        title = item.title,
-                        badges = buildList {
-                            add(rearWidgetPackageBadge(item.packageName))
-                            add(rearWidgetBusinessBadge(item.business))
-                            add(rearWidgetPriorityBadge(item.priority))
-                            if (item.sticky) {
-                                add(rearWidgetStickyBadge())
-                            }
-                            if (!item.renameable) {
-                                add(rearWidgetLockedBadge())
-                            }
-                            add(
-                                rearWidgetTemplateStatusBadge(
-                                    hasCustomConfig = item.oneConfigJson.isNullOrBlank().not(),
-                                )
-                            )
-                            addAll(
-                                rearWidgetSourceBadges(
-                                    downloadedFromStore = item.downloadedFromStore,
-                                    storeWidgetId = item.storeWidgetId,
-                                )
-                            )
-                        },
-                        summaryLines = emptyList(),
-                        trailing = {
-                            if (item.renameable) {
-                                Switch(
-                                    checked = item.enabled,
-                                    onCheckedChange = { checked ->
-                                        val i = cards.indexOfFirst { it.id == item.id }
-                                        if (i >= 0) {
-                                            cards[i] = cards[i].copy(enabled = checked)
-                                            scope.launch(Dispatchers.IO) {
-                                                RearWidgetManagerRepository.setCardEnabled(
-                                                    context = context,
-                                                    prefsManager = prefsManager,
-                                                    cardId = item.id,
-                                                    enabled = checked,
-                                                )
-                                            }
-                                        }
-                                    },
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Outlined.Lock,
-                                    contentDescription = null,
-                                    tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                )
-                            }
-                        },
-                        onCardClick = { openEditDialog(item) },
-                        leftAction = {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                if (!dataCardsVisible) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            insideMargin = PaddingValues(vertical = 24.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.Center,
                             ) {
-                                ModuleStyleIconAction(
-                                    icon = Icons.Rounded.EditNote,
-                                    onClick = { openEditDialog(item) },
-                                )
-                                if (hasTemplateConfig) {
-                                    ModuleStyleDeleteAction(
-                                        icon = Icons.Filled.Tune,
-                                        text = stringResource(R.string.rear_widget_action_config),
-                                        onClick = { openTemplateConfig(item) },
-                                    )
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    InfiniteProgressIndicator()
+                                    Text(text = stringResource(R.string.rear_widget_loading_data))
                                 }
                             }
-                        },
-                        rightAction = {
-                            if (item.renameable) {
-                                ModuleStyleDeleteAction(
-                                    icon = MiuixIcons.Delete,
-                                    text = stringResource(R.string.rear_widget_action_delete),
-                                    onClick = {
-                                        if (!item.renameable) return@ModuleStyleDeleteAction
-                                        cards.remove(item)
-                                        persist()
-                                    },
+                        }
+                    }
+                }
+
+                if (dataCardsVisible) {
+                    itemsIndexed(
+                        items = cards,
+                        key = { _, item -> item.id },
+                        contentType = { _, _ -> "card_item" },
+                    ) { _, item ->
+                        val normalizedBusiness = normalizeTemplateBusinessName(item.business)
+                        val hasTemplateConfig =
+                            templateAvailability[item.business] == true ||
+                                    templateAvailability[normalizedBusiness] == true ||
+                                    item.oneConfigJson.isNullOrBlank().not()
+                        if (prefsManager.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+                            debugLog(
+                                "card template action id=${item.id} business=${item.business} normalized=$normalizedBusiness available=$hasTemplateConfig rawAvailable=${templateAvailability[item.business]} normalizedAvailable=${templateAvailability[normalizedBusiness]} hasConfig=${
+                                    item.oneConfigJson.isNullOrBlank().not()
+                                }"
+                            )
+                        }
+                        ModuleStyleManagerCard(
+                            title = item.title,
+                            badges = buildList {
+                                add(rearWidgetPackageBadge(item.packageName))
+                                add(rearWidgetBusinessBadge(item.business))
+                                add(rearWidgetPriorityBadge(item.priority))
+                                if (item.sticky) {
+                                    add(rearWidgetStickyBadge())
+                                }
+                                if (!item.renameable) {
+                                    add(rearWidgetLockedBadge())
+                                }
+                                add(
+                                    rearWidgetTemplateStatusBadge(
+                                        hasCustomConfig = item.oneConfigJson.isNullOrBlank().not(),
+                                    )
+                                )
+                                addAll(
+                                    rearWidgetSourceBadges(
+                                        downloadedFromStore = item.downloadedFromStore,
+                                        storeWidgetId = item.storeWidgetId,
+                                    )
+                                )
+                            },
+                            summaryLines = emptyList(),
+                            trailing = {
+                                if (item.renameable) {
+                                    Switch(
+                                        checked = item.enabled,
+                                        onCheckedChange = { checked ->
+                                            val i = cards.indexOfFirst { it.id == item.id }
+                                            if (i >= 0) {
+                                                cards[i] = cards[i].copy(enabled = checked)
+                                                scope.launch(Dispatchers.IO) {
+                                                    RearWidgetManagerRepository.setCardEnabled(
+                                                        context = context,
+                                                        prefsManager = prefsManager,
+                                                        cardId = item.id,
+                                                        enabled = checked,
+                                                    )
+                                                }
+                                            }
+                                        },
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Lock,
+                                        contentDescription = null,
+                                        tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                    )
+                                }
+                            },
+                            onCardClick = { openEditDialog(item) },
+                            leftAction = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    ModuleStyleIconAction(
+                                        icon = Icons.Rounded.EditNote,
+                                        onClick = { openEditDialog(item) },
+                                    )
+                                    if (hasTemplateConfig) {
+                                        ModuleStyleDeleteAction(
+                                            icon = Icons.Filled.Tune,
+                                            text = stringResource(R.string.rear_widget_action_config),
+                                            onClick = { openTemplateConfig(item) },
+                                        )
+                                    }
+                                }
+                            },
+                            rightAction = {
+                                if (item.renameable) {
+                                    ModuleStyleDeleteAction(
+                                        icon = MiuixIcons.Delete,
+                                        text = stringResource(R.string.rear_widget_action_delete),
+                                        onClick = {
+                                            if (!item.renameable) return@ModuleStyleDeleteAction
+                                            cards.remove(item)
+                                            persist()
+                                        },
+                                    )
+                                }
+                            },
+                        )
+                    }
+                }
+
+                item {
+                    if (dataCardsVisible && cards.isEmpty()) {
+                        ArtRevealItem(visible = true, delayMillis = 40) {
+                            Card(modifier = Modifier.fillMaxWidth()) {
+                                Text(
+                                    text = stringResource(R.string.rear_widget_empty_card),
+                                    modifier = Modifier.padding(16.dp),
                                 )
                             }
-                        },
-                    )
-                }
-            }
-
-            item {
-                if (dataCardsVisible && cards.isEmpty()) {
-                    ArtRevealItem(visible = true, delayMillis = 40) {
-                        Card(modifier = Modifier.fillMaxWidth()) {
-                            Text(
-                                text = stringResource(R.string.rear_widget_empty_card),
-                                modifier = Modifier.padding(16.dp),
-                            )
                         }
                     }
                 }
             }
         }
-    }
 
-    OverlayDialog(
-        show = showDialog.value,
-        title = stringResource(
-            if (editingCardId == null) R.string.rear_widget_add_card else R.string.rear_widget_edit_card,
-        ),
-        onDismissRequest = { showDialog.value = false },
-    ) {
-        val editingCard = editingCardId?.let { id -> cards.firstOrNull { it.id == id } }
-        val lockedCard = editingCard?.takeIf { !it.renameable }
-        DialogFormColumn {
-            if (lockedCard == null) {
-                TextField(
-                    value = draftTitle,
-                    onValueChange = { draftTitle = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = stringResource(R.string.rear_widget_card_title),
-                    singleLine = true,
-                )
-                TextField(
-                    value = draftPackageName,
-                    onValueChange = { draftPackageName = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = stringResource(R.string.rear_widget_target_package),
-                    singleLine = true,
-                )
-                TextField(
-                    value = draftBusiness,
-                    onValueChange = { draftBusiness = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = stringResource(R.string.rear_widget_business_name),
-                    singleLine = true,
-                )
-            } else {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+        OverlayDialog(
+            show = showDialog.value,
+            title = stringResource(
+                if (editingCardId == null) R.string.rear_widget_add_card else R.string.rear_widget_edit_card,
+            ),
+            onDismissRequest = { showDialog.value = false },
+        ) {
+            val editingCard = editingCardId?.let { id -> cards.firstOrNull { it.id == id } }
+            val lockedCard = editingCard?.takeIf { !it.renameable }
+            DialogFormColumn {
+                if (lockedCard == null) {
+                    TextField(
+                        value = draftTitle,
+                        onValueChange = { draftTitle = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = stringResource(R.string.rear_widget_card_title),
+                        singleLine = true,
+                    )
+                    TextField(
+                        value = draftPackageName,
+                        onValueChange = { draftPackageName = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = stringResource(R.string.rear_widget_target_package),
+                        singleLine = true,
+                    )
+                    TextField(
+                        value = draftBusiness,
+                        onValueChange = { draftBusiness = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = stringResource(R.string.rear_widget_business_name),
+                        singleLine = true,
+                    )
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            text = stringResource(R.string.rear_widget_card_locked_summary),
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 14.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            text = stringResource(
-                                R.string.rear_widget_card_summary,
-                                lockedCard.packageName,
-                                lockedCard.business,
-                                lockedCard.priority,
-                            ),
-                            fontSize = 12.sp,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.rear_widget_card_locked_summary),
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 14.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = stringResource(
+                                    R.string.rear_widget_card_summary,
+                                    lockedCard.packageName,
+                                    lockedCard.business,
+                                    lockedCard.priority,
+                                ),
+                                fontSize = 12.sp,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            )
+                        }
+                    }
+                }
+                TextField(
+                    value = draftPriorityText,
+                    onValueChange = { draftPriorityText = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = stringResource(R.string.rear_widget_default_priority),
+                    singleLine = true,
+                )
+                if (lockedCard == null) {
+                    SwitchPreference(
+                        title = stringResource(R.string.rear_widget_card_sticky),
+                        summary = stringResource(R.string.rear_widget_card_sticky_desc),
+                        checked = draftSticky,
+                        onCheckedChange = { draftSticky = it },
+                    )
+                }
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Button(
+                        onClick = { submitDialog() },
+                        colors = ButtonDefaults.buttonColorsPrimary(),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.rear_widget_confirm))
+                    }
+                    Button(
+                        onClick = { showDialog.value = false },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(stringResource(R.string.rear_widget_cancel))
                     }
                 }
             }
-            TextField(
-                value = draftPriorityText,
-                onValueChange = { draftPriorityText = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = stringResource(R.string.rear_widget_default_priority),
-                singleLine = true,
-            )
-            if (lockedCard == null) {
-                SwitchPreference(
-                    title = stringResource(R.string.rear_widget_card_sticky),
-                    summary = stringResource(R.string.rear_widget_card_sticky_desc),
-                    checked = draftSticky,
-                    onCheckedChange = { draftSticky = it },
-                )
-            }
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Button(
-                    onClick = { submitDialog() },
-                    colors = ButtonDefaults.buttonColorsPrimary(),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(stringResource(R.string.rear_widget_confirm))
-                }
-                Button(onClick = { showDialog.value = false }, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.rear_widget_cancel))
-                }
-            }
         }
-    }
 
     }
 

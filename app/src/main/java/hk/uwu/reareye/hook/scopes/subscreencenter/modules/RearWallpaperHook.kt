@@ -263,73 +263,73 @@ class RearWallpaperHook : YukiBaseHooker() {
                     YLog.warn(it)
                 }
             }
-                    val saveSelectionPoint =
-                        resolveMainPanelSaveSelectionMethod(bridge)
-                    resolveLauncherMainPanelFieldName()
-                    resolveLauncherMainHandlerFieldName()
-                    resolveMainPanelSelectMethod()
-                    resolveMainPanelEditModeFieldName()
-                    resolveMainPanelResumedFieldName()
-                    resolveMainPanelAodFieldName()
-                    resolveMainPanelSelectedIndexFieldName()
-                    resolveMainPanelWidgetListFieldName()
-                    resolveWidgetFactoryMethod()
-                    resolveWallpaperSpecIdFieldName()
-                    resolveWallpaperSpecExtrasFieldName()
-                    resolveWidgetIdFieldName()
-                    resolveWidgetSpecFieldName()
-                    resolveWidgetExtrasFieldName()
-                    resolveWidgetHostFieldName()
-                    resolveWidgetPreviewModeFieldName()
-                    resolveWidgetSetEditModeMethod()
-                    resolveWidgetCreateViewMethod()
-                    resolveWidgetSetAodMethod()
-                    resolveWidgetResumeMethod()
-                    resolveWidgetCleanupMethod()
-                    resolvePrefStoreClass()
-                    resolvePrefStoreInstanceFieldName()
-                    resolvePrefStoreLoadSpecsMethod()
-                    resolvePrefStoreReadValueMethod()
-                    resolvePrefStoreWriteValueMethod()
-                    resolveWallpaperRuntimeListMethod()
-                    resolveDeviceConfigClass()
-                    resolveDeviceConfigRenderSizeFieldName()
-                    resolveDeviceConfigLocaleSuffixFieldName()
+            val saveSelectionPoint =
+                resolveMainPanelSaveSelectionMethod(bridge)
+            resolveLauncherMainPanelFieldName()
+            resolveLauncherMainHandlerFieldName()
+            resolveMainPanelSelectMethod()
+            resolveMainPanelEditModeFieldName()
+            resolveMainPanelResumedFieldName()
+            resolveMainPanelAodFieldName()
+            resolveMainPanelSelectedIndexFieldName()
+            resolveMainPanelWidgetListFieldName()
+            resolveWidgetFactoryMethod()
+            resolveWallpaperSpecIdFieldName()
+            resolveWallpaperSpecExtrasFieldName()
+            resolveWidgetIdFieldName()
+            resolveWidgetSpecFieldName()
+            resolveWidgetExtrasFieldName()
+            resolveWidgetHostFieldName()
+            resolveWidgetPreviewModeFieldName()
+            resolveWidgetSetEditModeMethod()
+            resolveWidgetCreateViewMethod()
+            resolveWidgetSetAodMethod()
+            resolveWidgetResumeMethod()
+            resolveWidgetCleanupMethod()
+            resolvePrefStoreClass()
+            resolvePrefStoreInstanceFieldName()
+            resolvePrefStoreLoadSpecsMethod()
+            resolvePrefStoreReadValueMethod()
+            resolvePrefStoreWriteValueMethod()
+            resolveWallpaperRuntimeListMethod()
+            resolveDeviceConfigClass()
+            resolveDeviceConfigRenderSizeFieldName()
+            resolveDeviceConfigLocaleSuffixFieldName()
 
-                    launcherRef.firstMethod {
-                        name = "onResume"
-                        parameterCount = 0
-                    }.hook().after {
-                        runCatching {
-                            capturePanels(instance)
-                            refreshSchedule(forceApply = true)
-                        }.onFailure {
-                            YLog.warn(it)
-                        }
-                    }
+            launcherRef.firstMethod {
+                name = "onResume"
+                parameterCount = 0
+            }.hook().after {
+                runCatching {
+                    capturePanels(instance)
+                    refreshSchedule(forceApply = true)
+                }.onFailure {
+                    YLog.warn(it)
+                }
+            }
 
-                    launcherRef.firstMethod {
-                        name = "onPause"
-                        parameterCount = 0
-                    }.hook().before {
-                        debugLog("launcher onPause keep scheduler nextAt=${readNextSwitchAt()}")
-                    }
+            launcherRef.firstMethod {
+                name = "onPause"
+                parameterCount = 0
+            }.hook().before {
+                debugLog("launcher onPause keep scheduler nextAt=${readNextSwitchAt()}")
+            }
 
-                    launcherRef.firstMethod {
-                        name = "onDestroy"
-                        parameterCount = 0
-                    }.hook().before {
-                        stopScheduler()
-                        mainPanel = null
-                        mainHandler = null
-                    }
+            launcherRef.firstMethod {
+                name = "onDestroy"
+                parameterCount = 0
+            }.hook().before {
+                stopScheduler()
+                mainPanel = null
+                mainHandler = null
+            }
 
-                    saveSelectionPoint.className.toClass().resolve().firstMethod {
-                        name = saveSelectionPoint.methodName
-                        parameterCount = 0
-                    }.hook().after {
-                        updateSelectedWallpaperIdFromPanel(instance)
-                    }
+            saveSelectionPoint.className.toClass().resolve().firstMethod {
+                name = saveSelectionPoint.methodName
+                parameterCount = 0
+            }.hook().after {
+                updateSelectedWallpaperIdFromPanel(instance)
+            }
         }
     }
 
