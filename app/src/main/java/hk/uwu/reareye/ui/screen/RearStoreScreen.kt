@@ -74,6 +74,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -2085,26 +2086,15 @@ private fun RearStoreDetailHeroCard(
 ) {
     val metadataLabelRes = metadataType.labelResId()
     val metadataPalette = rememberMetadataBadgePalette(metadataType)
-    val installedVersionBadgeText = buildString {
-        append(stringResource(R.string.rear_store_installed_version_label))
-        append("  ")
-        append(
-            installedWidget?.releaseTag?.takeIf { it.isNotBlank() }
-                ?: stringResource(R.string.rear_store_status_not_installed)
-        )
-    }
+    val installedVersionLabel = stringResource(R.string.rear_store_installed_version_label)
+    val installedVersionValue = installedWidget?.releaseTag?.takeIf { it.isNotBlank() }
+        ?: stringResource(R.string.rear_store_status_not_installed)
     val updateStateBadgeText = when {
         updateAvailable -> stringResource(R.string.rear_store_update_available_badge)
         latestReleaseTag != null && installedWidget != null -> stringResource(R.string.rear_store_up_to_date)
         else -> null
     }
-    val heroBadges = buildList {
-        add(
-            RearBadgeItem(
-                text = installedVersionBadgeText,
-                emphasized = false,
-            )
-        )
+    val trailingHeroBadges = buildList {
         updateStateBadgeText?.let {
             add(
                 RearBadgeItem(
@@ -2132,14 +2122,121 @@ private fun RearStoreDetailHeroCard(
             },
             onClick = {},
             bottomAction = {
-                Row(
+                RearStoreDetailHeroBadges(
+                    installedVersionLabel = installedVersionLabel,
+                    installedVersionValue = installedVersionValue,
+                    trailingBadges = trailingHeroBadges,
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                ) {
-                    RearBadgeGroup(badges = heroBadges)
-                }
+                )
             },
         )
+    }
+}
+
+private enum class RearStoreDetailHeroBadgeSlot {
+    InstalledCompact,
+    InstalledConstrainedCompact,
+    InstalledFull,
+    InstalledEllipsized,
+    Trailing,
+}
+
+@Composable
+private fun RearStoreDetailHeroBadges(
+    installedVersionLabel: String,
+    installedVersionValue: String,
+    trailingBadges: List<RearBadgeItem>,
+    modifier: Modifier = Modifier,
+) {
+    val installedFullBadge = remember(installedVersionLabel, installedVersionValue) {
+        RearBadgeItem(text = "$installedVersionLabel  $installedVersionValue")
+    }
+    val installedCompactBadge = remember(installedVersionLabel) {
+        RearBadgeItem(text = installedVersionLabel)
+    }
+    val spacing = 6.dp
+
+    SubcomposeLayout(modifier = modifier) { constraints ->
+        val maxWidth = constraints.maxWidth
+        val looseConstraints = constraints.copy(minWidth = 0, minHeight = 0)
+        val spacingPx = spacing.roundToPx()
+
+        fun measureBadgeGroup(
+            slot: RearStoreDetailHeroBadgeSlot,
+            badges: List<RearBadgeItem>,
+            maxGroupWidth: Int = maxWidth,
+        ) = subcompose(slot) {
+            RearBadgeGroup(
+                badges = badges,
+                horizontalAlignment = Alignment.End,
+            )
+        }.first().measure(looseConstraints.copy(maxWidth = maxGroupWidth.coerceAtLeast(0)))
+
+        val trailingPlaceable = if (trailingBadges.isNotEmpty()) {
+            measureBadgeGroup(RearStoreDetailHeroBadgeSlot.Trailing, trailingBadges)
+        } else {
+            null
+        }
+        val compactPlaceable = measureBadgeGroup(
+            RearStoreDetailHeroBadgeSlot.InstalledCompact,
+            listOf(installedCompactBadge),
+        )
+        val fullPlaceable = measureBadgeGroup(
+            RearStoreDetailHeroBadgeSlot.InstalledFull,
+            listOf(installedFullBadge),
+        )
+        val trailingSpacingPx = if (trailingPlaceable != null) spacingPx else 0
+        val requestedTrailingWidth = trailingPlaceable?.let { it.width + trailingSpacingPx } ?: 0
+        val trailingReservedWidth = requestedTrailingWidth.coerceAtMost(
+            (maxWidth - compactPlaceable.width).coerceAtLeast(0)
+        )
+        val fullRowWidth = fullPlaceable.width + requestedTrailingWidth
+        val compactRowWidth = compactPlaceable.width + requestedTrailingWidth
+
+        val installedPlaceable = when {
+            fullRowWidth <= maxWidth -> fullPlaceable
+            compactRowWidth <= maxWidth -> {
+                val ellipsizedMaxWidth =
+                    (maxWidth - requestedTrailingWidth).coerceAtLeast(compactPlaceable.width)
+                measureBadgeGroup(
+                    RearStoreDetailHeroBadgeSlot.InstalledEllipsized,
+                    listOf(installedFullBadge),
+                    maxGroupWidth = ellipsizedMaxWidth,
+                )
+            }
+
+            requestedTrailingWidth < maxWidth -> {
+                val compactMaxWidth = (maxWidth - requestedTrailingWidth).coerceAtLeast(0)
+                measureBadgeGroup(
+                    RearStoreDetailHeroBadgeSlot.InstalledConstrainedCompact,
+                    listOf(installedCompactBadge),
+                    maxGroupWidth = compactMaxWidth,
+                )
+            }
+
+            else -> compactPlaceable
+        }
+        val totalWidth = (installedPlaceable.width + trailingReservedWidth).coerceAtMost(maxWidth)
+
+        val layoutWidth = totalWidth.coerceIn(constraints.minWidth, constraints.maxWidth)
+        val layoutHeight = maxOf(
+            installedPlaceable.height,
+            trailingPlaceable?.height ?: 0,
+        ).coerceIn(constraints.minHeight, constraints.maxHeight)
+
+        layout(layoutWidth, layoutHeight) {
+            var x = layoutWidth
+            trailingPlaceable?.let {
+                x -= it.width
+                it.placeRelative(x, (layoutHeight - it.height) / 2)
+                x -= spacingPx
+            }
+            val installedX = (x - installedPlaceable.width).coerceAtLeast(0)
+            installedPlaceable.placeRelative(
+                installedX,
+                (layoutHeight - installedPlaceable.height) / 2
+            )
+        }
     }
 }
 
