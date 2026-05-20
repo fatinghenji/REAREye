@@ -3,6 +3,11 @@ package hk.uwu.reareye.ui.screen
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.ResultReceiver
+import android.util.Base64
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,6 +50,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
+import com.composables.icons.materialsymbols.MaterialSymbols
+import com.composables.icons.materialsymbols.rounded.Frame_bug
 import com.highcapable.yukihookapi.YukiHookAPI
 import hk.uwu.reareye.R
 import hk.uwu.reareye.generated.AppProperties
@@ -98,6 +105,22 @@ private object UpdateInfoCache {
 
 private class ToastHolder {
     var toast: Toast? = null
+}
+
+private data class FrameNotice(
+    val title: String,
+    val summary: String,
+)
+
+private object FrameNoticeCache {
+    var loaded = false
+    var value: FrameNotice? = null
+    var pending = false
+    val callbacks = mutableListOf<(FrameNotice?) -> Unit>()
+}
+
+fun preloadHomeFrameNotice(context: Context) {
+    resolveFrameNotice(context) {}
 }
 
 @Immutable
@@ -157,6 +180,59 @@ private fun showSingleToast(context: Context, holder: ToastHolder, message: Stri
     holder.toast?.show()
 }
 
+private fun resolveFrameNotice(context: Context, onResolved: (FrameNotice?) -> Unit) {
+    synchronized(FrameNoticeCache) {
+        if (FrameNoticeCache.loaded) {
+            onResolved(FrameNoticeCache.value)
+            return
+        }
+
+        FrameNoticeCache.callbacks += onResolved
+        if (FrameNoticeCache.pending) return
+        FrameNoticeCache.pending = true
+    }
+
+    val receiver = object : ResultReceiver(Handler(Looper.getMainLooper())) {
+        override fun onReceiveResult(resultCode: Int, resultData: Bundle?) {
+            val lines = resultData?.getStringArray(decodeFrameToken(3)).orEmpty()
+            val notice = if (resultCode == 2 && lines.size >= 2 &&
+                lines[0].isNotBlank() && lines[1].isNotBlank()
+            ) {
+                FrameNotice(title = lines[0], summary = lines[1])
+            } else {
+                null
+            }
+            val callbacks = synchronized(FrameNoticeCache) {
+                FrameNoticeCache.value = notice
+                FrameNoticeCache.loaded = true
+                FrameNoticeCache.pending = false
+                FrameNoticeCache.callbacks.toList().also {
+                    FrameNoticeCache.callbacks.clear()
+                }
+            }
+            callbacks.forEach { it(notice) }
+        }
+    }
+
+    context.applicationContext.sendBroadcast(
+        Intent(decodeFrameToken(0)).apply {
+            setPackage(context.packageName)
+            putExtra(decodeFrameToken(1), receiver)
+        }
+    )
+}
+
+private fun decodeFrameToken(index: Int): String {
+    val value = when (index) {
+        0 -> "aGsudXd1LnJlYXJleWUuYWN0aW9uLlBVTFNF"
+        1 -> "aGsudXd1LnJlYXJleWUuZXh0cmEuQ0FMTEJBQ0s="
+        2 -> "aGsudXd1LnJlYXJleWUuZXh0cmEuQ09ERQ=="
+        3 -> "aGsudXd1LnJlYXJleWUuZXh0cmEuTElORVM="
+        else -> ""
+    }
+    return String(Base64.decode(value, Base64.NO_WRAP), Charsets.UTF_8)
+}
+
 private suspend fun fetchLatestCommitHashFromNetwork(): String? {
     return withContext(Dispatchers.IO) {
         runCatching {
@@ -194,6 +270,7 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
     var latestCommitHash by remember { mutableStateOf<String?>(null) }
     var isCheckingUpdate by remember { mutableStateOf(false) }
     var hasRootAccess by remember { mutableStateOf<Boolean?>(null) }
+    val frameNotice = FrameNoticeCache.value
     var easterEggType by remember {
         mutableStateOf(EasterEggManager.getCurrentEasterEggType(context))
     }
@@ -251,8 +328,14 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
     val normalizedLatestHash = latestCommitHash?.take(7)?.lowercase()
     val showUpdateWarning =
         !isCheckingUpdate && !normalizedLatestHash.isNullOrBlank() && normalizedLatestHash != normalizedCurrentHash
+    val showFrameNotice = frameNotice != null
     val showRootWarning = hasRootAccess == false
-    val updateInfoDelay = if (showRootWarning) 150 else 100
+    val rootWarningDelay = if (showFrameNotice) 150 else 100
+    val updateInfoDelay = when {
+        showFrameNotice && showRootWarning -> 200
+        showFrameNotice || showRootWarning -> 150
+        else -> 100
+    }
 
     val appTitle = when (easterEggType) {
         EasterEggType.APRIL_FOOLS -> "FOOLEye"
@@ -439,8 +522,16 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
                                 },
                             )
 
+                            frameNotice?.let { notice ->
+                                FrameNoticeCard(
+                                    title = notice.title,
+                                    summary = notice.summary,
+                                    useMonetColors = useMonetStatusColors,
+                                )
+                            }
+
                             if (showRootWarning) {
-                                RevealItem(visible = visible, delayMillis = 100) {
+                                RevealItem(visible = visible, delayMillis = rootWarningDelay) {
                                     RootWarningCard(useMonetColors = useMonetStatusColors)
                                 }
                             }
@@ -739,6 +830,61 @@ private fun RootWarningCard(useMonetColors: Boolean) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = androidx.compose.ui.res.stringResource(R.string.home_root_warning_desc),
+                    style = MiuixTheme.textStyles.body2,
+                    color = palette.summary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FrameNoticeCard(title: String, summary: String, useMonetColors: Boolean) {
+    val colorScheme = MiuixTheme.colorScheme
+    val palette = if (useMonetColors) rememberStatusCardPalette(
+        accent = lerp(colorScheme.primary, colorScheme.secondary, 0.35f),
+        containerStrength = 0.2f,
+        iconStrength = 0.8f,
+        titleStrength = 0.4f,
+        summaryStrength = 0.24f,
+    ) else customStatusCardPalette(
+        container = Color(0xFFFFF3CD),
+        icon = Color(0xFFE0A100),
+        title = Color(0xFF7A5A00),
+        summary = Color(0xFF8A6B00),
+    )
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(108.dp),
+        colors = CardDefaults.defaultColors(color = palette.container),
+        insideMargin = PaddingValues(14.dp),
+        onClick = {},
+        pressFeedbackType = PressFeedbackType.Tilt,
+        showIndication = false
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Icon(
+                imageVector = MaterialSymbols.Rounded.Frame_bug,
+                contentDescription = null,
+                tint = palette.icon,
+                modifier = Modifier
+                    .size(108.dp)
+                    .align(Alignment.BottomEnd)
+                    .offset(x = 50.dp, y = 44.dp),
+            )
+
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = title,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = palette.title,
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = summary,
                     style = MiuixTheme.textStyles.body2,
                     color = palette.summary,
                 )

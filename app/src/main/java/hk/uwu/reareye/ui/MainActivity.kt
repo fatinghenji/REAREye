@@ -50,6 +50,7 @@ import hk.uwu.reareye.ui.screen.AboutScreen
 import hk.uwu.reareye.ui.screen.ConfigScreen
 import hk.uwu.reareye.ui.screen.HomeScreen
 import hk.uwu.reareye.ui.screen.RearStoreScreen
+import hk.uwu.reareye.ui.screen.preloadHomeFrameNotice
 import hk.uwu.reareye.ui.theme.AppTheme
 import hk.uwu.reareye.ui.theme.AppThemeMode
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -86,6 +87,7 @@ class MainActivity : ComponentActivity() {
             context = applicationContext,
             hidden = prefsManager.getBoolean(ConfigKeys.MODULE_HIDE_LAUNCHER_ENTRY, false),
         )
+        preloadHomeFrameNotice(applicationContext)
 
         setContent {
             var themeModeValue by remember {
