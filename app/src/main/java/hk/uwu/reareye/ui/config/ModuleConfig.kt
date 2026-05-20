@@ -33,6 +33,8 @@ object ConfigKeys {
         "subscreen_lock_back_home_whitelist_apps"
     const val HOOK_MUSIC_CONTROLS_FORCE_UPDATE = "enable_music_controls_force_update"
     const val HOOK_VIDEO_LOOPING = "enable_video_looping"
+    const val HOOK_VIDEO_WALLPAPER_RESUME_PROGRESS =
+        "enable_video_wallpaper_resume_progress"
 
     const val CFG_REAR_WALLPAPER_MANAGER = "cfg_rear_wallpaper_manager"
     const val REAR_WALLPAPER_SCHEDULE_ENABLED = "rear_wallpaper_schedule_enabled"
@@ -502,6 +504,12 @@ val REAREyeConfig = listOf(
             ConfigItem(
                 key = ConfigKeys.HOOK_VIDEO_LOOPING,
                 titleRes = R.string.enable_video_looping,
+                type = ConfigType.BooleanVal(defaultValue = false)
+            ),
+            ConfigItem(
+                key = ConfigKeys.HOOK_VIDEO_WALLPAPER_RESUME_PROGRESS,
+                titleRes = R.string.cfg_video_wallpaper_resume_progress,
+                descriptionRes = R.string.cfg_video_wallpaper_resume_progress_desc,
                 type = ConfigType.BooleanVal(defaultValue = false)
             ),
             ConfigItem(

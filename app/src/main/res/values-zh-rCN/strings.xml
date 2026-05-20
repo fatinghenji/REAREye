@@ -469,6 +469,8 @@
     <string name="cfg_unmute_video_wallpaper_desc">允许您添加带有音频的背屏视频壁纸</string>
     <string name="cfg_video_wallpaper_volume">视频壁纸音量</string>
     <string name="cfg_video_wallpaper_volume_desc">设置视频壁纸的播放音量</string>
+    <string name="cfg_video_wallpaper_resume_progress">恢复视频壁纸播放进度</string>
+    <string name="cfg_video_wallpaper_resume_progress_desc">遮挡 或 息屏 导致视频壁纸暂停后，亮屏时尝试恢复到暂停前进度并继续播放</string>
     <string name="cfg_disable_rear_screen_cover">禁用背屏保护</string>
     <string name="cfg_disable_rear_screen_cover_desc">启用此功能后，当主屏处于全屏模式时，背屏将不会被锁定</string>
     <string name="cfg_disable_subscreen_double_tap_sleep">背屏双击息屏禁用白名单</string>

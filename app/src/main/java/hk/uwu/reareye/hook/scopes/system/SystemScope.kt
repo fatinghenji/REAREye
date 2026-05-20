@@ -16,7 +16,6 @@ class SystemScope : Scope {
 
     override val hooks: List<YukiBaseHooker> = buildList {
         add(GMSUnlockModule())
-        add(CustomBoundsCompatModule())
         if (isRearDevice) {
             addAll(
                 listOf(
@@ -26,6 +25,7 @@ class SystemScope : Scope {
                     DisableSubScreenDoubleTapSleepHook(),
                     DisableSubScreenDoubleTapWakeHook(),
                     DisableSubScreenHighLoadModeHook(),
+                    CustomBoundsCompatModule()
                 )
             )
         } else {

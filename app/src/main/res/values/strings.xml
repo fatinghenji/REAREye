@@ -469,6 +469,8 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="cfg_unmute_video_wallpaper_desc">Allows you to add video wallpapers with audio</string>
     <string name="cfg_video_wallpaper_volume">Video wallpaper volume</string>
     <string name="cfg_video_wallpaper_volume_desc">Set playback volume for video wallpapers</string>
+    <string name="cfg_video_wallpaper_resume_progress">Resume video wallpaper progress</string>
+    <string name="cfg_video_wallpaper_resume_progress_desc">After the video wallpaper is paused by cover, screen off, or AOD, try to resume from the saved position when the rear screen becomes visible.</string>
     <string name="cfg_disable_rear_screen_cover">Disable rear screen cover</string>
     <string name="cfg_disable_rear_screen_cover_desc">When enabled, the rear screen will not be locked when the main screen is in full-screen mode</string>
     <string name="cfg_disable_subscreen_double_tap_sleep">Rear Double-Tap Sleep Disabled Apps</string>
