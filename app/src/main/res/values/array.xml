@@ -4,6 +4,8 @@
         <item>android</item>
         <item>com.xiaomi.subscreencenter</item>
         <item>com.android.thememanager</item>
+        <item>com.miui.weather2</item>
+        <item>com.miui.gallery</item>
         <item>com.android.systemui</item>
     </string-array>
 </resources>

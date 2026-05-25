@@ -10,12 +10,14 @@ import hk.uwu.reareye.hook.scopes.system.modules.DisableSubScreenDoubleTapSleepH
 import hk.uwu.reareye.hook.scopes.system.modules.DisableSubScreenDoubleTapWakeHook
 import hk.uwu.reareye.hook.scopes.system.modules.DisableSubScreenHighLoadModeHook
 import hk.uwu.reareye.hook.scopes.system.modules.RearScreenActivityWhitelistModule
+import hk.uwu.reareye.hook.scopes.system.modules.RustWrapperLaunchHook
 import hk.uwu.reareye.hook.scopes.system.modules.misc.GMSUnlockModule
 
 class SystemScope : Scope {
 
     override val hooks: List<YukiBaseHooker> = buildList {
         add(GMSUnlockModule())
+        add(RustWrapperLaunchHook())
         if (isRearDevice) {
             addAll(
                 listOf(

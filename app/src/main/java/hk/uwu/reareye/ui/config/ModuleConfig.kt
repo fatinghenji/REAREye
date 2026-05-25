@@ -63,6 +63,24 @@ object ConfigKeys {
     const val VIDEO_WALLPAPER_VOLUME = "unmute_video_wallpaper_volume"
     const val VIDEO_WALLPAPER_VOLUME_DEFAULT = 0.0f
 
+    const val WEATHER_DEVICE_LEVEL = "weather_device_level"
+    const val WEATHER_UNLOCK_SUPER_BLUR = "enable_weather_unlock_super_blur"
+
+    const val GALLERY_BACKUP_SERVER = "gallery_backup_server"
+    const val GALLERY_ENABLE_HDR_ENHANCED = "gallery_enable_hdr_enhanced"
+    const val GALLERY_ENABLE_PDF = "gallery_enable_pdf"
+    const val GALLERY_ENABLE_OCR = "gallery_enable_ocr"
+    const val GALLERY_ENABLE_OCR_FORM = "gallery_enable_ocr_form"
+    const val GALLERY_LONGER_TRASHBIN_TIME = "gallery_longer_trashbin_time"
+    const val GALLERY_TRASH_RETENTION_DAYS = "gallery_trash_retention_days"
+    const val GALLERY_ENABLE_ID_PHOTO = "gallery_enable_id_photo"
+    const val GALLERY_ENABLE_PHOTO_MOVIE = "gallery_enable_photo_movie"
+    const val GALLERY_ENABLE_VIDEO_POST = "gallery_enable_video_post"
+    const val GALLERY_ENABLE_VIDEO_EDITOR = "gallery_enable_video_editor"
+    const val GALLERY_ENABLE_MAGIC_MATTING = "gallery_enable_magic_matting"
+    const val GALLERY_ENABLE_PRINT = "gallery_enable_print"
+    const val GALLERY_ENABLE_PRIVACY_WATERMARK = "gallery_enable_un_privacy_watermark"
+
     const val LYRIC_DISPLAY_MODE = "lyric_display_mode"
     val LYRIC_DISPLAY_MODE_DEFAULT = LyricParser.DisplayMode.ORIGINAL.mask or
             LyricParser.DisplayMode.TRANSLATION.mask or
@@ -163,6 +181,16 @@ enum class LyricProvider(val value: Int, val titleRes: Int) {
         fun fromValue(value: Int): LyricProvider {
             return entries.firstOrNull { it.value == value } ?: LYRICON
         }
+    }
+}
+
+enum class GalleryBackupServer(val value: Int, val titleRes: Int) {
+    DEFAULT(value = 0, titleRes = R.string.gallery_backup_server_default),
+    CHINA(value = 1, titleRes = R.string.gallery_backup_server_china),
+    INTERNATIONAL(value = 2, titleRes = R.string.gallery_backup_server_international);
+
+    companion object {
+        val selectableEntries = listOf(DEFAULT, CHINA, INTERNATIONAL)
     }
 }
 
@@ -525,6 +553,166 @@ val REAREyeConfig = listOf(
                     valueFormatter = { value -> "${(value * 100f).roundToInt()}%" },
                 )
             )
+        )
+    ),
+    ConfigCategory(
+        icon = ConfigCategoryIcon.Package("com.miui.weather2"),
+        titleRes = R.string.category_weather,
+        children = listOf(
+            ConfigItem(
+                key = ConfigKeys.WEATHER_DEVICE_LEVEL,
+                titleRes = R.string.weather_device_level,
+                descriptionRes = R.string.weather_device_level_desc,
+                type = ConfigType.EnumSingleSelect(
+                    defaultValue = 0,
+                    options = listOf(
+                        ConfigType.EnumOption(
+                            titleRes = R.string.weather_device_level_default,
+                            value = 0,
+                        ),
+                        ConfigType.EnumOption(
+                            titleRes = R.string.weather_device_level_low,
+                            value = 1,
+                        ),
+                        ConfigType.EnumOption(
+                            titleRes = R.string.weather_device_level_middle,
+                            value = 2,
+                        ),
+                        ConfigType.EnumOption(
+                            titleRes = R.string.weather_device_level_high,
+                            value = 3,
+                        ),
+                    )
+                )
+            ),
+            ConfigItem(
+                key = ConfigKeys.WEATHER_UNLOCK_SUPER_BLUR,
+                titleRes = R.string.weather_unlock_super_blur,
+                descriptionRes = R.string.weather_unlock_super_blur_desc,
+                type = ConfigType.BooleanVal(defaultValue = false)
+            )
+        )
+    ),
+    ConfigCategory(
+        icon = ConfigCategoryIcon.Package("com.miui.gallery"),
+        titleRes = R.string.category_gallery,
+        children = listOf(
+            ConfigItem(
+                key = ConfigKeys.GALLERY_BACKUP_SERVER,
+                titleRes = R.string.gallery_backup_server,
+                descriptionRes = R.string.gallery_backup_server_desc,
+                type = ConfigType.EnumSingleSelect(
+                    defaultValue = GalleryBackupServer.DEFAULT.value,
+                    options = GalleryBackupServer.selectableEntries.map {
+                        ConfigType.EnumOption(
+                            titleRes = it.titleRes,
+                            value = it.value,
+                        )
+                    },
+                )
+            ),
+            ConfigItem(
+                key = ConfigKeys.GALLERY_ENABLE_HDR_ENHANCED,
+                titleRes = R.string.gallery_enable_hdr_enhanced,
+                descriptionRes = R.string.gallery_enable_hdr_enhanced_desc,
+                type = ConfigType.BooleanVal(defaultValue = false)
+            ),
+            ConfigItem(
+                key = ConfigKeys.GALLERY_ENABLE_PDF,
+                titleRes = R.string.gallery_enable_pdf,
+                descriptionRes = R.string.gallery_enable_pdf_desc,
+                type = ConfigType.BooleanVal(defaultValue = false)
+            ),
+            ConfigItem(
+                key = ConfigKeys.GALLERY_ENABLE_OCR,
+                titleRes = R.string.gallery_enable_ocr,
+                descriptionRes = R.string.gallery_enable_ocr_desc,
+                type = ConfigType.BooleanVal(defaultValue = false)
+            ),
+            ConfigItem(
+                key = ConfigKeys.GALLERY_ENABLE_OCR_FORM,
+                titleRes = R.string.gallery_enable_ocr_form,
+                descriptionRes = R.string.gallery_enable_ocr_form_desc,
+                type = ConfigType.BooleanVal(defaultValue = false)
+            ),
+            ConfigItem(
+                key = ConfigKeys.GALLERY_LONGER_TRASHBIN_TIME,
+                titleRes = R.string.gallery_longer_trashbin_time,
+                descriptionRes = R.string.gallery_longer_trashbin_time_desc,
+                type = ConfigType.BooleanVal(defaultValue = false)
+            ),
+            ConfigItem(
+                key = ConfigKeys.GALLERY_TRASH_RETENTION_DAYS,
+                titleRes = R.string.gallery_trash_retention_days,
+                descriptionRes = R.string.gallery_trash_retention_days_desc,
+                type = ConfigType.EnumSingleSelect(
+                    defaultValue = 365,
+                    options = listOf(
+                        ConfigType.EnumOption(
+                            titleRes = R.string.gallery_trash_retention_days_60,
+                            value = 60,
+                        ),
+                        ConfigType.EnumOption(
+                            titleRes = R.string.gallery_trash_retention_days_90,
+                            value = 90,
+                        ),
+                        ConfigType.EnumOption(
+                            titleRes = R.string.gallery_trash_retention_days_120,
+                            value = 120,
+                        ),
+                        ConfigType.EnumOption(
+                            titleRes = R.string.gallery_trash_retention_days_180,
+                            value = 180,
+                        ),
+                        ConfigType.EnumOption(
+                            titleRes = R.string.gallery_trash_retention_days_365,
+                            value = 365,
+                        ),
+                    )
+                )
+            ),
+            ConfigItem(
+                key = ConfigKeys.GALLERY_ENABLE_ID_PHOTO,
+                titleRes = R.string.gallery_enable_id_photo,
+                descriptionRes = R.string.gallery_enable_id_photo_desc,
+                type = ConfigType.BooleanVal(defaultValue = false)
+            ),
+            ConfigItem(
+                key = ConfigKeys.GALLERY_ENABLE_PHOTO_MOVIE,
+                titleRes = R.string.gallery_enable_photo_movie,
+                descriptionRes = R.string.gallery_enable_photo_movie_desc,
+                type = ConfigType.BooleanVal(defaultValue = false)
+            ),
+            ConfigItem(
+                key = ConfigKeys.GALLERY_ENABLE_VIDEO_POST,
+                titleRes = R.string.gallery_enable_video_post,
+                descriptionRes = R.string.gallery_enable_video_post_desc,
+                type = ConfigType.BooleanVal(defaultValue = false)
+            ),
+            ConfigItem(
+                key = ConfigKeys.GALLERY_ENABLE_VIDEO_EDITOR,
+                titleRes = R.string.gallery_enable_video_editor,
+                descriptionRes = R.string.gallery_enable_video_editor_desc,
+                type = ConfigType.BooleanVal(defaultValue = false)
+            ),
+            ConfigItem(
+                key = ConfigKeys.GALLERY_ENABLE_PRINT,
+                titleRes = R.string.gallery_enable_print,
+                descriptionRes = R.string.gallery_enable_print_desc,
+                type = ConfigType.BooleanVal(defaultValue = false)
+            ),
+            ConfigItem(
+                key = ConfigKeys.GALLERY_ENABLE_PRIVACY_WATERMARK,
+                titleRes = R.string.gallery_enable_un_privacy_watermark,
+                descriptionRes = R.string.gallery_enable_un_privacy_watermark_desc,
+                type = ConfigType.BooleanVal(defaultValue = false)
+            ),
+            ConfigItem(
+                key = ConfigKeys.GALLERY_ENABLE_MAGIC_MATTING,
+                titleRes = R.string.gallery_enable_magic_matting,
+                descriptionRes = R.string.gallery_enable_magic_matting_desc,
+                type = ConfigType.BooleanVal(defaultValue = false)
+            ),
         )
     ),
     ConfigCategory(

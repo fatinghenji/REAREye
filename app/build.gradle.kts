@@ -45,6 +45,13 @@ android {
         versionCode = gitVersionCode
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "BUILD_CHANNEL", "\"$buildSuffix\"")
+
+        @Suppress("UnstableApiUsage")
+        externalNativeBuild {
+            cmake {
+                cppFlags += "-std=c++17"
+            }
+        }
     }
 
     signingConfigs {
@@ -103,6 +110,11 @@ android {
         viewBinding = true
         compose = true
         aidl = true
+    }
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+        }
     }
     lint { checkReleaseBuilds = false }
 }
