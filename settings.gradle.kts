@@ -46,8 +46,15 @@ val versionCode = gitVersionCode
 val branch = gitBranch
 val hash = gitHash
 val buildSuffix = providers.gradleProperty("buildSuffix").orNull ?: "dev"
+val isPublicBeta = providers.gradleProperty("isPublicBeta")
+    .map { it.toBoolean() }
+    .orNull
+    ?: gradle.startParameter.taskNames.any { taskName ->
+        taskName.contains("PublicBeta", ignoreCase = true)
+    }
 
 gradle.extra["versionSuffix"] = "-$hash-r$versionCode-$buildSuffix"
+gradle.extra["isPublicBeta"] = isPublicBeta
 
 gropify {
     rootProject {
@@ -64,7 +71,8 @@ gropify {
                 "git.hash" to hash,
                 "git.branch" to branch,
                 "build.number" to versionCode,
-                "build.channel" to buildSuffix
+                "build.channel" to buildSuffix,
+                "isPublicBeta" to isPublicBeta
             )
         }
     }

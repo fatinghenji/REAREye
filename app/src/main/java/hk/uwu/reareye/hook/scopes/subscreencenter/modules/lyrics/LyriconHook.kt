@@ -3,7 +3,6 @@ package hk.uwu.reareye.hook.scopes.subscreencenter.modules.lyrics
 import android.content.Context
 import android.content.pm.PackageManager
 import android.media.MediaMetadata
-import android.os.Build
 import com.hchen.superlyricapi.ISuperLyricReceiver
 import com.hchen.superlyricapi.SuperLyricData
 import com.hchen.superlyricapi.SuperLyricHelper
@@ -11,6 +10,9 @@ import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.hook.utils.createDexKitCacheBridge
+import hk.uwu.reareye.hook.utils.resolveDexKitClassValue
+import hk.uwu.reareye.hook.utils.resolveHookPackageVersionCode
 import hk.uwu.reareye.lyrics.LyricParser
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.LyricProvider
@@ -25,6 +27,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.luckypray.dexkit.DexKitCacheBridge
+import org.luckypray.dexkit.annotations.DexKitExperimentalApi
 import java.lang.ref.WeakReference
 import java.lang.reflect.Proxy
 import java.util.Collections
@@ -32,6 +36,7 @@ import java.util.WeakHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.time.Duration.Companion.seconds
 
+@OptIn(DexKitExperimentalApi::class)
 class LyriconHook : YukiBaseHooker() {
     private val lyricParser = LyricParser()
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -178,6 +183,20 @@ class LyriconHook : YukiBaseHooker() {
                 }
             }
 
+            val versionCode = resolveHookPackageVersionCode(
+                systemContext,
+                appInfo.packageName,
+                appInfo.sourceDir,
+            )
+            val bridge = createDexKitCacheBridge(
+                packageName = appInfo.packageName,
+                packageVersionCode = versionCode,
+                sourceDir = appInfo.sourceDir,
+                dataDir = appInfo.dataDir,
+            )
+            val progressUpdateClz =
+                resolveMusicControlScreenElementProgressUpdateRunnableClassName(bridge)
+
             val clz = "com.miui.maml.elements.MusicControlScreenElement".toClass()
             val ref = clz.resolve()
             ref.constructor().build().hookAll {
@@ -257,7 +276,8 @@ class LyriconHook : YukiBaseHooker() {
                 }
             }
 
-            "com.miui.maml.elements.MusicControlScreenElement$4".toClass().resolve().firstMethod {
+
+            progressUpdateClz.toClass().resolve().firstMethod {
                 name = "run"
             }.hook().replaceUnit {
                 val element = instance.readFieldValue("this$0") ?: run {
@@ -420,12 +440,7 @@ class LyriconHook : YukiBaseHooker() {
     private fun isPackageInstalled(context: Context, pkg: String): Boolean {
         return runCatching {
             val pm = context.packageManager
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                pm.getPackageInfo(pkg, PackageManager.PackageInfoFlags.of(0))
-            } else {
-                @Suppress("DEPRECATION")
-                pm.getPackageInfo(pkg, 0)
-            }
+            pm.getPackageInfo(pkg, PackageManager.PackageInfoFlags.of(0))
         }.isSuccess
     }
 
@@ -1010,7 +1025,37 @@ class LyriconHook : YukiBaseHooker() {
         }
     }
 
+
+    private fun resolveMusicControlScreenElementProgressUpdateRunnableClassName(
+        bridge: DexKitCacheBridge.RecyclableBridge,
+    ): String {
+        return resolveDexKitClassValue(
+            bridge = bridge,
+            cacheKey = LYRICON_PROGRESS_UPDATE_CACHE_KEY,
+        ) {
+            findClass {
+                searchPackages("com.miui.maml.elements")
+                matcher {
+                    usingStrings(
+                        "android.media.metadata.DURATION",
+                    )
+                }
+            }.let {
+                val r = {
+                    it.forEach { d ->
+                        YLog.debug("Found ${d.name}")
+                    }
+                    null
+                }
+                it.singleOrNull { data -> data.name.matches("com.miui.maml.elements.MusicControlScreenElement\\$\\d+".toRegex()) }
+                    ?: r()
+            }
+        } ?: error("DexKit failed to resolve $LYRICON_PROGRESS_UPDATE_CACHE_KEY")
+    }
+
     private companion object {
+        private const val LYRICON_PROGRESS_UPDATE_CACHE_KEY =
+            "LYRICON_PROGRESS_UPDATE_RUNNABLE_CLASS"
         private const val TARGET_LYRICON_PACKAGE = "io.github.proify.lyricon"
         private const val LYRICON_CORE_PACKAGE = "io.github.proify.lyricon.core"
         private const val METADATA_CUSTOM_TITLE = "android.media.metadata.CUSTOM_FIELD_TITLE"

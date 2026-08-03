@@ -16,6 +16,7 @@ val gitVersionCode: Int by lazy { 5 + gitCommitCount }
 val baseVersionName = gropify.project.app.versionName.replace("\"", "")
 val buildSuffix = project.findProperty("buildSuffix") as? String ?: "dev"
 val finalVersionName = "$baseVersionName-$buildSuffix"
+val isPublicBetaBuild = gradle.extra["isPublicBeta"] as? Boolean ?: false
 
 fun runGitCommand(vararg args: String): String? = runCatching {
     ProcessBuilder(listOf("git") + args)
@@ -46,10 +47,12 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "BUILD_CHANNEL", "\"$buildSuffix\"")
 
-        @Suppress("UnstableApiUsage")
-        externalNativeBuild {
-            cmake {
-                cppFlags += "-std=c++17"
+        if (!isPublicBetaBuild) {
+            @Suppress("UnstableApiUsage")
+            externalNativeBuild {
+                cmake {
+                    cppFlags += "-std=c++17"
+                }
             }
         }
     }
@@ -111,12 +114,26 @@ android {
         compose = true
         aidl = true
     }
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
+    if (isPublicBetaBuild) {
+        packaging {
+            jniLibs {
+                excludes += "**/libreareye_*_hook.so"
+            }
+        }
+    } else {
+        externalNativeBuild {
+            cmake {
+                path = file("src/main/cpp/CMakeLists.txt")
+            }
         }
     }
     lint { checkReleaseBuilds = false }
+}
+
+tasks.register("assemblePublicBetaRelease") {
+    group = "build"
+    description = "Assembles the public beta release without REAREye native hook libraries."
+    dependsOn("assembleRelease")
 }
 
 androidComponents {

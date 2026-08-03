@@ -996,8 +996,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                             usingStrings("Widget{mId=", ", mType=", ", mChangedFlag=")
                         }
                         add {
-                            declaredClass = "com.xiaomi.subscreencenter.SubScreenCenterApp"
-                            name = "onCreate"
+                            usingStrings("App list not loaded, loading synchronously")
                         }
                     }
                 }

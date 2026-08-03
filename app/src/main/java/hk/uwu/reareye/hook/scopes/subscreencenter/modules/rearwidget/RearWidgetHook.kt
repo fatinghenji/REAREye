@@ -753,14 +753,14 @@ class RearWidgetHook : YukiBaseHooker() {
                                 "Using previous index while inactive: %d",
                             )
                         }
-                        add {
+                        /*add {
                             declaredClass = "com.xiaomi.subscreencenter.SubScreenCenterApp"
                             usingStrings("All widgets initialized: display=%d, beforeInactive=%d")
                         }
                         add {
                             declaredClass = "com.xiaomi.subscreencenter.SmartAssistantPanel"
                             usingStrings("Keeping mIndexBeforeInactive at %d")
-                        }
+                        }*/
                     }
                     writeMethods {
                         add {
@@ -768,7 +768,15 @@ class RearWidgetHook : YukiBaseHooker() {
                         }
                     }
                 }
-            }.singleOrNull()
+            }.let {
+                val r = {
+                    it.forEach { field ->
+                        YLog.debug("Found ${field.className} ${field.fieldName}")
+                    }
+                    null
+                }
+                it.singleOrNull() ?: r()
+            }
         }
     }
 

@@ -54,7 +54,10 @@ class UnlockTemplateMaximumLimitHook : YukiBaseHooker() {
             findClass {
                 searchPackages("com.rearScreen.viewModel")
                 matcher {
-                    usingStrings("rear:RearScreenDetailViewModel")
+                    usingStrings(
+                        "RearScreenDetailViewModel",
+                        "[换机日志] onResourceImportSuccessful: onlineId="
+                    )
                 }
             }.singleOrNull()
         } ?: FALLBACK_REAR_DETAIL_VIEW_MODEL_CLASS

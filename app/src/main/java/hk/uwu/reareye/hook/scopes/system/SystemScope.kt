@@ -2,6 +2,7 @@ package hk.uwu.reareye.hook.scopes.system
 
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.generated.AppProperties
 import hk.uwu.reareye.hook.scopes.Scope
 import hk.uwu.reareye.hook.scopes.system.modules.BackgroundWhitelistModule
 import hk.uwu.reareye.hook.scopes.system.modules.CustomBoundsCompatModule
@@ -17,7 +18,11 @@ class SystemScope : Scope {
 
     override val hooks: List<YukiBaseHooker> = buildList {
         add(GMSUnlockModule())
-        add(RustWrapperLaunchHook())
+        if (AppProperties.IS_PUBLIC_BETA) {
+            YLog.debug("Public beta build, skip native cpp hooks")
+        } else {
+            add(RustWrapperLaunchHook())
+        }
         if (isRearDevice) {
             addAll(
                 listOf(
