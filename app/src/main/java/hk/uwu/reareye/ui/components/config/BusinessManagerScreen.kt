@@ -54,6 +54,7 @@ import hk.uwu.reareye.ui.components.card.SuperCard
 import hk.uwu.reareye.ui.components.motion.ArtRevealItem
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.PrefsManager
+import hk.uwu.reareye.ui.config.rememberRemotePrefsStatusRevision
 import hk.uwu.reareye.ui.theme.rearAcrylicEffect
 import hk.uwu.reareye.ui.theme.rearAcrylicSource
 import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
@@ -98,6 +99,7 @@ fun BusinessManagerScreen(
     val widgets = remember { mutableStateListOf<RearBusinessConfig>() }
     var widgetsLoaded by remember { mutableStateOf(false) }
     var dataCardsVisible by remember { mutableStateOf(false) }
+    val remotePrefsStatusRevision = rememberRemotePrefsStatusRevision()
 
     val showDialog = remember { mutableStateOf(false) }
     var editingId by remember { mutableStateOf<String?>(null) }
@@ -118,7 +120,17 @@ fun BusinessManagerScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(prefsManager, remotePrefsStatusRevision) {
+        val remoteReady = withContext(Dispatchers.IO) { prefsManager.isRemoteReady() }
+        if (!remoteReady) {
+            if (widgets.isEmpty()) {
+                widgetsLoaded = false
+                dataCardsVisible = false
+            }
+            debugLog("business load deferred: remote preferences not ready revision=$remotePrefsStatusRevision")
+            return@LaunchedEffect
+        }
+
         delay(220)
         val loadedWidgets = withContext(Dispatchers.IO) {
             RearWidgetManagerRepository.loadBusinesses(prefsManager)
@@ -379,7 +391,8 @@ fun BusinessManagerScreen(
                                         )
                                     }
                                     Button(
-                                        onClick = { openCreateDialog() },
+                                        onClick = { if (widgetsLoaded) openCreateDialog() },
+                                        enabled = widgetsLoaded,
                                         colors = ButtonDefaults.buttonColorsPrimary(),
                                         modifier = Modifier.fillMaxWidth(),
                                     ) {

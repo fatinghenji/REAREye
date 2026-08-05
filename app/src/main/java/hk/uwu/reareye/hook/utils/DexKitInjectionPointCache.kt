@@ -2,7 +2,7 @@
 
 package hk.uwu.reareye.hook.utils
 
-import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.hook.core.YLog
 import org.luckypray.dexkit.DexKitBridge
 import org.luckypray.dexkit.DexKitCacheBridge
 import org.luckypray.dexkit.annotations.DexKitExperimentalApi

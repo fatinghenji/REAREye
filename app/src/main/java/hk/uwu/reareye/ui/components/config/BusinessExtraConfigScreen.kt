@@ -53,6 +53,7 @@ import hk.uwu.reareye.ui.config.ConfigItem
 import hk.uwu.reareye.ui.config.ConfigNode
 import hk.uwu.reareye.ui.config.ConfigType
 import hk.uwu.reareye.ui.config.PrefsManager
+import hk.uwu.reareye.ui.config.rememberRemotePrefsStatusRevision
 import hk.uwu.reareye.ui.theme.rearAcrylicEffect
 import hk.uwu.reareye.ui.theme.rearAcrylicSource
 import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
@@ -104,28 +105,38 @@ fun BusinessExtraConfigManagerScreen(
     val entries = remember { mutableStateListOf<RearBusinessExtraConfigEntry>() }
     var loaded by remember { mutableStateOf(false) }
     var dataCardsVisible by remember { mutableStateOf(false) }
+    val remotePrefsStatusRevision = rememberRemotePrefsStatusRevision()
     var showDialog by remember { mutableStateOf(false) }
     var draftBusiness by remember { mutableStateOf("") }
     var editingBusiness by remember { mutableStateOf<String?>(null) }
 
-    suspend fun reloadEntries() {
+    suspend fun reloadEntries(): Boolean {
+        val remoteReady = withContext(Dispatchers.IO) { prefsManager.isRemoteReady() }
+        if (!remoteReady) return false
         val loadedEntries = withContext(Dispatchers.IO) {
             RearBusinessExtraConfigRepository.getAllConfigs(prefsManager)
         }
         entries.clear()
         entries.addAll(loadedEntries)
+        return true
     }
 
-    LaunchedEffect(Unit) {
-        delay(220)
-        reloadEntries()
+    LaunchedEffect(prefsManager, remotePrefsStatusRevision) {
+        if (!reloadEntries()) {
+            if (entries.isEmpty()) {
+                loaded = false
+                dataCardsVisible = false
+            }
+            return@LaunchedEffect
+        }
         loaded = true
         delay(90)
         dataCardsVisible = true
     }
 
-    LaunchedEffect(editingBusiness) {
+    LaunchedEffect(editingBusiness, remotePrefsStatusRevision) {
         if (editingBusiness == null && loaded) {
+            if (!withContext(Dispatchers.IO) { prefsManager.isRemoteReady() }) return@LaunchedEffect
             dataCardsVisible = false
             reloadEntries()
             delay(90)
@@ -262,7 +273,8 @@ fun BusinessExtraConfigManagerScreen(
                                     onClick = {},
                                     bottomAction = {
                                         Button(
-                                            onClick = { openCreateDialog() },
+                                            onClick = { if (loaded) openCreateDialog() },
+                                            enabled = loaded,
                                             colors = ButtonDefaults.buttonColorsPrimary(),
                                             modifier = Modifier.fillMaxWidth(),
                                         ) {
@@ -398,12 +410,36 @@ fun BusinessExtraConfigScreen(
     val scrollBehavior = MiuixScrollBehavior()
     val hazeState = rememberAcrylicHazeState()
     val hazeStyle = rememberAcrylicHazeStyle()
-    var config by remember(business) {
-        mutableStateOf(
+    val remotePrefsStatusRevision = rememberRemotePrefsStatusRevision()
+    var remoteReady by remember(business, remotePrefsStatusRevision) {
+        mutableStateOf(false)
+    }
+    var config by remember(business, remotePrefsStatusRevision) {
+        mutableStateOf<RearBusinessExtraConfig?>(null)
+    }
+
+    LaunchedEffect(prefsManager, business, remotePrefsStatusRevision) {
+        val ready = withContext(Dispatchers.IO) { prefsManager.isRemoteReady() }
+        remoteReady = ready
+        if (!ready) {
+            config = null
+            return@LaunchedEffect
+        }
+        config = withContext(Dispatchers.IO) {
             RearBusinessExtraConfigRepository.getConfigForBusiness(
                 prefsManager = prefsManager,
                 business = business,
             )
+        }
+    }
+
+    fun saveConfig(updated: RearBusinessExtraConfig) {
+        if (!remoteReady) return
+        config = updated
+        RearBusinessExtraConfigRepository.saveConfigForBusiness(
+            prefsManager = prefsManager,
+            business = business,
+            config = updated,
         )
     }
 
@@ -459,28 +495,40 @@ fun BusinessExtraConfigScreen(
                 }
             }
 
-            itemsIndexed(
-                BusinessExtraConfigNodes,
-                key = { index, node -> node.key ?: "extra_$index" }) { index, node ->
-                if (node is ConfigGroup) {
+            val loadedConfig = config
+            if (!remoteReady || loadedConfig == null) {
+                item {
                     Card(
                         modifier = Modifier
-                            .padding(top = if (index == 0) 0.dp else 8.dp)
                             .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        insideMargin = PaddingValues(vertical = 24.dp),
                     ) {
-                        node.children.forEach { child ->
-                            BusinessExtraConfigNodeRow(
-                                node = child,
-                                config = config,
-                                onConfigChange = { updated ->
-                                    config = updated
-                                    RearBusinessExtraConfigRepository.saveConfigForBusiness(
-                                        prefsManager = prefsManager,
-                                        business = business,
-                                        config = updated,
-                                    )
-                                },
-                            )
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            InfiniteProgressIndicator()
+                        }
+                    }
+                }
+            } else {
+                itemsIndexed(
+                    BusinessExtraConfigNodes,
+                    key = { index, node -> node.key ?: "extra_$index" }) { index, node ->
+                    if (node is ConfigGroup) {
+                        Card(
+                            modifier = Modifier
+                                .padding(top = if (index == 0) 0.dp else 8.dp)
+                                .fillMaxWidth()
+                        ) {
+                            node.children.forEach { child ->
+                                BusinessExtraConfigNodeRow(
+                                    node = child,
+                                    config = loadedConfig,
+                                    onConfigChange = ::saveConfig,
+                                )
+                            }
                         }
                     }
                 }

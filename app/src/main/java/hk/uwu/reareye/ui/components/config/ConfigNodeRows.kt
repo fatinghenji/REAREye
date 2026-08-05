@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -38,8 +39,11 @@ import hk.uwu.reareye.ui.config.ModuleSettingsController
 import hk.uwu.reareye.ui.config.PrefsManager
 import hk.uwu.reareye.ui.config.StoreApiProvider
 import hk.uwu.reareye.ui.config.normalizeRearStoreCustomDomainInput
+import hk.uwu.reareye.ui.config.rememberRemotePrefsStatusRevision
 import hk.uwu.reareye.ui.config.validateRearStoreCustomDomain
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.ListPopupColumn
 import top.yukonga.miuix.kmp.basic.ListPopupDefaults
@@ -183,8 +187,27 @@ fun AppListConfigInput(
     prefsManager: PrefsManager,
     onClick: () -> Unit,
 ) {
-    val selectedCount = prefsManager.getStringSet(item.key, defaultValues).size
-    val selectedSummary = stringResource(R.string.config_selected_apps, selectedCount)
+    val remotePrefsStatusRevision = rememberRemotePrefsStatusRevision()
+    var selectedCount by remember(item.key) { mutableIntStateOf(0) }
+    var selectionReady by remember(item.key) { mutableStateOf(false) }
+
+    LaunchedEffect(item.key, remotePrefsStatusRevision) {
+        val remoteReady = withContext(Dispatchers.IO) { prefsManager.isRemoteReady() }
+        if (!remoteReady) {
+            selectionReady = false
+            return@LaunchedEffect
+        }
+        selectedCount = withContext(Dispatchers.IO) {
+            prefsManager.getStringSet(item.key, defaultValues).size
+        }
+        selectionReady = true
+    }
+
+    val selectedSummary = if (selectionReady) {
+        stringResource(R.string.config_selected_apps, selectedCount)
+    } else {
+        stringResource(R.string.rear_widget_loading_data)
+    }
     val description = item.descriptionRes?.let { stringResource(it) }
     val summary = if (description.isNullOrBlank()) {
         selectedSummary

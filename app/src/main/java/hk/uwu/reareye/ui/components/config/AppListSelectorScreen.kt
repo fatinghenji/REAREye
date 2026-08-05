@@ -64,6 +64,7 @@ import hk.uwu.reareye.ui.components.RearSearchBar
 import hk.uwu.reareye.ui.components.rememberApplicationIconBitmap
 import hk.uwu.reareye.ui.config.ConfigItem
 import hk.uwu.reareye.ui.config.PrefsManager
+import hk.uwu.reareye.ui.config.rememberRemotePrefsStatusRevision
 import hk.uwu.reareye.ui.theme.rearAcrylicEffect
 import hk.uwu.reareye.ui.theme.rearAcrylicSource
 import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
@@ -546,11 +547,9 @@ fun AppListSelectorScreen(
 
     var appCatalog by remember { mutableStateOf<AppCatalog?>(null) }
     var loading by remember { mutableStateOf(true) }
-    val selectedOrder = remember(configItem.key) {
-        mutableStateListOf<String>().apply {
-            addAll(prefsManager.getStringSet(configItem.key, configItem.type.defaultStringSet))
-        }
-    }
+    val selectedOrder = remember(configItem.key) { mutableStateListOf<String>() }
+    var selectedOrderLoaded by remember(configItem.key) { mutableStateOf(false) }
+    val remotePrefsStatusRevision = rememberRemotePrefsStatusRevision()
 
     var showSystemApps by remember(configItem.key) { mutableStateOf(false) }
     var searchInput by remember(configItem.key) { mutableStateOf("") }
@@ -570,6 +569,21 @@ fun AppListSelectorScreen(
     BackHandler(enabled = searchFocused.value) {
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
+    }
+
+    LaunchedEffect(configItem.key, remotePrefsStatusRevision) {
+        val remoteReady = withContext(Dispatchers.IO) { prefsManager.isRemoteReady() }
+        if (!remoteReady) {
+            selectedOrderLoaded = false
+            return@LaunchedEffect
+        }
+
+        val loadedSelection = withContext(Dispatchers.IO) {
+            prefsManager.getStringSet(configItem.key, configItem.type.defaultStringSet)
+        }
+        selectedOrder.clear()
+        selectedOrder.addAll(loadedSelection)
+        selectedOrderLoaded = true
     }
 
     LaunchedEffect(configItem.key) {
@@ -837,6 +851,7 @@ fun AppListSelectorScreen(
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {
+                    if (!selectedOrderLoaded) return@FloatingActionButton
                     prefsManager.putStringSet(configItem.key, selectedLookup)
                     onSave()
                 },
@@ -867,7 +882,7 @@ fun AppListSelectorScreen(
             ),
             overscrollEffect = null,
         ) {
-            if (loading || appCatalog == null) {
+            if (loading || appCatalog == null || !selectedOrderLoaded) {
                 item {
                     LoadingAppsCard()
                 }

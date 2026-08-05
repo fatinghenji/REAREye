@@ -28,14 +28,27 @@
     public static *** throwUninitializedPropertyAccessException(...);
 }
 
-# --- Xposed ---
+# --- libxposed API 102 ---
 -adaptresourcefilecontents META-INF/xposed/java_init.list
 -keepattributes RuntimeVisibleAnnotations
-
--keep class com.highcapable.yukihookapi.hook.* { *; }
--keep class com.highcapable.yukihookapi.annotation.* { *; }
--keep class com.highcapable.kavaref.* { *; }
+-keep,allowoptimization public class io.github.libxposed.api.** {
+    public <fields>;
+    protected <fields>;
+    public <methods>;
+    protected <methods>;
+    public <init>(...);
+    protected <init>(...);
+}
+-dontwarn io.github.libxposed.annotation.**
 -dontwarn java.lang.reflect.AnnotatedType
+-keep class hk.uwu.reareye.hook.HookEntry { *; }
+-keep class hk.uwu.reareye.hook.core.** { *; }
+
+# --- DexKit 2.2 ABI/native entry ---
+-keepclasseswithmembers,includedescriptorclasses class org.luckypray.dexkit.** {
+    native <methods>;
+}
+-dontwarn org.luckypray.dexkit.**
 
 # --- Tool ---
 -keep class hk.uwu.reareye.hook.** { *; }

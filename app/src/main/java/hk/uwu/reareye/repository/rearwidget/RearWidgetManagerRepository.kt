@@ -5,7 +5,6 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
-import android.util.Base64
 import android.util.Log
 import hk.uwu.reareye.repository.rearwidget.RearBusinessExtraConfigRepository.getShowTimeTipForBusiness
 import hk.uwu.reareye.ui.config.ConfigKeys
@@ -692,32 +691,60 @@ object RearWidgetManagerRepository {
         val sourceKey = RearWidgetConfigCodec.businessBlobSourceKey(business)
         val blobKey = RearWidgetConfigCodec.businessBlobKey(business)
         val metaKey = RearWidgetConfigCodec.businessBlobMetaKey(business)
+        val remoteFileName = RearWidgetConfigCodec.businessBlobRemoteFileName(business)
+        val marker = RearWidgetConfigCodec.remoteBlobMarker(remoteFileName)
 
         val oldSourceSig = prefsManager.getString(sourceKey, "")
         val oldBlob = prefsManager.getString(blobKey, "")
-        if (oldSourceSig == sourceSig && oldBlob.isNotBlank()) {
-            return
-        }
-
-        val bytes = runCatching { source.readBytes() }.getOrNull() ?: return
-        val newMeta = buildBlobMeta(bytes)
         val oldMeta = prefsManager.getString(metaKey, "")
+        if (oldSourceSig == sourceSig && oldBlob == marker && oldMeta.isNotBlank()) return
 
-        if (oldMeta == newMeta && oldBlob.isNotBlank()) {
-            prefsManager.putString(sourceKey, sourceSig)
-            return
+        val bytes = runCatching { source.readBytes() }
+            .onFailure {
+                Log.e(
+                    TAG,
+                    "Unable to read rear widget business template: business=$business path=$sourcePath",
+                    it
+                )
+            }
+            .getOrElse { throw it }
+        val newMeta = buildBlobMeta(bytes)
+        check(prefsManager.writeRemoteFile(remoteFileName, bytes)) {
+            "Unable to write rear widget RemoteFile: business=$business size=${bytes.size}"
         }
 
-        val encoded = Base64.encodeToString(bytes, Base64.NO_WRAP)
-        prefsManager.putString(blobKey, encoded)
-        prefsManager.putString(metaKey, newMeta)
-        prefsManager.putString(sourceKey, sourceSig)
+        val committed = prefsManager.prefs.edit()
+            .putString(blobKey, marker)
+            .putString(metaKey, newMeta)
+            .putString(sourceKey, sourceSig)
+            .commit()
+        check(committed) {
+            "Unable to commit rear widget RemoteFile marker: business=$business size=${bytes.size}"
+        }
     }
 
     private fun clearBusinessTemplateBlob(prefsManager: PrefsManager, business: String) {
-        prefsManager.putString(RearWidgetConfigCodec.businessBlobKey(business), "")
-        prefsManager.putString(RearWidgetConfigCodec.businessBlobMetaKey(business), "")
-        prefsManager.putString(RearWidgetConfigCodec.businessBlobSourceKey(business), "")
+        val blobKey = RearWidgetConfigCodec.businessBlobKey(business)
+        val oldMarker = RearWidgetConfigCodec.remoteBlobFileNameFromMarker(
+            prefsManager.getString(blobKey, ""),
+        )
+        val namesToDelete = linkedSetOf(
+            RearWidgetConfigCodec.businessBlobRemoteFileName(business),
+            oldMarker,
+        ).filterNotNull()
+        namesToDelete.forEach { name ->
+            check(prefsManager.deleteRemoteFile(name)) {
+                "Unable to delete rear widget RemoteFile: business=$business"
+            }
+        }
+        val committed = prefsManager.prefs.edit()
+            .remove(blobKey)
+            .remove(RearWidgetConfigCodec.businessBlobMetaKey(business))
+            .remove(RearWidgetConfigCodec.businessBlobSourceKey(business))
+            .commit()
+        check(committed) {
+            "Unable to clear rear widget RemoteFile metadata: business=$business"
+        }
     }
 
     private fun deleteIfManagedPath(path: String, rootNorm: String) {

@@ -6,8 +6,8 @@ import android.util.Log
 import android.util.Size
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
-import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.hook.core.YLog
+import hk.uwu.reareye.hook.core.YukiBaseHooker
 import hk.uwu.reareye.hook.utils.DexKitMethodInjectionPoint
 import hk.uwu.reareye.hook.utils.createDexKitCacheBridge
 import hk.uwu.reareye.hook.utils.resolveDexKitClassValue
@@ -80,17 +80,20 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                 appInfo.packageName,
                 appInfo.sourceDir,
             )
-            val bridge = createDexKitCacheBridge(
+            val bridge = trackResource(
+                createDexKitCacheBridge(
                 packageName = appInfo.packageName,
                 packageVersionCode = versionCode,
                 sourceDir = appInfo.sourceDir,
                 dataDir = appInfo.dataDir,
+                )
             )
             val durationCropCacheKey = "DURATION_CROP_CLZ"
             val historyHelperCacheKey = "HISTORY_HELPER_CLZ"
 
             val videoEditPoint = resolveVideoEditPlayCreatedMethod(bridge)
             val fpsLimitPoint = resolveVideoEditFpsLimitMethod(bridge)
+            YLog.info("fps $fpsLimitPoint")
             val editorConfigBuildPoint =
                 resolveVideoEditorConfigBuildMethod(bridge)
             val checkDepthPoint = resolveVideoDepthCheckMethod(bridge)
@@ -201,6 +204,34 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                     }
                 }.singleOrNull()
             }
+            val trimOutFieldName = resolveFieldName(
+                VIDEO_EDIT_TRIM_OUT_FIELD_CACHE_KEY,
+            ) {
+                findField {
+                    searchPackages("com.android.thememanager.videoedit")
+                    matcher {
+                        declaredClass = videoEditPoint.className
+                        type = "long"
+                        readMethods {
+                            add {
+                                declaredClass = videoEditPoint.className
+                                paramCount(1)
+                                returnType = "void"
+                                usingStrings("onPlayTimelinePosition")
+                            }
+                        }
+                        writeMethods {
+                            add {
+                                declaredClass = videoEditPoint.className
+                                name = videoEditPoint.methodName
+                                paramCount(0)
+                                returnType = "void"
+                                usingStrings("onPlayViewCreated")
+                            }
+                        }
+                    }
+                }.singleOrNull()
+            }
             val trimInFieldName = resolveFieldName(
                 VIDEO_EDIT_TRIM_IN_FIELD_CACHE_KEY,
             ) {
@@ -218,44 +249,14 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                                 usingStrings("onPlayViewCreated")
                             }
                             add {
-                                declaredClass = fpsLimitPoint.className
-                                name = fpsLimitPoint.methodName
-                                paramCount(0)
-                                returnType = "void"
-                                usingStrings("ExportConfig %s", "export videopath is ")
-                            }
-                        }
-                    }
-                }.singleOrNull()
-            }
-            val trimOutFieldName = resolveFieldName(
-                VIDEO_EDIT_TRIM_OUT_FIELD_CACHE_KEY,
-            ) {
-                findField {
-                    searchPackages("com.android.thememanager.videoedit")
-                    matcher {
-                        declaredClass = videoEditPoint.className
-                        type = "long"
-                        readMethods {
-                            add {
-                                declaredClass = fpsLimitPoint.className
-                                name = fpsLimitPoint.methodName
-                                paramCount(0)
-                                returnType = "void"
-                                usingStrings("ExportConfig %s", "export videopath is ")
-                            }
-                        }
-                        writeMethods {
-                            add {
                                 declaredClass = videoEditPoint.className
-                                name = videoEditPoint.methodName
-                                paramCount(0)
+                                paramCount(1)
                                 returnType = "void"
-                                usingStrings("onPlayViewCreated")
+                                usingStrings("onPlayTimelinePosition")
                             }
                         }
                     }
-                }.singleOrNull()
+                }.singleOrNull { it.name != trimOutFieldName }
             }
             val frameLoaderFieldName = resolveFieldName(
                 VIDEO_EDIT_FRAME_LOADER_FIELD_CACHE_KEY,
@@ -264,7 +265,9 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                     searchPackages("com.android.thememanager.videoedit")
                     matcher {
                         declaredClass = videoEditPoint.className
-                        type = "com.android.thememanager.videoedit.y"
+                        type {
+                            usingStrings("MiVideoFrameLoader")
+                        }
                     }
                 }.singleOrNull()
             }
@@ -286,8 +289,9 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                     searchPackages("com.android.thememanager.videoedit")
                     matcher {
                         declaredClass = videoEditPoint.className
-                        type =
-                            $$"com.android.thememanager.videoedit.widget.ClipFrameView$zy"
+                        type {
+                            modifiers = Modifier.INTERFACE
+                        }
                     }
                 }.singleOrNull()
             }
@@ -307,16 +311,14 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                                 returnType = "void"
                                 usingStrings("onPlayViewCreated")
                             }
-                            add {
-                                declaredClass = fpsLimitPoint.className
-                                name = fpsLimitPoint.methodName
-                                paramCount(0)
-                                returnType = "void"
-                                usingStrings("ExportConfig %s", "export videopath is ")
-                            }
                         }
                     }
-                }.singleOrNull()
+                }.let {
+                    it.forEach {
+                        YLog.info("Field ${it.className} ${it.name}")
+                    }
+                    it.singleOrNull()
+                }
             }
             val exportPathFieldName = resolveFieldName(
                 VIDEO_EDIT_EXPORT_PATH_FIELD_CACHE_KEY,
@@ -326,17 +328,21 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                     matcher {
                         declaredClass = videoEditPoint.className
                         type = "java.lang.String"
-                        writeMethods {
+                        readMethods {
                             add {
-                                declaredClass = fpsLimitPoint.className
-                                name = fpsLimitPoint.methodName
+                                declaredClass = videoEditPoint.className
                                 paramCount(0)
                                 returnType = "void"
-                                usingStrings("ExportConfig %s", "export videopath is ")
+                                usingStrings("onExportSuccess")
                             }
                         }
                     }
-                }.singleOrNull()
+                }.let {
+                    it.forEach {
+                        YLog.info("Field ${it.className} ${it.name}")
+                    }
+                    it.singleOrNull()
+                }
             }
 
             val durationCropMatchResult = resolveDexKitClassValue(

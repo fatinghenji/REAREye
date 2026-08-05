@@ -25,3 +25,4 @@ rear-widget-api/build
 release-key.jks
 .env
 .kotlin
+.narrafork

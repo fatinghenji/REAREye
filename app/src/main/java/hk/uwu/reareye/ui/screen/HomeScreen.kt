@@ -32,6 +32,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -50,14 +51,16 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.composables.icons.materialsymbols.MaterialSymbols
 import com.composables.icons.materialsymbols.rounded.Frame_bug
-import com.highcapable.yukihookapi.YukiHookAPI
 import hk.uwu.reareye.R
 import hk.uwu.reareye.generated.AppProperties
+import hk.uwu.reareye.hook.core.ModuleActivationState
+import hk.uwu.reareye.hook.core.XposedModuleStatus
 import hk.uwu.reareye.ui.components.motion.ArtVisibilityMotion
-import hk.uwu.reareye.ui.config.ConfigKeys
-import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
 import hk.uwu.reareye.ui.easteregg.EasterEggManager
 import hk.uwu.reareye.ui.easteregg.EasterEggType
 import hk.uwu.reareye.ui.theme.AppThemeMode
@@ -256,12 +259,16 @@ private suspend fun fetchLatestCommitHashFromNetwork(): String? {
 
 @SuppressLint("LocalContextGetResourceValueCall")
 @Composable
-fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
-    val isActivated = YukiHookAPI.Status.isModuleActive
+fun HomeScreen(
+    themeMode: AppThemeMode,
+    bottomInnerPadding: Dp = 0.dp,
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var activationState by remember { mutableStateOf(XposedModuleStatus.current()) }
+    val isActivated = activationState == ModuleActivationState.ACTIVE
     val showTopMenu = remember { mutableStateOf(false) }
     val scrollBehavior = MiuixScrollBehavior()
-    val context = LocalContext.current
-    val prefsManager = remember { context.getPrefsManager() }
     val hazeState = rememberAcrylicHazeState()
     val hazeStyle = rememberAcrylicHazeStyle()
     val coroutineScope = rememberCoroutineScope()
@@ -274,18 +281,24 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
     var easterEggType by remember {
         mutableStateOf(EasterEggManager.getCurrentEasterEggType(context))
     }
-    val themeMode = remember(prefsManager) {
-        AppThemeMode.fromValue(
-            prefsManager.getInt(
-                ConfigKeys.MODULE_THEME_MODE,
-                AppThemeMode.default.value,
-            )
-        )
-    }
     val useMonetStatusColors = remember(themeMode) {
         themeMode == AppThemeMode.MONET_SYSTEM ||
                 themeMode == AppThemeMode.MONET_LIGHT ||
                 themeMode == AppThemeMode.MONET_DARK
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val statusObserver: (ModuleActivationState) -> Unit = { activationState = it }
+        val lifecycleObserver = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) XposedModuleStatus.refresh()
+        }
+        XposedModuleStatus.observe(statusObserver)
+        lifecycleOwner.lifecycle.addObserver(lifecycleObserver)
+        XposedModuleStatus.refresh()
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
+            XposedModuleStatus.removeObserver(statusObserver)
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -322,7 +335,14 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
             else -> androidx.compose.ui.res.stringResource(R.string.home_status_working)
         }
     } else {
-        androidx.compose.ui.res.stringResource(R.string.home_status_inactive)
+        androidx.compose.ui.res.stringResource(
+            when (activationState) {
+                ModuleActivationState.SERVICE_UNAVAILABLE -> R.string.home_status_service_unavailable
+                ModuleActivationState.SCOPE_NOT_AUTHORIZED -> R.string.home_status_scope_not_authorized
+                ModuleActivationState.NO_RUNNING_TARGET -> R.string.home_status_no_running_target
+                ModuleActivationState.ACTIVE -> R.string.home_status_working
+            }
+        )
     }
     val normalizedCurrentHash = AppProperties.GIT_HASH.take(7).lowercase()
     val normalizedLatestHash = latestCommitHash?.take(7)?.lowercase()
@@ -548,7 +568,7 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
 
                     RevealItem(visible = visible, delayMillis = 50) {
                         ModuleInfoCard(
-                            activated = isActivated,
+                            activationState = activationState,
                             moduleVersion = moduleVersion,
                             versionCodename = versionCodename,
                             releaseChannel = releaseChannel,
@@ -964,12 +984,13 @@ private fun UpdateWarningCard(currentHash: String, latestHash: String, useMonetC
 
 @Composable
 private fun ModuleInfoCard(
-    activated: Boolean,
+    activationState: ModuleActivationState,
     moduleVersion: String,
     versionCodename: String,
     releaseChannel: String,
     easterEggType: EasterEggType
 ) {
+    val activated = activationState == ModuleActivationState.ACTIVE
     Card(
         modifier = Modifier.fillMaxWidth(),
         insideMargin = PaddingValues(16.dp),
@@ -977,7 +998,14 @@ private fun ModuleInfoCard(
         InfoLine(
             title = androidx.compose.ui.res.stringResource(R.string.status_card),
             value = when {
-                !activated -> androidx.compose.ui.res.stringResource(R.string.module_not_activated)
+                activationState == ModuleActivationState.SERVICE_UNAVAILABLE ->
+                    androidx.compose.ui.res.stringResource(R.string.home_status_service_unavailable)
+
+                activationState == ModuleActivationState.SCOPE_NOT_AUTHORIZED ->
+                    androidx.compose.ui.res.stringResource(R.string.home_status_scope_not_authorized)
+
+                activationState == ModuleActivationState.NO_RUNNING_TARGET ->
+                    androidx.compose.ui.res.stringResource(R.string.home_status_no_running_target)
                 easterEggType == EasterEggType.APRIL_FOOLS -> androidx.compose.ui.res.stringResource(
                     R.string.home_easter_egg_april_fools_activated
                 )

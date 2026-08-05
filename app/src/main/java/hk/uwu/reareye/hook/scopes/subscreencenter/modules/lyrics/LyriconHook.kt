@@ -8,8 +8,8 @@ import com.hchen.superlyricapi.SuperLyricData
 import com.hchen.superlyricapi.SuperLyricHelper
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
-import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.hook.core.YLog
+import hk.uwu.reareye.hook.core.YukiBaseHooker
 import hk.uwu.reareye.hook.utils.createDexKitCacheBridge
 import hk.uwu.reareye.hook.utils.resolveDexKitClassValue
 import hk.uwu.reareye.hook.utils.resolveHookPackageVersionCode
@@ -25,8 +25,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import org.luckypray.dexkit.DexKitCacheBridge
 import org.luckypray.dexkit.annotations.DexKitExperimentalApi
 import java.lang.ref.WeakReference
@@ -64,6 +67,107 @@ class LyriconHook : YukiBaseHooker() {
 
     @Volatile
     var superLyricStub: ISuperLyricReceiver.Stub? = null
+
+    override fun onReloading(): Boolean {
+        var success = true
+        monitor?.let { subscriber ->
+            var subscriberSuccess = true
+            runCatching { subscriber.unregister() }
+                .onFailure {
+                    subscriberSuccess = false
+                    YLog.error("Failed to unregister Lyricon subscriber during reload", it)
+                }
+            runCatching { subscriber.destroy() }
+                .onFailure {
+                    subscriberSuccess = false
+                    YLog.error("Failed to destroy Lyricon subscriber during reload", it)
+                }
+            if (subscriberSuccess) {
+                monitor = null
+            } else {
+                success = false
+            }
+        }
+
+        superLyricStub?.let { receiver ->
+            val receiverSuccess = runCatching {
+                SuperLyricHelper.unregisterReceiver(receiver)
+                true
+            }.onFailure {
+                YLog.error("Failed to unregister SuperLyric receiver during reload", it)
+            }.getOrDefault(false)
+            if (receiverSuccess) {
+                superLyricStub = null
+            } else {
+                success = false
+            }
+        }
+
+        val jobsToCancel = ArrayList<Job>()
+        scope.coroutineContext[Job]?.let { jobsToCancel += it }
+        scope.cancel()
+        mainScope.coroutineContext[Job]?.let { jobsToCancel += it }
+        mainScope.cancel()
+
+        val elementsToClean = synchronized(managedElementStates) {
+            managedElementStates.keys.toList()
+        }
+        var tickerCleanupSucceeded = true
+        elementsToClean.forEach { element ->
+            if (!unregisterPreTicker(element)) tickerCleanupSucceeded = false
+        }
+        if (!tickerCleanupSucceeded) success = false
+
+        synchronized(managedElementStates) {
+            managedElementStates.values.forEach { state ->
+                state.managedProgressJob?.let { job ->
+                    job.cancel()
+                    jobsToCancel += job
+                }
+            }
+        }
+        val cancellationBarrierSucceeded = awaitCancellationBarrier(jobsToCancel)
+        if (!cancellationBarrierSucceeded) success = false
+
+        synchronized(managedElementStates) {
+            if (cancellationBarrierSucceeded) {
+                managedElementStates.values.forEach { state ->
+                    state.managedProgressJob = null
+                }
+            }
+            if (tickerCleanupSucceeded && cancellationBarrierSucceeded) {
+                managedElementStates.clear()
+            }
+        }
+        if (tickerCleanupSucceeded && cancellationBarrierSucceeded) elements.clear()
+        latestLyricLrc = ""
+        lastLyricId = null
+        lastLyricLrc = ""
+        currentProvider = null
+        return success
+    }
+
+    private fun awaitCancellationBarrier(jobs: List<Job>): Boolean {
+        val distinctJobs = jobs.distinct()
+        if (distinctJobs.isEmpty()) return true
+        return runCatching {
+            runBlocking {
+                withTimeoutOrNull(CANCELLATION_BARRIER_TIMEOUT_MS) {
+                    distinctJobs.forEach { it.join() }
+                    true
+                } ?: false
+            }
+        }.onFailure {
+            YLog.error("Lyricon cancellation barrier failed", it)
+        }.getOrDefault(false).also { completed ->
+            if (!completed) {
+                YLog.error(
+                    "Lyricon cancellation barrier timed out: jobs=${distinctJobs.size} " +
+                            "timeoutMs=$CANCELLATION_BARRIER_TIMEOUT_MS"
+                )
+            }
+        }
+    }
 
     override fun onHook() {
         loadApp("com.android.systemui") {
@@ -105,12 +209,13 @@ class LyriconHook : YukiBaseHooker() {
                     )) {
                         LyricProvider.LYRICON -> {
                             val listener = createLyricListener()
-                            val monitor =
+                            val lyriconMonitor =
                                 io.github.proify.lyricon.subscriber.LyriconFactory.createSubscriber(
                                     context
                                 )
-                            monitor.subscribeActivePlayer(listener)
-                            monitor.register()
+                            lyriconMonitor.subscribeActivePlayer(listener)
+                            lyriconMonitor.register()
+                            monitor = lyriconMonitor
                             YLog.info("Registered lyricon player monitor")
                         }
 
@@ -188,11 +293,13 @@ class LyriconHook : YukiBaseHooker() {
                 appInfo.packageName,
                 appInfo.sourceDir,
             )
-            val bridge = createDexKitCacheBridge(
+            val bridge = trackResource(
+                createDexKitCacheBridge(
                 packageName = appInfo.packageName,
                 packageVersionCode = versionCode,
                 sourceDir = appInfo.sourceDir,
                 dataDir = appInfo.dataDir,
+                )
             )
             val progressUpdateClz =
                 resolveMusicControlScreenElementProgressUpdateRunnableClassName(bridge)
@@ -842,17 +949,24 @@ class LyriconHook : YukiBaseHooker() {
         state.preTicker = proxyInstance
     }
 
-    private fun unregisterPreTicker(element: Any) {
+    private fun unregisterPreTicker(element: Any): Boolean {
         val state = stateOf(element)
-        val ticker = state.preTicker ?: return
-        val root = element.readSuperFieldValue("mRoot")
-        runCatching {
-            root?.asResolver()?.firstMethod {
+        val ticker = state.preTicker ?: return true
+        val root = element.readSuperFieldValue("mRoot") ?: run {
+            YLog.error("Failed to remove Lyricon pre-ticker: root is unavailable")
+            return false
+        }
+        val removed = runCatching {
+            root.asResolver().firstMethod {
                 name = "removePreTicker"
                 parameters("com.miui.maml.elements.ITicker".toClass())
-            }?.invoke(ticker)
-        }
-        state.preTicker = null
+            }.invoke(ticker)
+            true
+        }.onFailure {
+            YLog.error("Failed to remove Lyricon pre-ticker during reload", it)
+        }.getOrDefault(false)
+        if (removed) state.preTicker = null
+        return removed
     }
 
     private fun queueCurrentLyricSnapshot(element: Any): Boolean {
@@ -1054,6 +1168,7 @@ class LyriconHook : YukiBaseHooker() {
     }
 
     private companion object {
+        private const val CANCELLATION_BARRIER_TIMEOUT_MS = 1500L
         private const val LYRICON_PROGRESS_UPDATE_CACHE_KEY =
             "LYRICON_PROGRESS_UPDATE_RUNNABLE_CLASS"
         private const val TARGET_LYRICON_PACKAGE = "io.github.proify.lyricon"

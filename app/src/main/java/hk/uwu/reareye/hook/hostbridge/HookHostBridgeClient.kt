@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.IBinder
 import android.os.IInterface
+import hk.uwu.reareye.hook.core.YLog
 import hk.uwu.reareye.internal.hostbridge.IHookHostBridgeBootstrap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -46,10 +47,26 @@ abstract class HookHostBridgeClient<Remote : IInterface>(
     protected open fun onRemoteDisconnected(reason: String) {
     }
 
+    /** 旧代主动解绑后的子类清理点；默认无额外资源。 */
+    protected open fun onUnbound() {
+    }
+
+    /** unlinkToDeath 失败时的可观察日志钩子。 */
+    protected open fun onUnlinkToDeathFailure(error: Throwable) {
+        YLog.error("$serviceLabel unlinkToDeath failed", error)
+    }
+
     fun isConnected(): Boolean = remote != null
 
-    fun unbind() {
-        clearRemote(notifyClosed = false)
+    /** 断开当前 Binder 并清除 Context；返回值用于向模块生命周期反馈失败。 */
+    fun unbind(): Boolean {
+        if (!clearRemote(notifyClosed = false, force = false)) return false
+        return runCatching {
+            onUnbound()
+            appContext = null
+            closedListener = null
+            true
+        }.getOrDefault(false)
     }
 
     protected fun bindToHost(
@@ -90,6 +107,7 @@ abstract class HookHostBridgeClient<Remote : IInterface>(
             clearRemote(
                 notifyClosed = true,
                 reason = HookHostBridgeContract.Reason.REMOTE_DIED,
+                force = true,
             )
         }.getOrNull()
     }
@@ -170,26 +188,32 @@ abstract class HookHostBridgeClient<Remote : IInterface>(
             clearRemote(
                 notifyClosed = true,
                 reason = HookHostBridgeContract.Reason.REMOTE_DIED,
+                force = true,
             )
         }
 
         val installed = synchronized(lock) {
-            releaseRemoteLocked()
-            val linked = runCatching {
-                binder.linkToDeath(deathRecipient, 0)
-                true
-            }.getOrDefault(false)
-            if (!linked) {
+            if (!releaseRemoteLocked(force = false)) {
                 connectLatch?.countDown()
                 connectLatch = null
                 false
             } else {
-                remote = candidate
-                remoteBinder = binder
-                remoteDeathRecipient = deathRecipient
-                connectLatch?.countDown()
-                connectLatch = null
-                true
+                val linked = runCatching {
+                    binder.linkToDeath(deathRecipient, 0)
+                    true
+                }.getOrDefault(false)
+                if (!linked) {
+                    connectLatch?.countDown()
+                    connectLatch = null
+                    false
+                } else {
+                    remote = candidate
+                    remoteBinder = binder
+                    remoteDeathRecipient = deathRecipient
+                    connectLatch?.countDown()
+                    connectLatch = null
+                    true
+                }
             }
         }
 
@@ -201,31 +225,43 @@ abstract class HookHostBridgeClient<Remote : IInterface>(
     private fun clearRemote(
         notifyClosed: Boolean,
         reason: String = HookHostBridgeContract.Reason.REMOTE_CLOSED,
-    ) {
-        val hadRemote = synchronized(lock) {
+        force: Boolean,
+    ): Boolean {
+        val result = synchronized(lock) {
             val existed = remote != null
-            releaseRemoteLocked()
+            if (!releaseRemoteLocked(force)) return@synchronized false to existed
             connectLatch?.countDown()
             connectLatch = null
-            existed
+            true to existed
         }
+        if (!result.first) return false
 
-        if (hadRemote) {
+        if (result.second) {
             onRemoteDisconnected(reason)
             if (notifyClosed) {
                 closedListener?.invoke(reason)
             }
         }
+        return true
     }
 
-    private fun releaseRemoteLocked() {
+    private fun releaseRemoteLocked(force: Boolean): Boolean {
         val binder = remoteBinder
         val deathRecipient = remoteDeathRecipient
         if (binder != null && deathRecipient != null) {
-            runCatching { binder.unlinkToDeath(deathRecipient, 0) }
+            val unlinked = runCatching { binder.unlinkToDeath(deathRecipient, 0) }
+                .onFailure(::onUnlinkToDeathFailure)
+                .getOrDefault(false)
+            if (!unlinked) {
+                onUnlinkToDeathFailure(
+                    IllegalStateException("${serviceLabel} unlinkToDeath returned false")
+                )
+                if (!force) return false
+            }
         }
         remote = null
         remoteBinder = null
         remoteDeathRecipient = null
+        return true
     }
 }

@@ -407,6 +407,9 @@
     <string name="home_status_channel">渠道</string>
     <string name="home_status_working">工作中</string>
     <string name="home_status_inactive">未激活</string>
+    <string name="home_status_service_unavailable">框架服务不可用</string>
+    <string name="home_status_scope_not_authorized">作用域未授权</string>
+    <string name="home_status_no_running_target">暂无运行目标</string>
     <string name="home_working_version">版本：%1$s</string>
     <string name="home_easter_egg_none">无</string>
     <string name="home_easter_egg_new_year">新年</string>

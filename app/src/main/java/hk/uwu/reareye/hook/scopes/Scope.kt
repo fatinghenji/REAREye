@@ -1,18 +1,20 @@
 package hk.uwu.reareye.hook.scopes
 
-import com.highcapable.kavaref.KavaRef.Companion.resolve
-import com.highcapable.kavaref.extension.toClass
-import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
+import hk.uwu.reareye.hook.core.HookEnvironment
+import hk.uwu.reareye.hook.core.HookModule
+import hk.uwu.reareye.hook.core.HookScope
 
-interface Scope {
-    val hooks: List<YukiBaseHooker>
-    val isRearDevice
-        get() = Companion.isRearDevice
+/**
+ * REAREye 业务 Scope 接口。
+ *
+ * Scope 只负责按当前目标上下文创建 HookModule 列表；isRearDevice 从当前上下文延迟读取，
+ * 不再使用跨 system-server/application ClassLoader 的静态缓存。
+ */
+interface Scope : HookScope {
+    /** 当前目标要安装的 Hook 模块实例。 */
+    override val hooks: List<HookModule>
 
-    companion object {
-        val isRearDevice: Boolean = "android.os.SystemProperties".toClass().resolve().firstMethod {
-            name = "getInt"
-            parameters(String::class.java, Int::class.java)
-        }.invoke<Int>("persist.sys.multi_display_type", 1) == 6
-    }
+    /** 当前目标设备是否支持后屏功能。 */
+    val isRearDevice: Boolean
+        get() = HookEnvironment.requireContext().isRearDevice
 }

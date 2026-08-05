@@ -21,9 +21,9 @@ import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
-import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.highcapable.yukihookapi.hook.log.YLog
 import hk.uwu.reareye.generated.AppProperties
+import hk.uwu.reareye.hook.core.YLog
+import hk.uwu.reareye.hook.core.YukiBaseHooker
 import hk.uwu.reareye.hook.hostbridge.HookHostBridgeBootstrapRegistry
 import hk.uwu.reareye.hook.utils.DexKitMethodInjectionPoint
 import hk.uwu.reareye.hook.utils.createDexKitCacheBridge
@@ -242,30 +242,26 @@ class RearWidgetHook : YukiBaseHooker() {
                 packageName = appInfo.packageName,
                 sourceDir = appInfo.sourceDir,
             )
-            dexKitBridge = createDexKitCacheBridge(
+            dexKitBridge = trackResource(
+                createDexKitCacheBridge(
                 packageName = appInfo.packageName,
                 packageVersionCode = versionCode,
                 sourceDir = appInfo.sourceDir,
                 dataDir = appInfo.dataDir,
+                )
             )
 
-            val appRef = "com.xiaomi.subscreencenter.SubScreenCenterApp".toClass().resolve()
-
-
-            appRef.firstMethod {
-                name = "attachBaseContext"
-                parameterCount = 1
-            }.hook().after {
-                hostContext = (args[0] as? Context)?.applicationContext ?: (args[0] as? Context)
-                registerHookBootstrapReceiver()
-                hostContext?.let {
-                    registerNotificationRouteBridge()
-                    debugLog(
-                        "notification route bridge installed host=${it.packageName} action=${NotificationRouteBridgeContract.Action.REQUEST_BINDER}"
-                    )
+            onAppLifecycle {
+                attachBaseContext {
+                    val context = appContext ?: (args.getOrNull(0) as? Context)
+                    hostContext = context?.applicationContext ?: context
+                    registerHookBootstrapReceiver()
+                    hostContext?.let {
+                        registerNotificationRouteBridge()
+                    }
+                    applyRuntimeMaps(force = true)
+                    debugLog("attachBaseContext applied runtime maps and waiting for preset release")
                 }
-                applyRuntimeMaps(force = true)
-                debugLog("attachBaseContext applied runtime maps and waiting for preset release")
             }
 
             val managerInitPoint = resolveSmartAssistantManagerInitMethod()
@@ -1811,6 +1807,7 @@ class RearWidgetHook : YukiBaseHooker() {
     }
 
     private fun enforceCallerPermission() {
+        reloadGenerationGate.requireOpen()
         val ctx = hostContext
         val uid = Binder.getCallingUid()
         if (uid == Process.myUid()) return
@@ -1830,6 +1827,7 @@ class RearWidgetHook : YukiBaseHooker() {
     }
 
     private fun enforceNotificationRouteCaller() {
+        reloadGenerationGate.requireOpen()
         val ctx = hostContext
         val uid = Binder.getCallingUid()
         if (uid == Process.myUid()) return
@@ -2915,31 +2913,76 @@ class RearWidgetHook : YukiBaseHooker() {
         }
 
         if (blobMeta.isNotBlank()) {
-            val encoded = prefs.getString(RearWidgetConfigCodec.businessBlobKey(business), "")
-            val bytes = runCatching { Base64.decode(encoded, Base64.DEFAULT) }.getOrNull()
-            if (bytes != null && bytes.isNotEmpty()) {
+            val blobValue = prefs.getString(RearWidgetConfigCodec.businessBlobKey(business), "")
+            val remoteFileName = RearWidgetConfigCodec.remoteBlobFileNameFromMarker(blobValue)
+            if (remoteFileName != null) {
+                val tmp = File(targetFile.parentFile, "${targetFile.name}.tmp.${Process.myPid()}")
                 val ok = runCatching {
                     targetFile.parentFile?.mkdirs()
-                    val tmp =
-                        File(targetFile.parentFile, "${targetFile.name}.tmp.${Process.myPid()}")
-                    tmp.outputStream().use { it.write(bytes) }
+                    check(prefs.copyRemoteFileTo(remoteFileName, tmp)) {
+                        "RemoteFile copy returned false"
+                    }
+                    check(RearWidgetConfigCodec.verifyBusinessBlobMeta(tmp, blobMeta)) {
+                        "RemoteFile metadata verification failed"
+                    }
                     if (targetFile.exists()) targetFile.delete()
                     val moved = tmp.renameTo(targetFile)
                     if (!moved) {
                         tmp.copyTo(targetFile, overwrite = true)
-                        tmp.delete()
+                        check(tmp.delete()) { "Unable to remove RemoteFile deployment temporary file" }
                     }
                     ensureReadable(targetFile)
                     true
+                }.onFailure {
+                    runCatching { if (tmp.exists()) tmp.delete() }
+                        .onFailure { cleanupFailure -> debugLog("remote blob temp cleanup failed business=$business err=${cleanupFailure.message}") }
+                    debugLog(
+                        "remote blob copy/deploy failed business=$business size=${
+                            blobMeta.substringAfterLast(
+                                ':',
+                                "?"
+                            )
+                        }"
+                    )
                 }.getOrDefault(false)
-
                 if (ok) {
                     deployedBlobMetaCache[business] = blobMeta
-                    debugLog("deployed business template from prefs business=$business -> $target size=${bytes.size}")
+                    debugLog("deployed business template from RemoteFile business=$business -> $target")
                     return target
                 }
+            } else {
+                val encoded = RearWidgetConfigCodec.legacyBase64Payload(blobValue)
+                val bytes = runCatching { Base64.decode(encoded, Base64.DEFAULT) }.getOrNull()
+                if (bytes != null) {
+                    val tmp =
+                        File(targetFile.parentFile, "${targetFile.name}.tmp.${Process.myPid()}")
+                    val ok = runCatching {
+                        targetFile.parentFile?.mkdirs()
+                        tmp.outputStream().use { it.write(bytes) }
+                        check(RearWidgetConfigCodec.verifyBusinessBlobMeta(tmp, blobMeta)) {
+                            "Legacy blob metadata verification failed"
+                        }
+                        if (targetFile.exists()) targetFile.delete()
+                        val moved = tmp.renameTo(targetFile)
+                        if (!moved) {
+                            tmp.copyTo(targetFile, overwrite = true)
+                            check(tmp.delete()) { "Unable to remove legacy blob deployment temporary file" }
+                        }
+                        ensureReadable(targetFile)
+                        true
+                    }.onFailure {
+                        runCatching { if (tmp.exists()) tmp.delete() }
+                            .onFailure { cleanupFailure -> debugLog("legacy blob temp cleanup failed business=$business err=${cleanupFailure.message}") }
+                        debugLog("legacy blob decode/deploy failed business=$business size=${bytes.size}")
+                    }.getOrDefault(false)
+                    if (ok) {
+                        deployedBlobMetaCache[business] = blobMeta
+                        debugLog("deployed business template from legacy prefs business=$business -> $target size=${bytes.size}")
+                        return target
+                    }
+                }
             }
-            debugLog("deploy blob decode/write failed business=$business meta=$blobMeta")
+            debugLog("deploy blob failed business=$business hasRemoteMarker=${remoteFileName != null}")
         } else {
             debugLog("deploy blob missing business=$business")
         }
@@ -2962,7 +3005,7 @@ class RearWidgetHook : YukiBaseHooker() {
             }
         }
 
-        debugLog("deploy failed business=$business source=$source blobMeta=$blobMeta")
+        debugLog("deploy failed business=$business source=$source blobMetaPresent=${blobMeta.isNotBlank()}")
         return null
     }
 

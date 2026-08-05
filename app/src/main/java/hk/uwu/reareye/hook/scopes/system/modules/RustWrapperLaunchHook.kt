@@ -4,9 +4,10 @@ import android.annotation.SuppressLint
 import android.content.pm.ApplicationInfo
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
-import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.highcapable.yukihookapi.hook.log.YLog
 import hk.uwu.reareye.BuildConfig
+import hk.uwu.reareye.hook.core.HookPrefs
+import hk.uwu.reareye.hook.core.YLog
+import hk.uwu.reareye.hook.core.YukiBaseHooker
 import hk.uwu.reareye.ui.config.ConfigKeys
 import java.io.File
 import java.util.zip.ZipFile
@@ -260,7 +261,7 @@ class RustWrapperLaunchHook : YukiBaseHooker() {
         val originalLibName: String,
         val wrapperLibName: String,
         val dependencyLibNames: List<String> = emptyList(),
-        val envProvider: (com.highcapable.yukihookapi.hook.xposed.prefs.YukiHookPrefsBridge, String, String) -> Map<String, String>,
+        val envProvider: (HookPrefs, String, String) -> Map<String, String>,
     ) {
         fun matches(packageName: String, originalBinary: String): Boolean {
             return this.packageName == packageName && originalBinary.substringBefore('!')
@@ -384,7 +385,7 @@ class RustWrapperLaunchHook : YukiBaseHooker() {
 
 
         private fun booleanFlag(
-            prefs: com.highcapable.yukihookapi.hook.xposed.prefs.YukiHookPrefsBridge,
+            prefs: HookPrefs,
             key: String,
         ): String {
             return if (prefs.getBoolean(key, false)) "1" else "0"

@@ -407,6 +407,9 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="home_status_channel">Channel</string>
     <string name="home_status_working">Working</string>
     <string name="home_status_inactive">Inactive</string>
+    <string name="home_status_service_unavailable">Framework service unavailable</string>
+    <string name="home_status_scope_not_authorized">Scope not authorized</string>
+    <string name="home_status_no_running_target">No running target</string>
     <string name="home_working_version">Version: %1$s</string>
     <string name="home_easter_egg_none">None</string>
     <string name="home_easter_egg_new_year">New Year</string>

@@ -2,8 +2,8 @@ package hk.uwu.reareye.hook.scopes.system.modules
 
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
-import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.hook.core.YLog
+import hk.uwu.reareye.hook.core.YukiBaseHooker
 import hk.uwu.reareye.ui.config.ConfigKeys
 
 class RearScreenActivityWhitelistModule : YukiBaseHooker() {
