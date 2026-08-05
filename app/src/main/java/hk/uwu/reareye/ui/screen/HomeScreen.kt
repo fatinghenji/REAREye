@@ -61,6 +61,8 @@ import hk.uwu.reareye.generated.AppProperties
 import hk.uwu.reareye.hook.core.ModuleActivationState
 import hk.uwu.reareye.hook.core.XposedModuleStatus
 import hk.uwu.reareye.ui.components.motion.ArtVisibilityMotion
+import hk.uwu.reareye.ui.config.ConfigKeys
+import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
 import hk.uwu.reareye.ui.easteregg.EasterEggManager
 import hk.uwu.reareye.ui.easteregg.EasterEggType
 import hk.uwu.reareye.ui.theme.AppThemeMode
@@ -259,16 +261,14 @@ private suspend fun fetchLatestCommitHashFromNetwork(): String? {
 
 @SuppressLint("LocalContextGetResourceValueCall")
 @Composable
-fun HomeScreen(
-    themeMode: AppThemeMode,
-    bottomInnerPadding: Dp = 0.dp,
-) {
+fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var activationState by remember { mutableStateOf(XposedModuleStatus.current()) }
     val isActivated = activationState == ModuleActivationState.ACTIVE
     val showTopMenu = remember { mutableStateOf(false) }
     val scrollBehavior = MiuixScrollBehavior()
+    val prefsManager = remember { context.getPrefsManager() }
     val hazeState = rememberAcrylicHazeState()
     val hazeStyle = rememberAcrylicHazeStyle()
     val coroutineScope = rememberCoroutineScope()
@@ -280,6 +280,14 @@ fun HomeScreen(
     val frameNotice = FrameNoticeCache.value
     var easterEggType by remember {
         mutableStateOf(EasterEggManager.getCurrentEasterEggType(context))
+    }
+    val themeMode = remember(prefsManager) {
+        AppThemeMode.fromValue(
+            prefsManager.getInt(
+                ConfigKeys.MODULE_THEME_MODE,
+                AppThemeMode.default.value,
+            )
+        )
     }
     val useMonetStatusColors = remember(themeMode) {
         themeMode == AppThemeMode.MONET_SYSTEM ||

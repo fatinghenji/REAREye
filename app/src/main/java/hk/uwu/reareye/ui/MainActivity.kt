@@ -20,7 +20,6 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -37,7 +36,6 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import hk.uwu.reareye.ui.components.LocalRemoteSearchBarStyle
 import hk.uwu.reareye.ui.components.motion.ArtVisibilityMotion
 import hk.uwu.reareye.ui.components.navigation.NavigationQuickTarget
 import hk.uwu.reareye.ui.components.navigation.RearNavigationBar
@@ -46,7 +44,6 @@ import hk.uwu.reareye.ui.components.navigation.parseNavigationQuickActionIds
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.ConfigType
 import hk.uwu.reareye.ui.config.ModuleNavigationBarMode
-import hk.uwu.reareye.ui.config.ModuleSearchBarStyle
 import hk.uwu.reareye.ui.config.ModuleSettingsController
 import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
 import hk.uwu.reareye.ui.config.rememberRemotePrefsStatusRevision
@@ -67,7 +64,6 @@ private val MainScreenOrder = listOf("home", "store", "config", "about")
 private data class RemoteUiSettings(
     val themeModeValue: Int,
     val navigationBarModeValue: Int,
-    val searchBarStyleValue: Int,
     val navigationQuickActionIds: List<String>,
     val launcherHidden: Boolean,
 )
@@ -117,10 +113,6 @@ class MainActivity : ComponentActivity() {
                                 ConfigKeys.MODULE_NAVIGATION_BAR_MODE,
                                 ModuleNavigationBarMode.default.value,
                             ),
-                            searchBarStyleValue = remotePrefsManager.getInt(
-                                ConfigKeys.MODULE_SEARCH_BAR_STYLE,
-                                ModuleSearchBarStyle.default.value,
-                            ),
                             navigationQuickActionIds = parseNavigationQuickActionIds(
                                 remotePrefsManager.getString(ConfigKeys.MODULE_NAVIGATION_QUICK_ACTIONS)
                             ).toList(),
@@ -153,9 +145,6 @@ class MainActivity : ComponentActivity() {
             var navigationBarModeValue by remember {
                 mutableIntStateOf(settings.navigationBarModeValue)
             }
-            var searchBarStyleValue by remember {
-                mutableIntStateOf(settings.searchBarStyleValue)
-            }
             var currentScreen by remember { mutableStateOf("home") }
             var navBarVisible by remember { mutableStateOf(false) }
             var configInAppListMode by remember { mutableStateOf(false) }
@@ -171,11 +160,8 @@ class MainActivity : ComponentActivity() {
                 navBarVisible = true
             }
 
-            CompositionLocalProvider(
-                LocalRemoteSearchBarStyle provides ModuleSearchBarStyle.fromValue(searchBarStyleValue),
-            ) {
-                AppTheme(themeMode = AppThemeMode.fromValue(themeModeValue)) {
-                    val navigationBarMode = ModuleNavigationBarMode.fromValue(navigationBarModeValue)
+            AppTheme(themeMode = AppThemeMode.fromValue(themeModeValue)) {
+                val navigationBarMode = ModuleNavigationBarMode.fromValue(navigationBarModeValue)
                 val enableFloatingGlass =
                     navigationBarMode == ModuleNavigationBarMode.FLOATING_GLASS
                 val showNavigation =
@@ -255,10 +241,7 @@ class MainActivity : ComponentActivity() {
                                 label = "ScreenTransition"
                             ) { screen ->
                                 when (screen) {
-                                    "home" -> HomeScreen(
-                                        themeMode = AppThemeMode.fromValue(themeModeValue),
-                                        bottomInnerPadding = stableBottomInset,
-                                    )
+                                    "home" -> HomeScreen(bottomInnerPadding = stableBottomInset)
 
                                     "store" -> RearStoreScreen(bottomInnerPadding = stableBottomInset)
 
@@ -274,9 +257,6 @@ class MainActivity : ComponentActivity() {
                                         onThemeModeChange = { themeModeValue = it },
                                         onNavigationBarModeChange = {
                                             navigationBarModeValue = it
-                                        },
-                                        onSearchBarStyleChange = {
-                                            searchBarStyleValue = it
                                         },
                                     )
 
@@ -351,7 +331,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-            }
             }
         }
     }
