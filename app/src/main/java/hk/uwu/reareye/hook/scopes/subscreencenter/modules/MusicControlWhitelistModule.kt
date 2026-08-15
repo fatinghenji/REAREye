@@ -3,6 +3,7 @@ package hk.uwu.reareye.hook.scopes.subscreencenter.modules
 import android.media.MediaMetadata
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
+import com.highcapable.kavaref.condition.type.Modifiers
 import hk.uwu.reareye.hook.core.YLog
 import hk.uwu.reareye.hook.core.YukiBaseHooker
 import hk.uwu.reareye.hook.utils.createDexKitCacheBridge
@@ -16,6 +17,7 @@ import org.luckypray.dexkit.annotations.DexKitExperimentalApi
 @OptIn(DexKitExperimentalApi::class)
 class MusicControlWhitelistModule : YukiBaseHooker() {
     companion object {
+        private const val TAG = "MusicControlWhitelist"
         private const val SMART_ASSISTANT_CONFIG_CLASS_CACHE_KEY =
             "SSC_MUSIC_WHITELIST_CONFIG_CLASS"
         private const val SMART_ASSISTANT_CONFIG_PRIMARY_MAP_FIELD_CACHE_KEY =
@@ -47,15 +49,12 @@ class MusicControlWhitelistModule : YukiBaseHooker() {
                 name = primaryMapFieldName
                 type = Map::class.java
             }
-            val map = buildMap<String, String> {
-                @Suppress("UNCHECKED_CAST")
-                putAll(field.get() as Map<String, String>)
-                prefs.getStringSet(ConfigKeys.MUSIC_CONTROLS_WHITELIST_APPS).forEach {
-                    put(it, "music")
-                }
-            }
             if (prefs.getBoolean(ConfigKeys.HOOK_MUSIC_CONTROLS_WHITELIST, true)) {
-                field.set(map)
+                replaceStaticMap(configClassName, primaryMapFieldName) {
+                    prefs.getStringSet(ConfigKeys.MUSIC_CONTROLS_WHITELIST_APPS).forEach { app ->
+                        it[app] = "music"
+                    }
+                }
                 YLog.debug("Hooked SubscreenCenter whitelist ${field.get()}")
             }
 
@@ -86,6 +85,62 @@ class MusicControlWhitelistModule : YukiBaseHooker() {
                 }
             }
         }
+    }
+
+    private fun replaceStaticMap(
+        className: String,
+        fieldName: String,
+        mutate: (MutableMap<Any, Any?>) -> Unit,
+    ) {
+        val field = className.toClass().resolve().firstField { name = fieldName }
+        val raw = field.get<Any>() ?: error("$className.$fieldName is null")
+        val current = unwrapMutableMap(raw)
+        try {
+            mutate(current)
+        } catch (error: UnsupportedOperationException) {
+            YLog.error(
+                "[$TAG] Cannot mutate static map in place: $className.$fieldName " +
+                        "(${raw.javaClass.name})",
+                error,
+            )
+            throw error
+        }
+    }
+
+
+    @Suppress("UNCHECKED_CAST")
+    private fun unwrapMutableMap(any: Any): MutableMap<Any, Any?> {
+        var current: Any = any
+        repeat(32) {
+            val map = current as? MutableMap<Any?, Any?>
+            if (map != null) {
+                try {
+                    map.putAll(emptyMap())
+                    return map as MutableMap<Any, Any?>
+                } catch (error: UnsupportedOperationException) {
+                    YLog.debug(
+                        "map wrapper is not writable, resolving backing map " +
+                                "class=${current.javaClass.name} err=${error.message}"
+                    )
+                }
+            }
+
+            val backing = current.asResolver().optional(silent = true).firstFieldOrNull {
+                superclass()
+                typeCondition = { type -> Map::class.java.isAssignableFrom(type) }
+                modifiersNot(Modifiers.STATIC)
+            }?.get<Any>()
+            if (backing == null || backing === current) {
+                val message = "Cannot resolve writable map backing field: ${current.javaClass.name}"
+                YLog.error("[$TAG] $message")
+                error(message)
+            }
+            current = backing
+        }
+
+        val message = "Map wrapper nesting exceeds resolver limit: ${any.javaClass.name}"
+        YLog.error("[$TAG] $message")
+        error(message)
     }
 
     private fun resolveSmartAssistantConfigClassName(

@@ -21,6 +21,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
+import com.highcapable.kavaref.condition.type.Modifiers
 import hk.uwu.reareye.generated.AppProperties
 import hk.uwu.reareye.hook.core.YLog
 import hk.uwu.reareye.hook.core.YukiBaseHooker
@@ -147,6 +148,20 @@ class RearWidgetHook : YukiBaseHooker() {
             "SSC_SMART_ASSISTANT_PARSE_PARAMS_METHOD"
         private const val SMART_ASSISTANT_BUILTIN_SUPPORT_METHOD_CACHE_KEY =
             "SSC_SMART_ASSISTANT_BUILTIN_SUPPORT_METHOD"
+        private const val SMART_ASSISTANT_LEGACY_BUSINESS_MAP_FIELD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_LEGACY_BUSINESS_MAP_FIELD_V2"
+        private const val SMART_ASSISTANT_CONFIG_PRIMARY_MAP_FIELD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_CONFIG_PRIMARY_MAP_FIELD_V2"
+        private const val SMART_ASSISTANT_CONFIG_BUILTIN_MAP_FIELD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_CONFIG_BUILTIN_MAP_FIELD_V2"
+        private const val SMART_ASSISTANT_CONFIG_BUSINESS_MAP_FIELD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_CONFIG_BUSINESS_MAP_FIELD_V2"
+        private const val SMART_ASSISTANT_CONFIG_PATH_MAP_FIELD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_CONFIG_PATH_MAP_FIELD_V2"
+        private const val SMART_ASSISTANT_LEGACY_CONFIG_PATH_MAP_FIELD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_LEGACY_CONFIG_PATH_MAP_FIELD_V2"
+        private const val SMART_ASSISTANT_LEGACY_BUSINESS_LIST_FIELD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_LEGACY_BUSINESS_LIST_FIELD_V2"
         private const val NOTIFICATION_WIDGET_APPLY_METHOD_CACHE_KEY =
             "SSC_NOTIFICATION_WIDGET_APPLY_METHOD"
         private const val NOTIFICATION_WIDGET_TEMPLATE_PATH_FIELD_CACHE_KEY =
@@ -162,6 +177,21 @@ class RearWidgetHook : YukiBaseHooker() {
         private const val SMART_ASSISTANT_PANEL_REFRESH_METHOD_CACHE_KEY =
             "SSC_SMART_ASSISTANT_PANEL_REFRESH_METHOD"
         private const val CHANNEL_SCENE_PREFIX = "CH:"
+        private val MAP_FIELD_TYPE_NAMES = listOf(
+            "java.util.Map",
+            "java.util.HashMap",
+            "java.util.LinkedHashMap",
+            "java.util.concurrent.ConcurrentHashMap",
+            "java.util.SortedMap",
+            "java.util.NavigableMap",
+            "java.util.TreeMap",
+            "android.util.ArrayMap",
+        )
+        private val LIST_FIELD_TYPE_NAMES = listOf(
+            "java.util.List",
+            "java.util.ArrayList",
+            "java.util.LinkedList",
+        )
         private const val TEMPLATE_BASE =
             "/data/system/theme_magic/users/%s/subscreencenter/smart_assistant"
         private const val CARD_CONFIG_BASE =
@@ -213,6 +243,7 @@ class RearWidgetHook : YukiBaseHooker() {
     private var hostContext: Context? = null
     private var dexKitBridge: DexKitCacheBridge.RecyclableBridge? = null
     private val postRunnableSnapshots = WeakHashMap<Any, PostRunnableSnapshot>()
+    private val mutableWrapperDebuggedTypes = ConcurrentHashMap.newKeySet<String>()
     private val ordinaryChannelNoticeIndex = ConcurrentHashMap<String, String>()
     private val ordinaryChannelRouteNoticeOptions = RearWidgetNoticeOptions(
         sticky = false,
@@ -288,6 +319,7 @@ class RearWidgetHook : YukiBaseHooker() {
             val persistenceRef = resolvePersistenceManagerClassName().toClass().resolve()
             val postRunnableRef =
                 resolveSmartAssistantPostRunnableClassName().toClass().resolve()
+            val postRunnableConstructor = resolveSmartAssistantPostRunnableConstructor()
             val smartAssistantPanelRef =
                 "com.xiaomi.subscreencenter.SmartAssistantPanel".toClass().resolve()
 
@@ -433,29 +465,60 @@ class RearWidgetHook : YukiBaseHooker() {
                 rememberOriginalNotificationRoute(snapshot)
             }
 
-            resolveSmartAssistantManagerRemoveNotificationMethod().className.toClass()
+            val removeNotificationPoint = resolveSmartAssistantManagerRemoveNotificationMethod()
+            val removeNotificationMethod = removeNotificationPoint.className.toClass()
                 .resolve().firstMethod {
-                    name = resolveSmartAssistantManagerRemoveNotificationMethod().methodName
+                    name = removeNotificationPoint.methodName
                     parameterCount = 3
-                }.also {
-                    val compat = it.self.parameterTypes[1] == String::class.java
-                    it.hook().after {
-                        val notificationId = args.getOrNull(0) as? Int ?: return@after
-                        val packageName =
-                            args.getOrNull(if (compat) 1 else 2) as? String ?: return@after
-                        val removeReason = args.getOrNull(if (compat) 2 else 1) as? Int ?: 0
-                        handleOriginalNotificationRemoved(
-                            packageName = packageName,
-                            notificationId = notificationId,
-                            notificationKey = null,
-                            removeReason = removeReason,
-                        )
-                    }
                 }
+            val removeNotificationTypes = removeNotificationMethod.self.parameterTypes
+            val removeNotificationLayout = when {
+                removeNotificationTypes.contentEquals(
+                    arrayOf(
+                        Int::class.javaPrimitiveType,
+                        String::class.java,
+                        Int::class.javaPrimitiveType
+                    )
+                ) -> true
 
-            postRunnableRef.firstConstructor {
-                parameterCount = 5
-            }.hook().after {
+                removeNotificationTypes.contentEquals(
+                    arrayOf(
+                        Int::class.javaPrimitiveType,
+                        Int::class.javaPrimitiveType,
+                        String::class.java
+                    )
+                ) -> false
+
+                else -> {
+                    YLog.error(
+                        "[$TAG] Unsupported remove notification signature: " +
+                                removeNotificationTypes.joinToString(
+                                    prefix = "(",
+                                    postfix = ")"
+                                ) { it.name }
+                    )
+                    null
+                }
+            }
+            if (removeNotificationLayout != null) {
+                removeNotificationMethod.hook().after {
+                    val notificationId = args.getOrNull(0) as? Int ?: return@after
+                    val packageName =
+                        args.getOrNull(if (removeNotificationLayout) 1 else 2) as? String
+                            ?: return@after
+                    val removeReason =
+                        args.getOrNull(if (removeNotificationLayout) 2 else 1) as? Int
+                            ?: return@after
+                    handleOriginalNotificationRemoved(
+                        packageName = packageName,
+                        notificationId = notificationId,
+                        notificationKey = null,
+                        removeReason = removeReason,
+                    )
+                }
+            }
+
+            postRunnableConstructor.hook().after {
                 val notificationId = args.getOrNull(1) as? Int ?: return@after
                 val packageName = args.getOrNull(2) as? String ?: return@after
                 val notificationKey = args.getOrNull(3) as? String
@@ -568,8 +631,10 @@ class RearWidgetHook : YukiBaseHooker() {
         ) {
             finder()
         } ?: ""
-        require(fieldName.isNotBlank()) {
-            "DexKit failed to resolve field cache=$cacheKey"
+        if (fieldName.isBlank()) {
+            val message = "DexKit failed to resolve field cache=$cacheKey"
+            YLog.error("[$TAG] $message")
+            error(message)
         }
         return fieldName
     }
@@ -622,6 +687,29 @@ class RearWidgetHook : YukiBaseHooker() {
                 }
             }.singleOrNull()
         }
+    }
+
+    private fun resolveSmartAssistantPostRunnableConstructor() = run {
+        val runnableClassName = resolveSmartAssistantPostRunnableClassName()
+        val managerClassName = resolveSmartAssistantManagerClassName()
+        val matches = runnableClassName.toClass().resolve().optional(silent = true).constructor {
+            parameters(
+                managerClassName.toClass(),
+                Int::class.javaPrimitiveType!!,
+                String::class.java,
+                String::class.java,
+                Bundle::class.java,
+            )
+        }
+        if (matches.size != 1) {
+            val message =
+                "Smart assistant notification post Runnable constructor must resolve uniquely: " +
+                        "class=$runnableClassName expected=($managerClassName,int,String,String,Bundle) " +
+                        "matches=${matches.size}"
+            YLog.error("[$TAG] $message")
+            error(message)
+        }
+        matches.single()
     }
 
     private fun resolveSmartAssistantManagerClassName(): String {
@@ -1017,13 +1105,30 @@ class RearWidgetHook : YukiBaseHooker() {
         return resolveCachedMethodPoint(
             cacheKey = SMART_ASSISTANT_RESOLVE_PATH_METHOD_CACHE_KEY,
         ) {
-            // Original method in jadx: p2.c.i(String, String)
-            findMethod {
+            val utilsClass = resolveSmartAssistantUtilsClassName()
+            val exactStringMatch = findMethod {
                 matcher {
-                    declaredClass = resolveSmartAssistantUtilsClassName()
+                    declaredClass = utilsClass
                     paramTypes(String::class.java, String::class.java)
                     returnType = "java.lang.String"
                     usingStrings("unified.music", "music")
+                }
+            }.singleOrNull()
+            if (exactStringMatch != null) return@resolveCachedMethodPoint exactStringMatch
+
+            val configClass = resolveSmartAssistantConfigClassName()
+            findMethod {
+                matcher {
+                    declaredClass = utilsClass
+                    paramTypes(String::class.java, String::class.java)
+                    returnType = "java.lang.String"
+                    invokeMethods {
+                        add {
+                            declaredClass = configClass
+                            paramTypes(String::class.java, String::class.java)
+                            returnType = "boolean"
+                        }
+                    }
                 }
             }.singleOrNull()
         }
@@ -1045,6 +1150,51 @@ class RearWidgetHook : YukiBaseHooker() {
                     )
                 }
             }.singleOrNull()
+        }
+    }
+
+    private inline fun resolveRuntimeMapFieldName(
+        cacheKey: String,
+        diagnostics: MutableMap<String, String>,
+        crossinline finder: DexKitBridge.() -> List<FieldData>,
+    ): String? {
+        val bridge = dexKitBridge ?: error("DexKit bridge is not ready for field cache=$cacheKey")
+        val fieldName = resolveDexKitFieldValue(
+            bridge = bridge,
+            cacheKey = cacheKey,
+        ) {
+            val candidates = finder()
+                .distinctBy { it.descriptor }
+                .filter { Modifier.isStatic(it.modifiers) }
+            diagnostics[cacheKey] = candidates.joinToString(prefix = "[", postfix = "]") {
+                it.descriptor
+            }
+            candidates.singleOrNull()
+        }?.takeIf { it.isNotBlank() }
+        diagnostics.putIfAbsent(cacheKey, "<cached:$fieldName>")
+        return fieldName
+    }
+
+    private fun DexKitBridge.findRuntimeFields(
+        declaredClassName: String,
+        fieldTypeNames: List<String>,
+        reader: DexKitMethodInjectionPoint? = null,
+    ): List<FieldData> {
+        return fieldTypeNames.flatMap { fieldTypeName ->
+            findField {
+                matcher {
+                    declaredClass = declaredClassName
+                    type = fieldTypeName
+                    if (reader != null) {
+                        readMethods {
+                            add {
+                                declaredClass = reader.className
+                                name = reader.methodName
+                            }
+                        }
+                    }
+                }
+            }.toList()
         }
     }
 
@@ -1249,11 +1399,33 @@ class RearWidgetHook : YukiBaseHooker() {
             name = point.methodName
             parameterCount = 3
         }.also {
-            val compat = it.self.parameterTypes[1] == String::class.java
-            if (compat) {
-                it.invoke(notificationId, packageName, removeReason)
-            } else {
-                it.invoke(notificationId, removeReason, packageName)
+            val parameterTypes = it.self.parameterTypes
+            when {
+                parameterTypes.contentEquals(
+                    arrayOf(
+                        Int::class.javaPrimitiveType,
+                        String::class.java,
+                        Int::class.javaPrimitiveType
+                    )
+                ) -> it.invoke(notificationId, packageName, removeReason)
+
+                parameterTypes.contentEquals(
+                    arrayOf(
+                        Int::class.javaPrimitiveType,
+                        Int::class.javaPrimitiveType,
+                        String::class.java
+                    )
+                ) -> it.invoke(notificationId, removeReason, packageName)
+
+                else -> {
+                    YLog.error(
+                        "[$TAG] Unsupported remove notification signature during invocation: " +
+                                parameterTypes.joinToString(
+                                    prefix = "(",
+                                    postfix = ")"
+                                ) { type -> type.name }
+                    )
+                }
             }
         }
     }
@@ -2054,18 +2226,16 @@ class RearWidgetHook : YukiBaseHooker() {
         val mgr = manager ?: return
         val handler = mainHandler ?: return
 
+        val postRunnableConstructor = resolveSmartAssistantPostRunnableConstructor()
         runCatching {
             val extras = RearWidgetRuntimeStore.buildDecoratedExtras(notice.ticket)
-            val runnable =
-                resolveSmartAssistantPostRunnableClassName().toClass().resolve().firstConstructor {
-                    parameterCount = 5
-                }.create(
-                    mgr,
-                    notice.ticket.notificationId,
-                    notice.ticket.packageName,
-                    notice.ticket.compositeKey,
-                    extras,
-                ) as? Runnable ?: return
+            val runnable = postRunnableConstructor.create(
+                mgr,
+                notice.ticket.notificationId,
+                notice.ticket.packageName,
+                notice.ticket.compositeKey,
+                extras,
+            ) as? Runnable ?: return
             handler.post(runnable)
             debugLog("injected ticket key=${notice.ticket.compositeKey} business=${notice.ticket.business}")
         }.onFailure {
@@ -2186,27 +2356,145 @@ class RearWidgetHook : YukiBaseHooker() {
         val pkgPrimary = RearWidgetRuntimeStore.primaryBusinessByPkg()
         val bizPath = RearWidgetRuntimeStore.allBusinessPath()
         val configClassName = resolveSmartAssistantConfigClassName()
-        val utilsClassName = resolveSmartAssistantUtilsClassName()
+        val parsePoint = resolveSmartAssistantParseWidgetMethod()
+        val builtinPoint = resolveSmartAssistantBuiltinSupportMethod()
+        val allowPoint = resolveSmartAssistantAllowAppMethod()
+        val resolvePathPoint = resolveSmartAssistantResolvePathMethod()
+        val diagnostics = linkedMapOf<String, String>()
 
-        replaceStaticMap(configClassName, "a") { map ->
-            pkgPrimary.forEach { (pkg, biz) -> if (biz.isNotBlank()) map[pkg] = biz }
+        val primaryMapFieldName = resolveRuntimeMapFieldName(
+            SMART_ASSISTANT_CONFIG_PRIMARY_MAP_FIELD_CACHE_KEY,
+            diagnostics,
+        ) {
+            findRuntimeFields(configClassName, MAP_FIELD_TYPE_NAMES, parsePoint)
         }
-        replaceStaticMap(configClassName, "c") { map ->
-            pkgBiz.forEach { (pkg, set) -> map[pkg] = HashSet(set) }
+        val builtinMapFieldName = resolveRuntimeMapFieldName(
+            SMART_ASSISTANT_CONFIG_BUILTIN_MAP_FIELD_CACHE_KEY,
+            diagnostics,
+        ) {
+            findRuntimeFields(configClassName, MAP_FIELD_TYPE_NAMES, builtinPoint)
         }
-        replaceStaticMap(configClassName, "d") { map ->
-            bizPath.forEach { (biz, path) -> map[biz] = path }
+        val multiBusinessMapFieldName = resolveRuntimeMapFieldName(
+            SMART_ASSISTANT_CONFIG_BUSINESS_MAP_FIELD_CACHE_KEY,
+            diagnostics,
+        ) {
+            findRuntimeFields(configClassName, MAP_FIELD_TYPE_NAMES, allowPoint)
         }
-        replaceStaticMap(utilsClassName, "d") { map ->
-            pkgBiz.forEach { (pkg, businesses) ->
-                val businessSet = businesses.toMutableSet()
-                if (businessSet.isNotEmpty()) {
-                    map[pkg] = businessSet
+
+        val classifiedConfigFieldNames = listOfNotNull(
+            primaryMapFieldName,
+            builtinMapFieldName,
+            multiBusinessMapFieldName,
+        )
+        val newPathMapFieldName = if (
+            classifiedConfigFieldNames.size == 3 &&
+            classifiedConfigFieldNames.distinct().size == 3
+        ) {
+            resolveRuntimeMapFieldName(
+                SMART_ASSISTANT_CONFIG_PATH_MAP_FIELD_CACHE_KEY,
+                diagnostics,
+            ) {
+                val candidates = findRuntimeFields(configClassName, MAP_FIELD_TYPE_NAMES)
+                    .distinctBy { it.descriptor }
+                    .filter { Modifier.isStatic(it.modifiers) }
+                diagnostics["CONFIG_STATIC_MAP_CANDIDATES_V2"] = candidates.joinToString(
+                    prefix = "[",
+                    postfix = "]",
+                ) { it.descriptor }
+                val candidateNames = candidates.mapTo(hashSetOf()) { it.fieldName }
+                if (!candidateNames.containsAll(classifiedConfigFieldNames)) {
+                    emptyList()
+                } else {
+                    candidates.filterNot { it.fieldName in classifiedConfigFieldNames }
                 }
             }
+        } else {
+            null
         }
-        replaceStaticList(utilsClassName, "b") { list ->
-            bizPath.keys.forEach { biz -> if (!list.contains(biz)) list.add(biz) }
+        val useConfigOnlyLayout = newPathMapFieldName != null &&
+                listOf(
+                    primaryMapFieldName,
+                    builtinMapFieldName,
+                    multiBusinessMapFieldName,
+                    newPathMapFieldName,
+                ).distinct().size == 4
+
+        var pathMapFieldName = newPathMapFieldName
+        var utilityClassName: String? = null
+        var utilityBusinessMapFieldName: String? = null
+        var utilityBusinessListFieldName: String? = null
+        if (!useConfigOnlyLayout) {
+            pathMapFieldName = resolveRuntimeMapFieldName(
+                SMART_ASSISTANT_LEGACY_CONFIG_PATH_MAP_FIELD_CACHE_KEY,
+                diagnostics,
+            ) {
+                findRuntimeFields(configClassName, MAP_FIELD_TYPE_NAMES, resolvePathPoint)
+            }
+            val resolvedUtilityClassName = resolveSmartAssistantUtilsClassName()
+            utilityClassName = resolvedUtilityClassName
+            utilityBusinessMapFieldName = resolveRuntimeMapFieldName(
+                SMART_ASSISTANT_LEGACY_BUSINESS_MAP_FIELD_CACHE_KEY,
+                diagnostics,
+            ) {
+                findRuntimeFields(resolvedUtilityClassName, MAP_FIELD_TYPE_NAMES, allowPoint)
+            }
+            utilityBusinessListFieldName = resolveRuntimeMapFieldName(
+                SMART_ASSISTANT_LEGACY_BUSINESS_LIST_FIELD_CACHE_KEY,
+                diagnostics,
+            ) {
+                findRuntimeFields(resolvedUtilityClassName, LIST_FIELD_TYPE_NAMES, resolvePathPoint)
+            }
+        }
+
+        val requiredFieldNames = listOf(
+            primaryMapFieldName,
+            multiBusinessMapFieldName,
+            pathMapFieldName,
+        ) + if (useConfigOnlyLayout) {
+            emptyList()
+        } else {
+            listOf(utilityBusinessMapFieldName, utilityBusinessListFieldName)
+        }
+        val configFieldNames = listOf(
+            primaryMapFieldName,
+            multiBusinessMapFieldName,
+            pathMapFieldName,
+        )
+        if (requiredFieldNames.any { it.isNullOrBlank() } ||
+            configFieldNames.filterNotNull().distinct().size != configFieldNames.size
+        ) {
+            val message = "DexKit runtime map classification failed " +
+                    "configOnly=$useConfigOnlyLayout diagnostics=$diagnostics"
+            YLog.error("[$TAG] $message")
+            error(message)
+        }
+
+        replaceStaticMap(configClassName, checkNotNull(primaryMapFieldName)) { map ->
+            pkgPrimary.forEach { (pkg, biz) -> if (biz.isNotBlank()) map[pkg] = biz }
+        }
+        replaceStaticMap(configClassName, checkNotNull(multiBusinessMapFieldName)) { map ->
+            pkgBiz.forEach { (pkg, set) -> map[pkg] = HashSet(set) }
+        }
+        replaceStaticMap(configClassName, checkNotNull(pathMapFieldName)) { map ->
+            bizPath.forEach { (biz, path) -> map[biz] = path }
+        }
+
+        if (!useConfigOnlyLayout) {
+            replaceStaticMap(
+                checkNotNull(utilityClassName),
+                checkNotNull(utilityBusinessMapFieldName),
+            ) { map ->
+                pkgBiz.forEach { (pkg, businesses) ->
+                    val businessSet = businesses.toMutableSet()
+                    if (businessSet.isNotEmpty()) map[pkg] = businessSet
+                }
+            }
+            replaceStaticList(
+                checkNotNull(utilityClassName),
+                checkNotNull(utilityBusinessListFieldName),
+            ) { list ->
+                bizPath.keys.forEach { biz -> if (!list.contains(biz)) list.add(biz) }
+            }
         }
 
         RearWidgetRuntimeStore.mapsDirty.set(false)
@@ -2861,10 +3149,16 @@ class RearWidgetHook : YukiBaseHooker() {
         val field = className.toClass().resolve().firstField { name = fieldName }
         val raw = field.get<Any>() ?: error("$className.$fieldName is null")
         val current = unwrapMutableMap(raw)
-        val out = HashMap<Any, Any?>(current.size + 8)
-        current.forEach { (k, v) -> if (k != null) out[k] = v }
-        mutate(out)
-        field.set(out)
+        try {
+            mutate(current)
+        } catch (error: UnsupportedOperationException) {
+            YLog.error(
+                "[$TAG] Cannot mutate static map in place: $className.$fieldName " +
+                        "(${raw.javaClass.name})",
+                error,
+            )
+            throw error
+        }
     }
 
     @Suppress("SameParameterValue")
@@ -2876,24 +3170,92 @@ class RearWidgetHook : YukiBaseHooker() {
         val field = className.toClass().resolve().firstField { name = fieldName }
         val raw = field.get<Any>() ?: error("$className.$fieldName is null")
         val current = unwrapMutableList(raw)
-        val out = ArrayList<Any>(current.size + 16)
-        current.forEach { if (it != null) out.add(it) }
-        mutate(out)
-        field.set(out)
+        try {
+            mutate(current)
+        } catch (error: UnsupportedOperationException) {
+            YLog.error(
+                "[$TAG] Cannot mutate static list in place: $className.$fieldName " +
+                        "(${raw.javaClass.name})",
+                error,
+            )
+            throw error
+        }
     }
 
-    private fun unwrapMutableMap(any: Any): MutableMap<*, *> {
-        if (any is MutableMap<*, *>) {
-            return any
+    private fun unwrapMutableMap(any: Any): MutableMap<Any, Any?> {
+        var current: Any = any
+        repeat(32) {
+            val map = current as? MutableMap<Any?, Any?>
+            if (map != null) {
+                try {
+                    map.putAll(emptyMap())
+                    return map as MutableMap<Any, Any?>
+                } catch (error: UnsupportedOperationException) {
+                    debugMutableWrapperOnce("map", current, error)
+                }
+            }
+
+            val backing = current.asResolver().optional(silent = true).firstFieldOrNull {
+                superclass()
+                typeCondition = { type -> Map::class.java.isAssignableFrom(type) }
+                modifiersNot(Modifiers.STATIC)
+            }?.get<Any>()
+            if (backing == null || backing === current) {
+                val message = "Cannot resolve writable map backing field: ${current.javaClass.name}"
+                YLog.error("[$TAG] $message")
+                error(message)
+            }
+            current = backing
         }
-        error("Not a map: ${any.javaClass.name}")
+
+        val message = "Map wrapper nesting exceeds resolver limit: ${any.javaClass.name}"
+        YLog.error("[$TAG] $message")
+        error(message)
     }
 
-    private fun unwrapMutableList(any: Any): MutableList<*> {
-        if (any is MutableList<*>) {
-            return any
+    private fun unwrapMutableList(any: Any): MutableList<Any> {
+        var current: Any = any
+        repeat(32) {
+            val list = current as? MutableList<Any?>
+            if (list != null) {
+                try {
+                    list.addAll(emptyList())
+                    return list as MutableList<Any>
+                } catch (error: UnsupportedOperationException) {
+                    debugMutableWrapperOnce("list", current, error)
+                }
+            }
+
+            val backing = current.asResolver().optional(silent = true).firstFieldOrNull {
+                superclass()
+                typeCondition = { type -> List::class.java.isAssignableFrom(type) }
+                modifiersNot(Modifiers.STATIC)
+            }?.get<Any>()
+            if (backing == null || backing === current) {
+                val message =
+                    "Cannot resolve writable list backing field: ${current.javaClass.name}"
+                YLog.error("[$TAG] $message")
+                error(message)
+            }
+            current = backing
         }
-        error("Not a list: ${any.javaClass.name}")
+
+        val message = "List wrapper nesting exceeds resolver limit: ${any.javaClass.name}"
+        YLog.error("[$TAG] $message")
+        error(message)
+    }
+
+    private fun debugMutableWrapperOnce(
+        kind: String,
+        wrapper: Any,
+        error: UnsupportedOperationException,
+    ) {
+        if (!prefs.getBoolean(ConfigKeys.MORE_DEBUG, false)) return
+        if (!mutableWrapperDebuggedTypes.add("$kind:${wrapper.javaClass.name}")) return
+        YLog.debug(
+            "[$TAG] $kind wrapper is not writable, resolving backing $kind " +
+                    "class=${wrapper.javaClass.name} err=${error.message}"
+        )
     }
 
     private fun debugLog(message: String) {

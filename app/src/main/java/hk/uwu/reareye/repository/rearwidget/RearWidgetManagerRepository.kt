@@ -383,10 +383,13 @@ object RearWidgetManagerRepository {
 
         val enabledCards = newCards.filter { it.enabled }
         val enabledPairs = enabledCards.mapTo(LinkedHashSet()) { it.packageName to it.business }
+        // API 这里只能按 (package,business) 业务级清理；cardId 对应的 ticket 仅保存在 Hook 进程，
+        // 现有跨进程 API 没有查询/删除单卡能力。因此这里只修复跨 pair 整组误删：
+        // 新配置仍启用同一 pair 时不清理；同一 pair 内删除单张卡无法在此精确处理。
         val pairsToDisable = if (preserveExistingDisplay) {
             oldPairs - enabledPairs
         } else {
-            allPairs
+            allPairs - enabledPairs
         }
         debugLog(
             context,

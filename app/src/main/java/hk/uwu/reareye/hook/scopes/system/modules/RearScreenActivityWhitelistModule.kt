@@ -10,9 +10,10 @@ class RearScreenActivityWhitelistModule : YukiBaseHooker() {
     override fun onHook() {
         loadSystem {
             val asiRef = "com.android.server.wm.ActivityStarterImpl".toClass().resolve()
-            "com.android.server.wm.ActivityRecord".toClass().resolve()
+            val activityInfoClz = "android.content.pm.ActivityInfo".toClass()
             asiRef.firstMethod {
                 name = "isShouldShowOnRearDisplay"
+                parameters(activityInfoClz)
                 returnType = Boolean::class.java
             }.hook {
                 before {

@@ -1163,9 +1163,11 @@ class RearWallpaperHook : YukiBaseHooker() {
                 matcher {
                     modifiers = Modifier.PUBLIC or Modifier.STATIC
                     paramCount(1)
-                    usingStrings("snapshotPath_", "snapshotPath", "__PIN_CONTENT_TEXT__")
+                    usingStrings("snapshotPath_", "snapshotPath")
                 }
-            }.singleOrNull()
+            }.singleOrNull {
+                !it.descriptor.contains("Bundle")
+            }
         } ?: DexKitMethodInjectionPoint("", "")
         require(point.className.isNotBlank() && point.methodName.isNotBlank()) {
             "DexKit failed to resolve widget factory method"
@@ -1203,7 +1205,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                             usingStrings("Widget{mId=", ", mType=", ", mChangedFlag=")
                         }
                         add {
-                            usingStrings("App list not loaded, loading synchronously")
+                            usingStrings("Widget has no extras: id=%d")
                         }
                     }
                 }
