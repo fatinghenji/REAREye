@@ -1648,6 +1648,29 @@ class RearWidgetHook : YukiBaseHooker() {
             )
         }
 
+        override fun disableCardDisplay(
+            targetPackage: String?,
+            business: String?,
+            cardId: String?,
+        ) {
+            enforceCallerPermission()
+            val normalizedBusiness = business?.trim().orEmpty()
+            val normalizedCardId = cardId?.trim().orEmpty()
+            if (normalizedBusiness.isBlank() || normalizedCardId.isBlank()) return
+            val packageName = normalizeTargetPackage(targetPackage)
+            dispatchOperation(
+                op = RearWidgetApiContract.Operation.DISABLE_CARD_DISPLAY,
+                action = {
+                    val ticket = RearWidgetRuntimeStore.disableCardDisplay(
+                        packageName,
+                        normalizedBusiness,
+                        normalizedCardId,
+                    )
+                    OperationOutcome(ejectTicket = ticket)
+                }
+            )
+        }
+
         override fun postNotice(
             targetPackage: String?,
             business: String?,
@@ -2189,8 +2212,48 @@ class RearWidgetHook : YukiBaseHooker() {
 
     private fun applyNoticeDisplayByCompositeKey(compositeKey: String) {
         val notice = RearWidgetRuntimeStore.getNotice(compositeKey) ?: return
+        // SubScreenCenter 会在进程启动时自行恢复持久化 widget，其 compositeKey 可能与当前
+        // RuntimeStore 的 ticket 不一致（cardId→id 映射只存在于 Hook 进程内存）。若直接注入，
+        // 同一张卡会出现"恢复旧卡 + 重放新卡"的重复显示。先按 cardId 清除旧的重复 widget。
+        ejectDuplicateCardWidgets(notice)
         if (tryUpdateExistingNoticeDisplay(notice)) return
         injectByCompositeKey(compositeKey)
+    }
+
+    private fun ejectDuplicateCardWidgets(notice: RearWidgetActiveNotice) {
+        val cardId = notice.payload.getString("__rear_card_id__")?.trim().orEmpty()
+        if (cardId.isBlank()) return
+        val managerTarget = manager ?: return
+        val listFieldName = resolveSmartAssistantManagerWidgetListFieldName()
+        val list = runCatching {
+            @Suppress("UNCHECKED_CAST")
+            managerTarget.asResolver().firstField { name = listFieldName }.get() as ArrayList<Any>
+        }.getOrNull() ?: return
+
+        val targetKey = notice.ticket.compositeKey
+        val staleKeys = synchronized(list) {
+            list.mapNotNull { widget ->
+                val extras = managerWidgetBundle(widget) ?: return@mapNotNull null
+                val widgetKey = extras.getString("composite_key")?.trim().orEmpty()
+                if (widgetKey.isBlank() || widgetKey == targetKey) return@mapNotNull null
+                if (extras.getString("__rear_card_id__")?.trim() != cardId) return@mapNotNull null
+                if (extras.getString("package_name")?.trim() != notice.ticket.packageName) {
+                    return@mapNotNull null
+                }
+                widgetKey
+            }.distinct()
+        }
+        staleKeys.forEach { staleKey ->
+            liveNotificationWidgets.remove(staleKey)
+            ejectNativeCompositeKey(
+                compositeKey = staleKey,
+                packageName = notice.ticket.packageName,
+                removeReason = 1,
+            )
+            debugLog(
+                "ejected duplicate card widget cardId=$cardId staleKey=$staleKey target=$targetKey"
+            )
+        }
     }
 
     private fun tryUpdateExistingNoticeDisplay(notice: RearWidgetActiveNotice): Boolean {

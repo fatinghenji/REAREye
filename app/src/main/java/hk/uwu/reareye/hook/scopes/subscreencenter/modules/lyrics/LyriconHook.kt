@@ -694,7 +694,9 @@ class LyriconHook : YukiBaseHooker() {
             }
             vLrc = lastLyricLrc
         }
-        val parserClz = "com.miui.maml.elements.MusicLyricParser".toClass().resolve()
+        val parserClz = runCatching {
+            "com.miui.maml.elements.MusicLyricParser".toClass().resolve()
+        }.getOrNull() ?: "com.miui.maml.music.MusicLyricParser".toClass().resolve()
         val nLyric = parserClz.firstMethod {
             name = "parseLyric"
             parameters(String::class.java)

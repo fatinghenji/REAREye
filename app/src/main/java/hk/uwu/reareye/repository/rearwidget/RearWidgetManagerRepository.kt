@@ -400,6 +400,20 @@ object RearWidgetManagerRepository {
             disableBusinessDisplay(context, pkg, biz)
         }
 
+        // 精确关闭被禁用的单卡：当同一业务下仍启用其他卡时，业务级 pairsToDisable 不会命中，
+        // 旧 cardId 对应的 ticket 仍残留在 SubScreenCenter 持久化中，导致该卡无法关闭。
+        // 这里对"旧配置启用、新配置禁用"的每张卡按 cardId 精确下发删除。
+        val disabledCards = computeDisabledCards(oldCards, newCards)
+        disabledCards.forEach { card ->
+            disableCardDisplay(context, card.packageName, card.business, card.id)
+        }
+        if (disabledCards.isNotEmpty()) {
+            debugLog(
+                context,
+                "applyCardsViaApi disabledCards=${disabledCards.map { it.id }}",
+            )
+        }
+
         enabledPairs.forEach { (pkg, biz) ->
             val filePath = businessPathByName[biz]
             if (!filePath.isNullOrBlank()) {
@@ -434,6 +448,21 @@ object RearWidgetManagerRepository {
                         index = index,
                     )
                 }
+        }
+    }
+
+    /**
+     * 计算旧配置中启用、但新配置中已禁用的卡片集合。
+     *
+     * 用于在同业务仍启用其他卡时按 cardId 精确下发删除：业务级清理只能按
+     * (packageName, business) 整组处理，无法命中单卡关闭。
+     */
+    internal fun computeDisabledCards(
+        oldCards: List<RearCardConfig>,
+        newCards: List<RearCardConfig>,
+    ): List<RearCardConfig> {
+        return oldCards.filter { old ->
+            old.enabled && newCards.none { it.id == old.id && it.enabled }
         }
     }
 
@@ -473,6 +502,19 @@ object RearWidgetManagerRepository {
         runCatching {
             withApiClient(context) { client ->
                 client.disableBusinessDisplay(packageName, business)
+            }
+        }
+    }
+
+    private fun disableCardDisplay(
+        context: Context,
+        packageName: String,
+        business: String,
+        cardId: String,
+    ) {
+        runCatching {
+            withApiClient(context) { client ->
+                client.disableCardDisplay(packageName, business, cardId)
             }
         }
     }

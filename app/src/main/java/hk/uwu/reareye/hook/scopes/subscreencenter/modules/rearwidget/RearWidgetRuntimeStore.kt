@@ -1,6 +1,9 @@
 package hk.uwu.reareye.hook.scopes.subscreencenter.modules.rearwidget
 
 import android.os.Bundle
+import hk.uwu.reareye.hook.core.YLog
+import hk.uwu.reareye.hook.scopes.subscreencenter.modules.rearwidget.RearWidgetRuntimeStore.cardNoticeCompositeIndex
+import hk.uwu.reareye.hook.scopes.subscreencenter.modules.rearwidget.RearWidgetRuntimeStore.disableBusinessDisplay
 import hk.uwu.reareye.widgetapi.RearWidgetActiveNotice
 import hk.uwu.reareye.widgetapi.RearWidgetBusinessSpec
 import hk.uwu.reareye.widgetapi.RearWidgetNoticeOptions
@@ -305,6 +308,33 @@ object RearWidgetRuntimeStore {
         return targets.size
     }
 
+    /**
+     * 按 cardId 精确删除单卡对应的 notice，用于同一业务下存在多张卡、仅关闭其中一张的场景。
+     *
+     * 业务级 [disableBusinessDisplay] 只能整组清理，无法命中"同业务仍启用其他卡"的单卡关闭。
+     * 这里通过 [cardNoticeCompositeIndex] 反查 cardId 对应的 compositeKey 并只删除这一条。
+     * cardNoticeIdIndex 刻意保留：若同一 cardId 后续重新启用，可以复用相同的 notificationId，
+     * 使 compositeKey 保持稳定，避免 SubScreenCenter 持久化恢复与新注入之间的重复。
+     *
+     * @return 被删除 notice 的 ticket；cardId 未注册或已不存在时返回 null。
+     */
+    fun disableCardDisplay(
+        packageName: String = defaultPackageName,
+        business: String,
+        cardId: String,
+    ): RearWidgetNoticeTicket? {
+        val normalizedCardId = cardId.trim()
+        if (normalizedCardId.isBlank()) return null
+        val cardKey = cardNoticeKey(packageName, business, normalizedCardId)
+        val compositeKey = cardNoticeCompositeIndex.remove(cardKey) ?: return null
+        val removed = notices.remove(compositeKey) ?: run {
+            cardNoticeCompositeIndex[cardKey] = compositeKey
+            return null
+        }
+        YLog.debug("card display disabled pkg=$packageName biz=$business cardId=$normalizedCardId composite=$compositeKey")
+        return removed.ticket
+    }
+
     fun listNotices(): List<RearWidgetActiveNotice> {
         return notices.values.sortedByDescending { it.createdAt }
     }
@@ -462,5 +492,19 @@ object RearWidgetRuntimeStore {
 
     private fun cardNoticeKey(packageName: String, business: String, cardId: String): String {
         return "$packageName:$business:$cardId"
+    }
+
+    /** 仅供单元测试复位进程内状态，避免不同测试用例互相污染。 */
+    internal fun resetForTest() {
+        businessFiles.clear()
+        routes.clear()
+        sceneRoutes = emptyList()
+        exactSceneRoutesByPackage = emptyMap()
+        routedNoticeByIdentity.clear()
+        notices.clear()
+        cardNoticeIdIndex.clear()
+        cardNoticeCompositeIndex.clear()
+        mapsDirty.set(false)
+        idSeed.set(310000)
     }
 }
