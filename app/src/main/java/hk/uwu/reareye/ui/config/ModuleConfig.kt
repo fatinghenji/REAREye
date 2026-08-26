@@ -22,6 +22,7 @@ object ConfigKeys {
     const val HOOK_ACTIVITIES_WHITELIST = "enable_activities_whitelist_hook"
     const val ACTIVITIES_WHITELIST_APPS = "activities_whitelist_apps"
     const val ALLOW_ALL_ACTIVITIES = "allow_all_activities"
+    const val ALLOW_EXTERNAL_DISPLAY_LAUNCH = "allow_external_display_launch"
     const val HOOK_SKIP_LOCK_BACK_HOME = "enable_skip_lock_back_home"
     const val CFG_CUSTOM_BOUNDS_COMPAT_MANAGER = "cfg_custom_bounds_compat_manager"
     const val CUSTOM_BOUNDS_COMPAT_APPS = "custom_bounds_compat_apps"
@@ -267,6 +268,12 @@ val REAREyeConfig = listOf(
                         key = ConfigKeys.ALLOW_ALL_ACTIVITIES,
                         titleRes = R.string.allow_all_activities,
                         type = ConfigType.BooleanVal(defaultValue = false)
+                    ),
+                    ConfigItem(
+                        key = ConfigKeys.ALLOW_EXTERNAL_DISPLAY_LAUNCH,
+                        titleRes = R.string.allow_external_display_launch,
+                        descriptionRes = R.string.allow_external_display_launch_desc,
+                        type = ConfigType.BooleanVal(defaultValue = true)
                     ),
                     ConfigItem(
                         key = ConfigKeys.ACTIVITIES_WHITELIST_APPS,
