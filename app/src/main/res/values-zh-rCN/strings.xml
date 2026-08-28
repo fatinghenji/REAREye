@@ -511,6 +511,8 @@
     <string name="cfg_unlock_template_maximum_limit">解锁背屏模板最大数量限制</string>
     <string name="cfg_unlock_template_maximum_limit_desc">启用该选项将允许你创建超过15个限制的背屏模板</string>
     <string name="allow_all_activities">允许所有活动可以在背屏中打开</string>
+    <string name="allow_external_display_launch">允许在外接显示器上启动应用</string>
+    <string name="allow_external_display_launch_desc">解除 HyperOS 4 / Android 16+ 对向外接屏（如 AR 眼镜）启动应用的封锁，重启后生效。</string>
     <string name="skip_lock_back_home">阻止锁屏后背屏返回桌面</string>
     <string name="enable_video_looping">强制视频壁纸循环播放</string>
     <string name="credits_qq_title">QQ 群聊</string>

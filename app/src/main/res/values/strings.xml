@@ -511,6 +511,8 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="cfg_unlock_template_maximum_limit">Unlock Maximum Template Limit</string>
     <string name="cfg_unlock_template_maximum_limit_desc">Enabling this option will allow you to create more than 15 rear screen templates</string>
     <string name="allow_all_activities">Allow all activities to open on the rear screen</string>
+    <string name="allow_external_display_launch">Allow launching apps on external displays</string>
+    <string name="allow_external_display_launch_desc">Unlocks launching activities onto external displays (e.g. AR glasses) blocked by HyperOS 4 / Android 16+. Takes effect after reboot.</string>
     <string name="skip_lock_back_home">Prevent the rear screen returning to Home after locking the screen</string>
     <string name="enable_video_looping">Forced video wallpaper looping</string>
     <string name="credits_qq_title">QQ Group</string>
