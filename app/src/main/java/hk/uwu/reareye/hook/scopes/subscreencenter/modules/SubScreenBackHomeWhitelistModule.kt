@@ -2,8 +2,8 @@ package hk.uwu.reareye.hook.scopes.subscreencenter.modules
 
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
-import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.hook.core.YLog
+import hk.uwu.reareye.hook.core.YukiBaseHooker
 import hk.uwu.reareye.hook.utils.DexKitMethodInjectionPoint
 import hk.uwu.reareye.hook.utils.createDexKitCacheBridge
 import hk.uwu.reareye.hook.utils.resolveDexKitFieldValue
@@ -30,11 +30,13 @@ class SubScreenBackHomeWhitelistModule : YukiBaseHooker() {
                 appInfo.packageName,
                 appInfo.sourceDir,
             )
-            val bridge = createDexKitCacheBridge(
+            val bridge = trackResource(
+                createDexKitCacheBridge(
                 packageName = appInfo.packageName,
                 packageVersionCode = versionCode,
                 sourceDir = appInfo.sourceDir,
                 dataDir = appInfo.dataDir,
+                )
             )
             val homeToFrontPoint = resolveSubScreenHomeToFrontMethod(bridge)
             val foregroundPackageFieldName = resolveForegroundPackageFieldName(

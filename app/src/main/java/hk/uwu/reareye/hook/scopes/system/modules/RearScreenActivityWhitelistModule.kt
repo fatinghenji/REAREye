@@ -2,17 +2,18 @@ package hk.uwu.reareye.hook.scopes.system.modules
 
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
-import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.hook.core.YLog
+import hk.uwu.reareye.hook.core.YukiBaseHooker
 import hk.uwu.reareye.ui.config.ConfigKeys
 
 class RearScreenActivityWhitelistModule : YukiBaseHooker() {
     override fun onHook() {
         loadSystem {
             val asiRef = "com.android.server.wm.ActivityStarterImpl".toClass().resolve()
-            "com.android.server.wm.ActivityRecord".toClass().resolve()
+            val activityInfoClz = "android.content.pm.ActivityInfo".toClass()
             asiRef.firstMethod {
                 name = "isShouldShowOnRearDisplay"
+                parameters(activityInfoClz)
                 returnType = Boolean::class.java
             }.hook {
                 before {

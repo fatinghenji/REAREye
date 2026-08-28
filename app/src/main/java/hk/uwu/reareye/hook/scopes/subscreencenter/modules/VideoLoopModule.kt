@@ -1,7 +1,7 @@
 package hk.uwu.reareye.hook.scopes.subscreencenter.modules
 
 import com.highcapable.kavaref.KavaRef.Companion.resolve
-import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
+import hk.uwu.reareye.hook.core.YukiBaseHooker
 import hk.uwu.reareye.hook.utils.DexKitMethodInjectionPoint
 import hk.uwu.reareye.hook.utils.createDexKitCacheBridge
 import hk.uwu.reareye.hook.utils.resolveDexKitMethodInjectionPoint
@@ -22,11 +22,13 @@ class VideoLoopModule : YukiBaseHooker() {
         loadApp("com.xiaomi.subscreencenter") {
             val versionCode =
                 resolveHookPackageVersionCode(systemContext, appInfo.packageName, appInfo.sourceDir)
-            val bridge = createDexKitCacheBridge(
+            val bridge = trackResource(
+                createDexKitCacheBridge(
                 packageName = appInfo.packageName,
                 packageVersionCode = versionCode,
                 sourceDir = appInfo.sourceDir,
                 dataDir = appInfo.dataDir,
+                )
             )
             val point = resolveVideoElementGetLoopingMethod(bridge)
             val videoElRef = point.className.toClass().resolve()

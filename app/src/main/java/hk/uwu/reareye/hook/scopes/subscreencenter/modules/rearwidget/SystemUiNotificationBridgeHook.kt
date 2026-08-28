@@ -4,8 +4,8 @@ import android.content.Context
 import android.service.notification.StatusBarNotification
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
-import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.hook.core.YLog
+import hk.uwu.reareye.hook.core.YukiBaseHooker
 import hk.uwu.reareye.ui.config.ConfigKeys
 import java.util.concurrent.ConcurrentHashMap
 
@@ -20,6 +20,16 @@ class SystemUiNotificationBridgeHook : YukiBaseHooker() {
 
     @Volatile
     private var hostContext: Context? = null
+
+    override fun onReloading(): Boolean {
+        val unbound = routeClient.unbind()
+        if (!unbound) {
+            YLog.error("[$TAG] route bridge unbind failed during reload")
+        }
+        activeSnapshots.clear()
+        hostContext = null
+        return unbound
+    }
 
     override fun onHook() {
         loadApp(SYSTEM_UI_PACKAGE) {

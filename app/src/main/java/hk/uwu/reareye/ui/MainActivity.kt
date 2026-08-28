@@ -46,6 +46,7 @@ import hk.uwu.reareye.ui.config.ConfigType
 import hk.uwu.reareye.ui.config.ModuleNavigationBarMode
 import hk.uwu.reareye.ui.config.ModuleSettingsController
 import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
+import hk.uwu.reareye.ui.config.rememberRemotePrefsStatusRevision
 import hk.uwu.reareye.ui.screen.AboutScreen
 import hk.uwu.reareye.ui.screen.ConfigScreen
 import hk.uwu.reareye.ui.screen.HomeScreen
@@ -53,10 +54,19 @@ import hk.uwu.reareye.ui.screen.RearStoreScreen
 import hk.uwu.reareye.ui.screen.preloadHomeFrameNotice
 import hk.uwu.reareye.ui.theme.AppTheme
 import hk.uwu.reareye.ui.theme.AppThemeMode
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private val MainScreenOrder = listOf("home", "store", "config", "about")
+
+private data class RemoteUiSettings(
+    val themeModeValue: Int,
+    val navigationBarModeValue: Int,
+    val navigationQuickActionIds: List<String>,
+    val launcherHidden: Boolean,
+)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -82,29 +92,58 @@ class MainActivity : ComponentActivity() {
             e.printStackTrace()
         }
 
-        val prefsManager = applicationContext.getPrefsManager()
-        ModuleSettingsController.syncLauncherEntryVisibility(
-            context = applicationContext,
-            hidden = prefsManager.getBoolean(ConfigKeys.MODULE_HIDE_LAUNCHER_ENTRY, false),
-        )
         preloadHomeFrameNotice(applicationContext)
 
         setContent {
-            var themeModeValue by remember {
-                mutableIntStateOf(
-                    prefsManager.getInt(
-                        ConfigKeys.MODULE_THEME_MODE,
-                        AppThemeMode.default.value,
+            val remotePrefsManager = remember { applicationContext.getPrefsManager() }
+            val remoteRevision = rememberRemotePrefsStatusRevision()
+            var remoteUiSettings by remember { mutableStateOf<RemoteUiSettings?>(null) }
+
+            LaunchedEffect(remoteRevision) {
+                val loadedRemoteUiSettings = withContext(Dispatchers.IO) {
+                    if (!remotePrefsManager.isRemoteReady()) {
+                        null
+                    } else {
+                        RemoteUiSettings(
+                            themeModeValue = remotePrefsManager.getInt(
+                                ConfigKeys.MODULE_THEME_MODE,
+                                AppThemeMode.default.value,
+                            ),
+                            navigationBarModeValue = remotePrefsManager.getInt(
+                                ConfigKeys.MODULE_NAVIGATION_BAR_MODE,
+                                ModuleNavigationBarMode.default.value,
+                            ),
+                            navigationQuickActionIds = parseNavigationQuickActionIds(
+                                remotePrefsManager.getString(ConfigKeys.MODULE_NAVIGATION_QUICK_ACTIONS)
+                            ).toList(),
+                            launcherHidden = remotePrefsManager.getBoolean(
+                                ConfigKeys.MODULE_HIDE_LAUNCHER_ENTRY,
+                                false,
+                            ),
+                        )
+                    }
+                }
+
+                remoteUiSettings = loadedRemoteUiSettings
+                loadedRemoteUiSettings?.let { settings ->
+                    ModuleSettingsController.syncLauncherEntryVisibility(
+                        context = applicationContext,
+                        hidden = settings.launcherHidden,
                     )
-                )
+                }
+            }
+
+            val settings = remoteUiSettings
+            if (settings == null) {
+                Box(modifier = Modifier.fillMaxSize())
+                return@setContent
+            }
+
+            var themeModeValue by remember {
+                mutableIntStateOf(settings.themeModeValue)
             }
             var navigationBarModeValue by remember {
-                mutableIntStateOf(
-                    prefsManager.getInt(
-                        ConfigKeys.MODULE_NAVIGATION_BAR_MODE,
-                        ModuleNavigationBarMode.default.value,
-                    )
-                )
+                mutableIntStateOf(settings.navigationBarModeValue)
             }
             var currentScreen by remember { mutableStateOf("home") }
             var navBarVisible by remember { mutableStateOf(false) }
@@ -114,11 +153,7 @@ class MainActivity : ComponentActivity() {
             }
             var pendingQuickActionTransition by remember { mutableStateOf(false) }
             var navigationQuickActionIds by remember {
-                mutableStateOf(
-                    parseNavigationQuickActionIds(
-                        prefsManager.getString(ConfigKeys.MODULE_NAVIGATION_QUICK_ACTIONS)
-                    )
-                )
+                mutableStateOf(settings.navigationQuickActionIds)
             }
 
             LaunchedEffect(Unit) {
@@ -275,7 +310,7 @@ class MainActivity : ComponentActivity() {
                                             encodeNavigationQuickActionIds(nextIds)
                                         )
                                         navigationQuickActionIds = normalizedIds
-                                        prefsManager.putString(
+                                        remotePrefsManager.putString(
                                             ConfigKeys.MODULE_NAVIGATION_QUICK_ACTIONS,
                                             encodeNavigationQuickActionIds(normalizedIds),
                                         )

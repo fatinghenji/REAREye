@@ -30,6 +30,8 @@ interface IRearWidgetApiService {
 
     void disableBusinessDisplay(String targetPackage, String business);
 
+    void disableCardDisplay(String targetPackage, String business, String cardId);
+
     void postNotice(String targetPackage, String business, in Bundle payload, in Bundle options);
 
     void updateNotice(

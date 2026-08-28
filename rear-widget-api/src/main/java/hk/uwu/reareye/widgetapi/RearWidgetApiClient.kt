@@ -111,6 +111,10 @@ class RearWidgetApiClient(
         requireRemote().disableBusinessDisplay(targetPackage, business)
     }
 
+    fun disableCardDisplay(targetPackage: String, business: String, cardId: String) {
+        requireRemote().disableCardDisplay(targetPackage, business, cardId)
+    }
+
     fun postNotice(
         targetPackage: String,
         business: String,

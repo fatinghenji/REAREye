@@ -5,7 +5,6 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
-import android.util.Base64
 import android.util.Log
 import hk.uwu.reareye.repository.rearwidget.RearBusinessExtraConfigRepository.getShowTimeTipForBusiness
 import hk.uwu.reareye.ui.config.ConfigKeys
@@ -384,10 +383,13 @@ object RearWidgetManagerRepository {
 
         val enabledCards = newCards.filter { it.enabled }
         val enabledPairs = enabledCards.mapTo(LinkedHashSet()) { it.packageName to it.business }
+        // API 这里只能按 (package,business) 业务级清理；cardId 对应的 ticket 仅保存在 Hook 进程，
+        // 现有跨进程 API 没有查询/删除单卡能力。因此这里只修复跨 pair 整组误删：
+        // 新配置仍启用同一 pair 时不清理；同一 pair 内删除单张卡无法在此精确处理。
         val pairsToDisable = if (preserveExistingDisplay) {
             oldPairs - enabledPairs
         } else {
-            allPairs
+            allPairs - enabledPairs
         }
         debugLog(
             context,
@@ -396,6 +398,20 @@ object RearWidgetManagerRepository {
 
         pairsToDisable.forEach { (pkg, biz) ->
             disableBusinessDisplay(context, pkg, biz)
+        }
+
+        // 精确关闭被禁用的单卡：当同一业务下仍启用其他卡时，业务级 pairsToDisable 不会命中，
+        // 旧 cardId 对应的 ticket 仍残留在 SubScreenCenter 持久化中，导致该卡无法关闭。
+        // 这里对"旧配置启用、新配置禁用"的每张卡按 cardId 精确下发删除。
+        val disabledCards = computeDisabledCards(oldCards, newCards)
+        disabledCards.forEach { card ->
+            disableCardDisplay(context, card.packageName, card.business, card.id)
+        }
+        if (disabledCards.isNotEmpty()) {
+            debugLog(
+                context,
+                "applyCardsViaApi disabledCards=${disabledCards.map { it.id }}",
+            )
         }
 
         enabledPairs.forEach { (pkg, biz) ->
@@ -435,6 +451,21 @@ object RearWidgetManagerRepository {
         }
     }
 
+    /**
+     * 计算旧配置中启用、但新配置中已禁用的卡片集合。
+     *
+     * 用于在同业务仍启用其他卡时按 cardId 精确下发删除：业务级清理只能按
+     * (packageName, business) 整组处理，无法命中单卡关闭。
+     */
+    internal fun computeDisabledCards(
+        oldCards: List<RearCardConfig>,
+        newCards: List<RearCardConfig>,
+    ): List<RearCardConfig> {
+        return oldCards.filter { old ->
+            old.enabled && newCards.none { it.id == old.id && it.enabled }
+        }
+    }
+
     private fun registerBusiness(
         context: Context,
         packageName: String,
@@ -471,6 +502,19 @@ object RearWidgetManagerRepository {
         runCatching {
             withApiClient(context) { client ->
                 client.disableBusinessDisplay(packageName, business)
+            }
+        }
+    }
+
+    private fun disableCardDisplay(
+        context: Context,
+        packageName: String,
+        business: String,
+        cardId: String,
+    ) {
+        runCatching {
+            withApiClient(context) { client ->
+                client.disableCardDisplay(packageName, business, cardId)
             }
         }
     }
@@ -692,32 +736,60 @@ object RearWidgetManagerRepository {
         val sourceKey = RearWidgetConfigCodec.businessBlobSourceKey(business)
         val blobKey = RearWidgetConfigCodec.businessBlobKey(business)
         val metaKey = RearWidgetConfigCodec.businessBlobMetaKey(business)
+        val remoteFileName = RearWidgetConfigCodec.businessBlobRemoteFileName(business)
+        val marker = RearWidgetConfigCodec.remoteBlobMarker(remoteFileName)
 
         val oldSourceSig = prefsManager.getString(sourceKey, "")
         val oldBlob = prefsManager.getString(blobKey, "")
-        if (oldSourceSig == sourceSig && oldBlob.isNotBlank()) {
-            return
-        }
-
-        val bytes = runCatching { source.readBytes() }.getOrNull() ?: return
-        val newMeta = buildBlobMeta(bytes)
         val oldMeta = prefsManager.getString(metaKey, "")
+        if (oldSourceSig == sourceSig && oldBlob == marker && oldMeta.isNotBlank()) return
 
-        if (oldMeta == newMeta && oldBlob.isNotBlank()) {
-            prefsManager.putString(sourceKey, sourceSig)
-            return
+        val bytes = runCatching { source.readBytes() }
+            .onFailure {
+                Log.e(
+                    TAG,
+                    "Unable to read rear widget business template: business=$business path=$sourcePath",
+                    it
+                )
+            }
+            .getOrElse { throw it }
+        val newMeta = buildBlobMeta(bytes)
+        check(prefsManager.writeRemoteFile(remoteFileName, bytes)) {
+            "Unable to write rear widget RemoteFile: business=$business size=${bytes.size}"
         }
 
-        val encoded = Base64.encodeToString(bytes, Base64.NO_WRAP)
-        prefsManager.putString(blobKey, encoded)
-        prefsManager.putString(metaKey, newMeta)
-        prefsManager.putString(sourceKey, sourceSig)
+        val committed = prefsManager.prefs.edit()
+            .putString(blobKey, marker)
+            .putString(metaKey, newMeta)
+            .putString(sourceKey, sourceSig)
+            .commit()
+        check(committed) {
+            "Unable to commit rear widget RemoteFile marker: business=$business size=${bytes.size}"
+        }
     }
 
     private fun clearBusinessTemplateBlob(prefsManager: PrefsManager, business: String) {
-        prefsManager.putString(RearWidgetConfigCodec.businessBlobKey(business), "")
-        prefsManager.putString(RearWidgetConfigCodec.businessBlobMetaKey(business), "")
-        prefsManager.putString(RearWidgetConfigCodec.businessBlobSourceKey(business), "")
+        val blobKey = RearWidgetConfigCodec.businessBlobKey(business)
+        val oldMarker = RearWidgetConfigCodec.remoteBlobFileNameFromMarker(
+            prefsManager.getString(blobKey, ""),
+        )
+        val namesToDelete = linkedSetOf(
+            RearWidgetConfigCodec.businessBlobRemoteFileName(business),
+            oldMarker,
+        ).filterNotNull()
+        namesToDelete.forEach { name ->
+            check(prefsManager.deleteRemoteFile(name)) {
+                "Unable to delete rear widget RemoteFile: business=$business"
+            }
+        }
+        val committed = prefsManager.prefs.edit()
+            .remove(blobKey)
+            .remove(RearWidgetConfigCodec.businessBlobMetaKey(business))
+            .remove(RearWidgetConfigCodec.businessBlobSourceKey(business))
+            .commit()
+        check(committed) {
+            "Unable to clear rear widget RemoteFile metadata: business=$business"
+        }
     }
 
     private fun deleteIfManagedPath(path: String, rootNorm: String) {

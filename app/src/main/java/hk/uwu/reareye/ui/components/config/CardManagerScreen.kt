@@ -61,6 +61,7 @@ import hk.uwu.reareye.ui.components.config.template.WidgetTemplateConfigScreen
 import hk.uwu.reareye.ui.components.motion.ArtRevealItem
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.PrefsManager
+import hk.uwu.reareye.ui.config.rememberRemotePrefsStatusRevision
 import hk.uwu.reareye.ui.theme.rearAcrylicEffect
 import hk.uwu.reareye.ui.theme.rearAcrylicSource
 import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
@@ -117,11 +118,29 @@ fun CardManagerScreen(
     var cardsLoaded by remember { mutableStateOf(false) }
     var dataCardsVisible by remember { mutableStateOf(false) }
     var runtimeRefreshTick by remember { mutableIntStateOf(0) }
+    val remotePrefsStatusRevision = rememberRemotePrefsStatusRevision()
 
-    LaunchedEffect(Unit) {
+    fun debugLog(message: String) {
+        if (prefsManager.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+            Log.d(REAR_WIDGET_DEBUG_TAG, message)
+        }
+    }
+
+    LaunchedEffect(prefsManager, remotePrefsStatusRevision) {
+        val remoteReady = withContext(Dispatchers.IO) { prefsManager.isRemoteReady() }
+        if (!remoteReady) {
+            if (cards.isEmpty() && businesses.isEmpty()) {
+                cardsLoaded = false
+                dataCardsVisible = false
+            }
+            debugLog("card load deferred: remote preferences not ready revision=$remotePrefsStatusRevision")
+            return@LaunchedEffect
+        }
+
         delay(220)
-        val loadedCards =
-            withContext(Dispatchers.IO) { RearWidgetManagerRepository.loadCards(prefsManager) }
+        val loadedCards = withContext(Dispatchers.IO) {
+            RearWidgetManagerRepository.loadCards(prefsManager)
+        }
         val loadedBusinesses = withContext(Dispatchers.IO) {
             RearWidgetManagerRepository.loadBusinesses(prefsManager)
         }
@@ -148,12 +167,6 @@ fun CardManagerScreen(
     var draftPriorityText by remember { mutableStateOf("500") }
     var draftSticky by remember { mutableStateOf(true) }
     var draftOneConfigJson by remember { mutableStateOf<String?>(null) }
-
-    fun debugLog(message: String) {
-        if (prefsManager.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
-            Log.d(REAR_WIDGET_DEBUG_TAG, message)
-        }
-    }
 
     fun persist() {
         val nextCards = cards.toList()
@@ -401,7 +414,8 @@ fun CardManagerScreen(
                                             )
                                         }
                                         Button(
-                                            onClick = { openCreateDialog() },
+                                            onClick = { if (cardsLoaded) openCreateDialog() },
+                                            enabled = cardsLoaded,
                                             colors = ButtonDefaults.buttonColorsPrimary(),
                                             modifier = Modifier.fillMaxWidth(),
                                         ) {

@@ -29,8 +29,8 @@ import androidx.core.net.toUri
 import androidx.core.view.isEmpty
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
-import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.hook.core.YLog
+import hk.uwu.reareye.hook.core.YukiBaseHooker
 import hk.uwu.reareye.hook.utils.DexKitMethodInjectionPoint
 import hk.uwu.reareye.hook.utils.createDexKitCacheBridge
 import hk.uwu.reareye.hook.utils.resolveDexKitClassValue
@@ -56,6 +56,8 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.lang.reflect.Modifier
 import java.security.MessageDigest
+import java.util.Collections
+import java.util.IdentityHashMap
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -74,7 +76,8 @@ class RearWallpaperHook : YukiBaseHooker() {
         private const val IMPORT_RES_PREFIX = "reareye_import_"
         private const val IMPORT_RES_TYPE = "REAREye"
         private const val DEFAULT_RES_SUB_TYPE = "reareye_import"
-        private const val SELECTED_WALLPAPER_ID_CACHE_KEY = "REAR_WALLPAPER_SELECTED_ID"
+        private const val RELOAD_STATE_SELECTED_WALLPAPER_ID = "selected_wallpaper_id"
+        private const val RELOAD_STATE_NEXT_SWITCH_AT = "next_switch_at"
         private const val MAX_IMPORT_BYTES = 200L * 1024L * 1024L
         private const val MAX_PREVIEW_BYTES = 20L * 1024L * 1024L
         private const val ZIP_PREVIEW_PREFIX = "zip-preview://"
@@ -131,12 +134,6 @@ class RearWallpaperHook : YukiBaseHooker() {
         private const val DEVICE_CONFIG_LOCALE_SUFFIX_FIELD_CACHE_KEY =
             "SSC_DEVICE_CONFIG_LOCALE_SUFFIX_FIELD"
         private const val FALLBACK_MAIN_PANEL_CLASS = "com.xiaomi.subscreencenter.MainPanel"
-
-        @Volatile
-        private var cachedNextSwitchAtMillis: Long = Long.MIN_VALUE
-
-        @Volatile
-        private var cachedScheduleConfig: ScheduleConfig? = null
     }
 
     private data class WallpaperEntry(
@@ -210,7 +207,39 @@ class RearWallpaperHook : YukiBaseHooker() {
     private var mainHandler: Handler? = null
     private var dexKitBridge: DexKitCacheBridge.RecyclableBridge? = null
     private var schedulerTask: Runnable? = null
+    private val pendingHandlerRunnables = IdentityHashMap<Handler, MutableSet<Runnable>>()
+    private val pendingViewRunnables = ArrayList<Pair<View, Runnable>>()
     private val runtimeLock = Any()
+
+    @Volatile
+    private var cachedSelectedWallpaperId: Int? = null
+
+    @Volatile
+    private var cachedNextSwitchAtMillis: Long = Long.MIN_VALUE
+
+    @Volatile
+    private var cachedScheduleConfig: ScheduleConfig? = null
+
+    override fun saveReloadState(): Bundle = Bundle().apply {
+        cachedSelectedWallpaperId?.let { putInt(RELOAD_STATE_SELECTED_WALLPAPER_ID, it) }
+        cachedNextSwitchAtMillis
+            .takeIf { it != Long.MIN_VALUE }
+            ?.let { putLong(RELOAD_STATE_NEXT_SWITCH_AT, it) }
+    }
+
+    override fun restoreReloadState(state: Bundle) {
+        cachedSelectedWallpaperId = if (state.containsKey(RELOAD_STATE_SELECTED_WALLPAPER_ID)) {
+            state.getInt(RELOAD_STATE_SELECTED_WALLPAPER_ID)
+        } else {
+            null
+        }
+        cachedNextSwitchAtMillis = if (state.containsKey(RELOAD_STATE_NEXT_SWITCH_AT)) {
+            state.getLong(RELOAD_STATE_NEXT_SWITCH_AT)
+        } else {
+            Long.MIN_VALUE
+        }
+        cachedScheduleConfig = null
+    }
 
     private inline fun resolveCachedFieldName(
         cacheKey: String,
@@ -227,6 +256,53 @@ class RearWallpaperHook : YukiBaseHooker() {
         return fieldName
     }
 
+    override fun onReloadingPreflight(): Boolean {
+        if (bootstrapReceiverRegistered.get() && hostContext == null) {
+            YLog.error("Rear wallpaper reload preflight failed: bootstrap receiver has no host context")
+            return false
+        }
+        if (schedulerTask != null && mainHandler == null) {
+            YLog.error("Rear wallpaper reload preflight failed: scheduler has no Handler")
+            return false
+        }
+        return true
+    }
+
+    override fun onReloading(): Boolean {
+        val schedulerCleanupSucceeded = stopScheduler()
+        val callbackCleanupSucceeded = cancelPendingCallbacks()
+        var success = schedulerCleanupSucceeded && callbackCleanupSucceeded
+        var receiverCleanupSucceeded = true
+        val context = hostContext
+        if (bootstrapReceiverRegistered.get()) {
+            if (context == null) {
+                receiverCleanupSucceeded = false
+                success = false
+                YLog.error("Failed to unregister rear wallpaper bootstrap receiver: hostContext=null")
+            } else {
+                val unregistered = runCatching {
+                    context.unregisterReceiver(hookBootstrapReceiver)
+                    true
+                }.onFailure {
+                    YLog.error("Failed to unregister rear wallpaper bootstrap receiver", it)
+                }.getOrDefault(false)
+                if (unregistered) {
+                    bootstrapReceiverRegistered.set(false)
+                } else {
+                    receiverCleanupSucceeded = false
+                    success = false
+                }
+            }
+        } else {
+            bootstrapReceiverRegistered.set(false)
+        }
+        if (receiverCleanupSucceeded) hostContext = null
+        mainPanel = null
+        if (schedulerCleanupSucceeded && callbackCleanupSucceeded) mainHandler = null
+        dexKitBridge = null
+        return success
+    }
+
     override fun onHook() {
         loadApp("com.xiaomi.subscreencenter") {
             val versionCode = resolveHookPackageVersionCode(
@@ -240,7 +316,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                 sourceDir = appInfo.sourceDir,
                 dataDir = appInfo.dataDir,
             )
-            dexKitBridge = bridge
+            dexKitBridge = trackResource(bridge)
             val appRef = "com.xiaomi.subscreencenter.SubScreenCenterApp".toClass().resolve()
             val launcherRef = "com.xiaomi.subscreencenter.SubScreenLauncher".toClass().resolve()
 
@@ -455,6 +531,7 @@ class RearWallpaperHook : YukiBaseHooker() {
 
     private val hookBootstrapReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
+            if (!reloadGenerationGate.isOpen()) return
             if (intent?.action != RearWallpaperApiContract.ACTION_REQUEST_HOOK_SERVICE) return
             val callbackBinder = intent
                 .getBundleExtra(RearWallpaperApiContract.Extras.BUNDLE)
@@ -493,6 +570,7 @@ class RearWallpaperHook : YukiBaseHooker() {
     }
 
     private fun enforceCallerPermission() {
+        reloadGenerationGate.requireOpen()
         val ctx = hostContext
         val uid = Binder.getCallingUid()
         if (uid == Process.myUid()) return
@@ -648,17 +726,143 @@ class RearWallpaperHook : YukiBaseHooker() {
         val handler = mainHandler ?: return
         val delayMs = (triggerAt - System.currentTimeMillis()).coerceAtLeast(0L)
         debugLog("scheduleAt triggerAt=$triggerAt delayMs=$delayMs")
-        schedulerTask = Runnable {
+        schedulerTask = postTracked(handler, delayMs) {
             debugLog("scheduleAt fired triggerAt=$triggerAt now=${System.currentTimeMillis()}")
             refreshSchedule(forceApply = false)
         }
-        handler.postDelayed(schedulerTask!!, delayMs)
+        if (schedulerTask == null) {
+            YLog.error("Failed to post rear wallpaper scheduler task")
+        }
     }
 
-    private fun stopScheduler() {
-        schedulerTask?.let { task -> mainHandler?.removeCallbacks(task) }
-        if (schedulerTask != null) debugLog("stopScheduler removed pending task")
-        schedulerTask = null
+    private fun postTracked(
+        handler: Handler,
+        delayMs: Long = 0L,
+        onDropped: (() -> Unit)? = null,
+        action: () -> Unit,
+    ): Runnable? {
+        lateinit var runnable: Runnable
+        runnable = Runnable {
+            try {
+                if (reloadGenerationGate.isOpen()) {
+                    action()
+                } else {
+                    onDropped?.invoke()
+                }
+            } finally {
+                forgetHandlerRunnable(handler, runnable)
+            }
+        }
+        synchronized(pendingHandlerRunnables) {
+            val runnables = pendingHandlerRunnables.getOrPut(handler) {
+                Collections.newSetFromMap(IdentityHashMap<Runnable, Boolean>())
+            }
+            runnables += runnable
+        }
+        val posted = runCatching {
+            if (delayMs > 0L) handler.postDelayed(runnable, delayMs) else handler.post(runnable)
+        }.onFailure {
+            forgetHandlerRunnable(handler, runnable)
+            YLog.error("Failed to post rear wallpaper Handler callback", it)
+        }.getOrDefault(false)
+        if (!posted) forgetHandlerRunnable(handler, runnable)
+        return runnable.takeIf { posted }
+    }
+
+    private fun postTrackedView(
+        view: View,
+        delayMs: Long = 0L,
+        onDropped: (() -> Unit)? = null,
+        action: () -> Unit,
+    ): Runnable? {
+        lateinit var runnable: Runnable
+        runnable = Runnable {
+            try {
+                if (reloadGenerationGate.isOpen()) {
+                    action()
+                } else {
+                    onDropped?.invoke()
+                }
+            } finally {
+                forgetViewRunnable(view, runnable)
+            }
+        }
+        synchronized(pendingViewRunnables) {
+            pendingViewRunnables += view to runnable
+        }
+        val posted = runCatching {
+            if (delayMs > 0L) view.postDelayed(runnable, delayMs) else view.post(runnable)
+        }.onFailure {
+            forgetViewRunnable(view, runnable)
+            YLog.error("Failed to post rear wallpaper View callback", it)
+        }.getOrDefault(false)
+        if (!posted) forgetViewRunnable(view, runnable)
+        return runnable.takeIf { posted }
+    }
+
+    private fun cancelPendingCallbacks(): Boolean {
+        var success = true
+        val handlerSnapshot = synchronized(pendingHandlerRunnables) {
+            pendingHandlerRunnables.flatMap { (handler, runnables) ->
+                runnables.map { handler to it }
+            }
+        }
+        handlerSnapshot.forEach { (handler, runnable) ->
+            runCatching {
+                handler.removeCallbacks(runnable)
+                forgetHandlerRunnable(handler, runnable)
+            }.onFailure {
+                success = false
+                YLog.error("Failed to remove rear wallpaper Handler callback", it)
+            }
+        }
+        val viewSnapshot = synchronized(pendingViewRunnables) { pendingViewRunnables.toList() }
+        viewSnapshot.forEach { (view, runnable) ->
+            runCatching {
+                view.removeCallbacks(runnable)
+                forgetViewRunnable(view, runnable)
+            }.onFailure {
+                success = false
+                YLog.error("Failed to remove rear wallpaper View callback", it)
+            }
+        }
+        return success
+    }
+
+    private fun forgetHandlerRunnable(handler: Handler, runnable: Runnable) {
+        synchronized(pendingHandlerRunnables) {
+            val runnables = pendingHandlerRunnables[handler] ?: return
+            runnables.remove(runnable)
+            if (runnables.isEmpty()) pendingHandlerRunnables.remove(handler)
+        }
+        if (schedulerTask === runnable) schedulerTask = null
+    }
+
+    private fun forgetViewRunnable(view: View, runnable: Runnable) {
+        synchronized(pendingViewRunnables) {
+            pendingViewRunnables.remove(view to runnable)
+        }
+    }
+
+    private fun stopScheduler(): Boolean {
+        val task = schedulerTask ?: return true
+        val handler = mainHandler
+        if (handler == null) {
+            YLog.error("Failed to remove rear wallpaper scheduler task: mainHandler=null")
+            return false
+        }
+        val removed = runCatching {
+            handler.removeCallbacks(task)
+            forgetHandlerRunnable(handler, task)
+            true
+        }.onFailure {
+            YLog.error("Failed to remove rear wallpaper scheduler task", it)
+        }.getOrDefault(false)
+        if (removed) {
+            debugLog("stopScheduler removed pending task")
+            schedulerTask = null
+        }
+        return removed
     }
 
     private fun loadResolvedSchedule(
@@ -729,7 +933,7 @@ class RearWallpaperHook : YukiBaseHooker() {
     }
 
     private fun dispatchSelection(panel: Any, widgets: List<Any>, index: Int): Boolean {
-        val action = Runnable {
+        val action: () -> Unit = {
             runCatching {
                 val selectPoint = resolveMainPanelSelectMethod()
                 panel.asResolver().firstMethod {
@@ -738,13 +942,16 @@ class RearWallpaperHook : YukiBaseHooker() {
                 }.invoke(widgets, index)
                 debugLog("dispatchSelection success panel=${panel.javaClass.name} index=$index widgets=${widgets.size}")
             }.onFailure(YLog::error)
+            Unit
         }
         val handler = mainHandler
         return if (handler != null) {
-            handler.post(action)
-        } else {
-            action.run()
+            postTracked(handler, action = action) != null
+        } else if (reloadGenerationGate.isOpen()) {
+            action()
             true
+        } else {
+            false
         }
     }
 
@@ -956,9 +1163,11 @@ class RearWallpaperHook : YukiBaseHooker() {
                 matcher {
                     modifiers = Modifier.PUBLIC or Modifier.STATIC
                     paramCount(1)
-                    usingStrings("snapshotPath_", "snapshotPath", "__PIN_CONTENT_TEXT__")
+                    usingStrings("snapshotPath_", "snapshotPath")
                 }
-            }.singleOrNull()
+            }.singleOrNull {
+                !it.descriptor.contains("Bundle")
+            }
         } ?: DexKitMethodInjectionPoint("", "")
         require(point.className.isNotBlank() && point.methodName.isNotBlank()) {
             "DexKit failed to resolve widget factory method"
@@ -996,8 +1205,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                             usingStrings("Widget{mId=", ", mType=", ", mChangedFlag=")
                         }
                         add {
-                            declaredClass = "com.xiaomi.subscreencenter.SubScreenCenterApp"
-                            name = "onCreate"
+                            usingStrings("Widget has no extras: id=%d")
                         }
                     }
                 }
@@ -1850,23 +2058,14 @@ class RearWallpaperHook : YukiBaseHooker() {
         }.onFailure(YLog::error)
     }
 
-    private fun readSelectedWallpaperId(): Int? {
-        val value = prefs.native().getInt(SELECTED_WALLPAPER_ID_CACHE_KEY, Int.MIN_VALUE)
-        return value.takeIf { it != Int.MIN_VALUE }
-    }
+    private fun readSelectedWallpaperId(): Int? = cachedSelectedWallpaperId
 
     private fun persistSelectedWallpaperId(wallpaperId: Int) {
-        prefs.native().edit {
-            putInt(SELECTED_WALLPAPER_ID_CACHE_KEY, wallpaperId)
-            apply()
-        }
+        cachedSelectedWallpaperId = wallpaperId
     }
 
     private fun clearSelectedWallpaperId() {
-        prefs.native().edit {
-            remove(SELECTED_WALLPAPER_ID_CACHE_KEY)
-            apply()
-        }
+        cachedSelectedWallpaperId = null
     }
 
     private fun resetNextSwitchAtForCurrent(wallpaperId: Int, entries: List<WallpaperEntry>) {
@@ -1888,20 +2087,12 @@ class RearWallpaperHook : YukiBaseHooker() {
         scheduleAt(nextAt)
     }
 
-    private fun readNextSwitchAt(): Long {
-        val cached = cachedNextSwitchAtMillis
-        if (cached != Long.MIN_VALUE) return cached
-        val persisted = prefs.native().getLong(ConfigKeys.REAR_WALLPAPER_SCHEDULE_NEXT_AT, 0L)
-        cachedNextSwitchAtMillis = persisted
-        return persisted
-    }
+    private fun readNextSwitchAt(): Long = cachedNextSwitchAtMillis.takeIf {
+        it != Long.MIN_VALUE
+    } ?: 0L
 
     private fun persistNextSwitchAt(timestamp: Long) {
         cachedNextSwitchAtMillis = timestamp
-        prefs.native().edit {
-            putLong(ConfigKeys.REAR_WALLPAPER_SCHEDULE_NEXT_AT, timestamp)
-            apply()
-        }
         debugLog("persistNextSwitchAt=$timestamp")
     }
 
@@ -2576,7 +2767,16 @@ class RearWallpaperHook : YukiBaseHooker() {
         val errorRef = AtomicReference<Throwable?>()
         val latch = CountDownLatch(1)
 
-        handler.post {
+        postTracked(
+            handler = handler,
+            onDropped = {
+                errorRef.compareAndSet(
+                    null,
+                    IllegalStateException("preview capture callback dropped after generation close")
+                )
+                latch.countDown()
+            },
+        ) {
             runCatching {
                 val size = resolvePreviewRenderSize(panel)
                 val panelEditMode = readMainPanelEditMode(panel)
@@ -2720,13 +2920,26 @@ class RearWallpaperHook : YukiBaseHooker() {
                             if (elapsed >= OFFSCREEN_CAPTURE_TIMEOUT_MS) {
                                 throw IllegalStateException("offscreen preview stayed blank")
                             }
-                            renderHost.postDelayed(
-                                { tryCapture() },
-                                OFFSCREEN_CAPTURE_RETRY_INTERVAL_MS
-                            )
+                            postTrackedView(
+                                view = renderHost,
+                                delayMs = OFFSCREEN_CAPTURE_RETRY_INTERVAL_MS,
+                                onDropped = {
+                                    finishWithError(
+                                        IllegalStateException("preview retry dropped after generation close")
+                                    )
+                                },
+                            ) { tryCapture() }
                         }.onFailure(::finishWithError)
                     }
-                    renderHost.postDelayed({ tryCapture() }, OFFSCREEN_CAPTURE_INITIAL_DELAY_MS)
+                    postTrackedView(
+                        view = renderHost,
+                        delayMs = OFFSCREEN_CAPTURE_INITIAL_DELAY_MS,
+                        onDropped = {
+                            finishWithError(
+                                IllegalStateException("preview initial callback dropped after generation close")
+                            )
+                        },
+                    ) { tryCapture() }
                 }.onFailure {
                     finishWithError(it)
                 }
@@ -2812,34 +3025,50 @@ class RearWallpaperHook : YukiBaseHooker() {
             }"
         )
 
-        handler.post {
+        postTracked(
+            handler = handler,
+            onDropped = {
+                errorRef.compareAndSet(
+                    null,
+                    IllegalStateException("switch preview callback dropped after generation close")
+                )
+                latch.countDown()
+            },
+        ) {
             runCatching {
                 invokePanelSelection(panel, widgets, targetIndex)
                 debugLog("switch preview fallback selected wallpaperId=$wallpaperId targetIndex=$targetIndex")
-                panel.postDelayed(
-                    {
-                        runCatching {
-                            val bitmap = captureViewBitmap(panel)
-                            bitmapRef.set(bitmap)
-                            debugLog(
-                                "switch preview fallback captured wallpaperId=$wallpaperId bitmap=${bitmap.width}x${bitmap.height}"
-                            )
-                        }.onFailure(errorRef::set)
-
-                        runCatching {
-                            if (currentIndex >= 0 && currentIndex != targetIndex) {
-                                invokePanelSelection(panel, widgets, currentIndex)
-                                debugLog(
-                                    "switch preview fallback restored selection wallpaperId=$wallpaperId restoreIndex=$currentIndex restoreWallpaperId=$currentWallpaperId"
-                                )
-                            }
-                            if (currentIndex >= 0) persistSelectionIndex(currentIndex)
-                            currentWallpaperId?.let(::persistSelectedWallpaperId)
-                        }.onFailure(YLog::warn)
+                postTrackedView(
+                    view = panel,
+                    delayMs = PREVIEW_CAPTURE_DELAY_MS,
+                    onDropped = {
+                        errorRef.compareAndSet(
+                            null,
+                            IllegalStateException("switch preview delayed callback dropped after generation close")
+                        )
                         latch.countDown()
                     },
-                    PREVIEW_CAPTURE_DELAY_MS,
-                )
+                ) {
+                    runCatching {
+                        val bitmap = captureViewBitmap(panel)
+                        bitmapRef.set(bitmap)
+                        debugLog(
+                            "switch preview fallback captured wallpaperId=$wallpaperId bitmap=${bitmap.width}x${bitmap.height}"
+                        )
+                    }.onFailure(errorRef::set)
+
+                    runCatching {
+                        if (currentIndex >= 0 && currentIndex != targetIndex) {
+                            invokePanelSelection(panel, widgets, currentIndex)
+                            debugLog(
+                                "switch preview fallback restored selection wallpaperId=$wallpaperId restoreIndex=$currentIndex restoreWallpaperId=$currentWallpaperId"
+                            )
+                        }
+                        if (currentIndex >= 0) persistSelectionIndex(currentIndex)
+                        currentWallpaperId?.let(::persistSelectedWallpaperId)
+                    }.onFailure(YLog::warn)
+                    latch.countDown()
+                }
             }.onFailure {
                 errorRef.set(it)
                 latch.countDown()

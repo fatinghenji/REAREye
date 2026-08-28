@@ -63,4 +63,24 @@ class HookHostBridgeBootstrapRegistry(
 
         return ok
     }
+
+    /**
+     * 解除旧代 Hook 的动态 Receiver，避免热重载后旧模块继续接收 Binder 引导广播。
+     *
+     * 调用方必须传入注册时使用的同一 Context；未注册时返回 true，便于冻结流程幂等执行。
+     */
+    fun isRegistered(): Boolean = registered.get()
+
+    fun unregister(context: Context): Boolean {
+        if (!registered.compareAndSet(true, false)) return true
+        return runCatching {
+            context.unregisterReceiver(receiver)
+            true
+        }.onFailure {
+            registered.set(true)
+            logger?.invoke(
+                "host bridge bootstrap unregister failed action=$action err=${it.message}"
+            )
+        }.getOrDefault(false)
+    }
 }

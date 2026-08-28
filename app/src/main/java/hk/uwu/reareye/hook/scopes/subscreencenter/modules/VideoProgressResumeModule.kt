@@ -5,8 +5,8 @@ import android.os.Handler
 import android.os.Looper
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
-import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.hook.core.YLog
+import hk.uwu.reareye.hook.core.YukiBaseHooker
 import hk.uwu.reareye.hook.utils.createDexKitCacheBridge
 import hk.uwu.reareye.hook.utils.resolveDexKitClassValue
 import hk.uwu.reareye.hook.utils.resolveHookPackageVersionCode
@@ -37,6 +37,26 @@ class VideoProgressResumeModule : YukiBaseHooker() {
     @Volatile
     private var lastRestoreScheduleAt = 0L
 
+    override fun onReloading(): Boolean {
+        var success = true
+        val remaining = ArrayList<Runnable>(restoreRunnables.size)
+        restoreRunnables.forEach { runnable ->
+            val removed = runCatching {
+                restoreHandler.removeCallbacks(runnable)
+                true
+            }.onFailure {
+                success = false
+                YLog.error("Failed to remove video progress restore task during reload", it)
+            }.getOrDefault(false)
+            if (!removed) remaining += runnable
+        }
+        restoreRunnables.clear()
+        restoreRunnables += remaining
+        lastRestoreScheduleAt = 0L
+        VideoProgressStore.clear()
+        return success
+    }
+
     override fun onHook() {
         loadApp("com.xiaomi.subscreencenter") {
             val versionCode = resolveHookPackageVersionCode(
@@ -44,11 +64,13 @@ class VideoProgressResumeModule : YukiBaseHooker() {
                 appInfo.packageName,
                 appInfo.sourceDir,
             )
-            val bridge = createDexKitCacheBridge(
+            val bridge = trackResource(
+                createDexKitCacheBridge(
                 packageName = appInfo.packageName,
                 packageVersionCode = versionCode,
                 sourceDir = appInfo.sourceDir,
                 dataDir = appInfo.dataDir,
+                )
             )
 
             resolveVideoElementClassName(bridge)?.let(::hookVideoElementClass)
@@ -456,6 +478,11 @@ class VideoProgressResumeModule : YukiBaseHooker() {
             return states.values.any { state ->
                 state.position > 0 && !state.completed
             }
+        }
+
+        fun clear() {
+            states.clear()
+            liveViews.clear()
         }
 
         fun armResetGuard(debugEnabled: Boolean, reason: String): Boolean {

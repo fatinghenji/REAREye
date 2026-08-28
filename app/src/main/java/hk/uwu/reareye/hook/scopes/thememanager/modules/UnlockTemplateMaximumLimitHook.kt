@@ -3,7 +3,7 @@ package hk.uwu.reareye.hook.scopes.thememanager.modules
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.kavaref.condition.type.Modifiers
-import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
+import hk.uwu.reareye.hook.core.YukiBaseHooker
 import hk.uwu.reareye.hook.utils.createDexKitCacheBridge
 import hk.uwu.reareye.hook.utils.resolveDexKitClassValue
 import hk.uwu.reareye.hook.utils.resolveHookPackageVersionCode
@@ -22,11 +22,13 @@ class UnlockTemplateMaximumLimitHook : YukiBaseHooker() {
         loadApp("com.android.thememanager") {
             val versionCode =
                 resolveHookPackageVersionCode(systemContext, appInfo.packageName, appInfo.sourceDir)
-            val bridge = createDexKitCacheBridge(
+            val bridge = trackResource(
+                createDexKitCacheBridge(
                 packageName = appInfo.packageName,
                 packageVersionCode = versionCode,
                 sourceDir = appInfo.sourceDir,
                 dataDir = appInfo.dataDir,
+                )
             )
             val rsDetailClz = resolveRearDetailViewModelClass(bridge).toClass().resolve()
             rsDetailClz.firstConstructor().hook().after {
@@ -54,7 +56,10 @@ class UnlockTemplateMaximumLimitHook : YukiBaseHooker() {
             findClass {
                 searchPackages("com.rearScreen.viewModel")
                 matcher {
-                    usingStrings("rear:RearScreenDetailViewModel")
+                    usingStrings(
+                        "RearScreenDetailViewModel",
+                        "[换机日志] onResourceImportSuccessful: onlineId="
+                    )
                 }
             }.singleOrNull()
         } ?: FALLBACK_REAR_DETAIL_VIEW_MODEL_CLASS

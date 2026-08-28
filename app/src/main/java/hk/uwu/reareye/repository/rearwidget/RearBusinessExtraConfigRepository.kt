@@ -109,14 +109,7 @@ object RearBusinessExtraConfigRepository {
 
     private fun loadAllNormalized(prefsManager: PrefsManager): Map<String, RearBusinessExtraConfig> {
         val raw = prefsManager.getString(ConfigKeys.REAR_WIDGET_BUSINESS_EXTRA_CONFIG_DATA, "")
-        val parsed = parseStore(raw)
-        if (raw.isNotBlank() && raw != parsed.normalizedJson) {
-            prefsManager.putString(
-                ConfigKeys.REAR_WIDGET_BUSINESS_EXTRA_CONFIG_DATA,
-                parsed.normalizedJson
-            )
-        }
-        return parsed.configByBusiness
+        return parseStore(raw).configByBusiness
     }
 
     private fun saveAll(
@@ -131,7 +124,6 @@ object RearBusinessExtraConfigRepository {
 
     private data class ParsedStore(
         val configByBusiness: Map<String, RearBusinessExtraConfig>,
-        val normalizedJson: String,
     )
 
     private data class StoreModel(
@@ -150,13 +142,12 @@ object RearBusinessExtraConfigRepository {
 
     private fun parseStore(raw: String?): ParsedStore {
         if (raw.isNullOrBlank()) {
-            val empty = emptyMap<String, RearBusinessExtraConfig>()
-            return ParsedStore(empty, encodeStore(empty))
+            return ParsedStore(emptyMap())
         }
 
         val parsedModel = runCatching {
             gson.fromJson(raw, StoreModel::class.java)
-        }.getOrNull() ?: return ParsedStore(emptyMap(), encodeStore(emptyMap()))
+        }.getOrNull() ?: return ParsedStore(emptyMap())
 
         val configByBusiness = linkedMapOf<String, RearBusinessExtraConfig>()
         parsedModel.items.forEach { item ->
@@ -167,7 +158,7 @@ object RearBusinessExtraConfigRepository {
             configByBusiness[business] = config
         }
 
-        return ParsedStore(configByBusiness, encodeStore(configByBusiness))
+        return ParsedStore(configByBusiness)
     }
 
     private fun encodeStore(configByBusiness: Map<String, RearBusinessExtraConfig>): String {

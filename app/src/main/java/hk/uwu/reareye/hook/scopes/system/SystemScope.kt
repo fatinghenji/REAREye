@@ -1,7 +1,8 @@
 package hk.uwu.reareye.hook.scopes.system
 
-import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.generated.AppProperties
+import hk.uwu.reareye.hook.core.HookModule
+import hk.uwu.reareye.hook.core.YLog
 import hk.uwu.reareye.hook.scopes.Scope
 import hk.uwu.reareye.hook.scopes.system.modules.BackgroundWhitelistModule
 import hk.uwu.reareye.hook.scopes.system.modules.CustomBoundsCompatModule
@@ -10,14 +11,20 @@ import hk.uwu.reareye.hook.scopes.system.modules.DisableSubScreenDoubleTapSleepH
 import hk.uwu.reareye.hook.scopes.system.modules.DisableSubScreenDoubleTapWakeHook
 import hk.uwu.reareye.hook.scopes.system.modules.DisableSubScreenHighLoadModeHook
 import hk.uwu.reareye.hook.scopes.system.modules.ExternalDisplayLaunchUnlockModule
+import hk.uwu.reareye.hook.scopes.system.modules.NativeEnvWriterHook
 import hk.uwu.reareye.hook.scopes.system.modules.RearScreenActivityWhitelistModule
 import hk.uwu.reareye.hook.scopes.system.modules.misc.GMSUnlockModule
 
 class SystemScope : Scope {
 
-    override val hooks: List<YukiBaseHooker> = buildList {
+    override val hooks: List<HookModule> = buildList {
         add(GMSUnlockModule())
         add(ExternalDisplayLaunchUnlockModule())
+        if (AppProperties.IS_PUBLIC_BETA) {
+            YLog.debug("Public beta build, skip native cpp hooks")
+        } else {
+            add(NativeEnvWriterHook())
+        }
         if (isRearDevice) {
             addAll(
                 listOf(

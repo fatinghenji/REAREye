@@ -6,8 +6,8 @@ import android.util.Log
 import android.util.Size
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
-import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.hook.core.YLog
+import hk.uwu.reareye.hook.core.YukiBaseHooker
 import hk.uwu.reareye.hook.utils.DexKitMethodInjectionPoint
 import hk.uwu.reareye.hook.utils.createDexKitCacheBridge
 import hk.uwu.reareye.hook.utils.resolveDexKitClassValue
@@ -66,28 +66,6 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
             "TM_VIDEO_EDIT_CLIP_LISTENER_FIELD"
         private const val VIDEO_EDIT_VIDEO_URI_FIELD_CACHE_KEY = "TM_VIDEO_EDIT_VIDEO_URI_FIELD"
         private const val VIDEO_EDIT_EXPORT_PATH_FIELD_CACHE_KEY = "TM_VIDEO_EDIT_EXPORT_PATH_FIELD"
-        private const val FALLBACK_VIDEO_EDIT_ACTIVITY_CLASS =
-            "com.android.thememanager.videoedit.VideoEditActivity"
-        private const val FALLBACK_VIDEO_EDIT_FPS_RUNNABLE_CLASS =
-            $$"com.android.thememanager.videoedit.VideoEditActivity$zy"
-        private const val FALLBACK_VIDEO_EDITOR_CONFIG_BUILDER_CLASS =
-            $$"com.android.thememanager.videoedit.VideoEditorConfig$k"
-        private const val FALLBACK_VIDEO_DEPTH_CHECK_CLASS =
-            $$"com.personalizedEditor.interceptor.VideoCheckForDepthInterceptor$checkVideo$2"
-        private const val FALLBACK_VIDEO_TIMELINE_CLASS =
-            "com.android.thememanager.videoedit.widget.s"
-        private const val FALLBACK_VIDEO_TOAST_UTILS_CLASS =
-            "com.android.thememanager.basemodule.utils.nmn5"
-        private const val FALLBACK_VIDEO_OPERATION_VIEW_CLASS =
-            "com.android.thememanager.videoedit.widget.SingleEditOperationView"
-        private const val FALLBACK_VIDEO_CLIP_FRAME_VIEW_CLASS =
-            "com.android.thememanager.videoedit.widget.ClipFrameView"
-        private const val FALLBACK_VIDEO_CODER_UTILS_CLASS =
-            "com.android.thememanager.basemodule.utils.CoderUtls"
-        private const val FALLBACK_VIDEO_EXPORT_CONFIG_CLASS =
-            "com.android.thememanager.videoedit.entity.toq"
-        private const val FALLBACK_VIDEO_GSON_UTILS_CLASS =
-            "com.android.thememanager.library.util.app.GsonUtils"
     }
 
     @OptIn(ExperimentalAtomicApi::class)
@@ -102,17 +80,20 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                 appInfo.packageName,
                 appInfo.sourceDir,
             )
-            val bridge = createDexKitCacheBridge(
+            val bridge = trackResource(
+                createDexKitCacheBridge(
                 packageName = appInfo.packageName,
                 packageVersionCode = versionCode,
                 sourceDir = appInfo.sourceDir,
                 dataDir = appInfo.dataDir,
+                )
             )
             val durationCropCacheKey = "DURATION_CROP_CLZ"
             val historyHelperCacheKey = "HISTORY_HELPER_CLZ"
 
             val videoEditPoint = resolveVideoEditPlayCreatedMethod(bridge)
             val fpsLimitPoint = resolveVideoEditFpsLimitMethod(bridge)
+            YLog.info("fps $fpsLimitPoint")
             val editorConfigBuildPoint =
                 resolveVideoEditorConfigBuildMethod(bridge)
             val checkDepthPoint = resolveVideoDepthCheckMethod(bridge)
@@ -121,7 +102,7 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
             val timelineAttachTexturePoint =
                 resolveVideoTimelineAttachTextureMethod(bridge)
             val timelineGetDurationPoint =
-                resolveVideoTimelineGetDurationMethod(bridge)
+                resolveVideoTimelineGetDurationMethod(timelineGetInstancePoint.className, bridge)
             val timelinePreparePoint =
                 resolveVideoTimelinePrepareMethod(bridge)
             val timelineExportPoint =
@@ -179,7 +160,6 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
 
             fun resolveFieldName(
                 cacheKey: String,
-                fallbackField: String,
                 finder: DexKitBridge.() -> org.luckypray.dexkit.result.FieldData?,
             ): String {
                 return resolveDexKitFieldValue(
@@ -187,12 +167,11 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                     cacheKey = cacheKey,
                 ) {
                     finder()
-                } ?: fallbackField
+                } ?: error("Failed to find field for $cacheKey")
             }
 
             val playViewFieldName = resolveFieldName(
                 VIDEO_EDIT_PLAY_VIEW_FIELD_CACHE_KEY,
-                "q",
             ) {
                 findField {
                     searchPackages("com.android.thememanager.videoedit")
@@ -204,7 +183,6 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
             }
             val configFieldName = resolveFieldName(
                 VIDEO_EDIT_CONFIG_FIELD_CACHE_KEY,
-                "s",
             ) {
                 findField {
                     searchPackages("com.android.thememanager.videoedit")
@@ -216,7 +194,6 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
             }
             val operationViewFieldName = resolveFieldName(
                 VIDEO_EDIT_OPERATION_VIEW_FIELD_CACHE_KEY,
-                "n",
             ) {
                 findField {
                     searchPackages("com.android.thememanager.videoedit")
@@ -227,9 +204,8 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                     }
                 }.singleOrNull()
             }
-            val trimInFieldName = resolveFieldName(
-                VIDEO_EDIT_TRIM_IN_FIELD_CACHE_KEY,
-                "i",
+            val trimOutFieldName = resolveFieldName(
+                VIDEO_EDIT_TRIM_OUT_FIELD_CACHE_KEY,
             ) {
                 findField {
                     searchPackages("com.android.thememanager.videoedit")
@@ -239,38 +215,9 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                         readMethods {
                             add {
                                 declaredClass = videoEditPoint.className
-                                name = videoEditPoint.methodName
-                                paramCount(0)
+                                paramCount(1)
                                 returnType = "void"
-                                usingStrings("onPlayViewCreated")
-                            }
-                            add {
-                                declaredClass = fpsLimitPoint.className
-                                name = fpsLimitPoint.methodName
-                                paramCount(0)
-                                returnType = "void"
-                                usingStrings("ExportConfig %s", "export videopath is ")
-                            }
-                        }
-                    }
-                }.singleOrNull()
-            }
-            val trimOutFieldName = resolveFieldName(
-                VIDEO_EDIT_TRIM_OUT_FIELD_CACHE_KEY,
-                "z",
-            ) {
-                findField {
-                    searchPackages("com.android.thememanager.videoedit")
-                    matcher {
-                        declaredClass = videoEditPoint.className
-                        type = "long"
-                        readMethods {
-                            add {
-                                declaredClass = fpsLimitPoint.className
-                                name = fpsLimitPoint.methodName
-                                paramCount(0)
-                                returnType = "void"
-                                usingStrings("ExportConfig %s", "export videopath is ")
+                                usingStrings("onPlayTimelinePosition")
                             }
                         }
                         writeMethods {
@@ -285,21 +232,47 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                     }
                 }.singleOrNull()
             }
-            val frameLoaderFieldName = resolveFieldName(
-                VIDEO_EDIT_FRAME_LOADER_FIELD_CACHE_KEY,
-                "p",
+            val trimInFieldName = resolveFieldName(
+                VIDEO_EDIT_TRIM_IN_FIELD_CACHE_KEY,
             ) {
                 findField {
                     searchPackages("com.android.thememanager.videoedit")
                     matcher {
                         declaredClass = videoEditPoint.className
-                        type = "com.android.thememanager.videoedit.y"
+                        type = "long"
+                        readMethods {
+                            add {
+                                declaredClass = videoEditPoint.className
+                                name = videoEditPoint.methodName
+                                paramCount(0)
+                                returnType = "void"
+                                usingStrings("onPlayViewCreated")
+                            }
+                            add {
+                                declaredClass = videoEditPoint.className
+                                paramCount(1)
+                                returnType = "void"
+                                usingStrings("onPlayTimelinePosition")
+                            }
+                        }
+                    }
+                }.singleOrNull { it.name != trimOutFieldName }
+            }
+            val frameLoaderFieldName = resolveFieldName(
+                VIDEO_EDIT_FRAME_LOADER_FIELD_CACHE_KEY,
+            ) {
+                findField {
+                    searchPackages("com.android.thememanager.videoedit")
+                    matcher {
+                        declaredClass = videoEditPoint.className
+                        type {
+                            usingStrings("MiVideoFrameLoader")
+                        }
                     }
                 }.singleOrNull()
             }
             val clipFrameFieldName = resolveFieldName(
                 VIDEO_EDIT_CLIP_FRAME_FIELD_CACHE_KEY,
-                "g",
             ) {
                 findField {
                     searchPackages("com.android.thememanager.videoedit")
@@ -311,20 +284,19 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
             }
             val clipListenerFieldName = resolveFieldName(
                 VIDEO_EDIT_CLIP_LISTENER_FIELD_CACHE_KEY,
-                "j",
             ) {
                 findField {
                     searchPackages("com.android.thememanager.videoedit")
                     matcher {
                         declaredClass = videoEditPoint.className
-                        type =
-                            $$"com.android.thememanager.videoedit.widget.ClipFrameView$zy"
+                        type {
+                            modifiers = Modifier.INTERFACE
+                        }
                     }
                 }.singleOrNull()
             }
             val videoUriFieldName = resolveFieldName(
                 VIDEO_EDIT_VIDEO_URI_FIELD_CACHE_KEY,
-                "y",
             ) {
                 findField {
                     searchPackages("com.android.thememanager.videoedit")
@@ -339,37 +311,38 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                                 returnType = "void"
                                 usingStrings("onPlayViewCreated")
                             }
-                            add {
-                                declaredClass = fpsLimitPoint.className
-                                name = fpsLimitPoint.methodName
-                                paramCount(0)
-                                returnType = "void"
-                                usingStrings("ExportConfig %s", "export videopath is ")
-                            }
                         }
                     }
-                }.singleOrNull()
+                }.let {
+                    it.forEach {
+                        YLog.info("Field ${it.className} ${it.name}")
+                    }
+                    it.singleOrNull()
+                }
             }
             val exportPathFieldName = resolveFieldName(
                 VIDEO_EDIT_EXPORT_PATH_FIELD_CACHE_KEY,
-                "c",
             ) {
                 findField {
                     searchPackages("com.android.thememanager.videoedit")
                     matcher {
                         declaredClass = videoEditPoint.className
                         type = "java.lang.String"
-                        writeMethods {
+                        readMethods {
                             add {
-                                declaredClass = fpsLimitPoint.className
-                                name = fpsLimitPoint.methodName
+                                declaredClass = videoEditPoint.className
                                 paramCount(0)
                                 returnType = "void"
-                                usingStrings("ExportConfig %s", "export videopath is ")
+                                usingStrings("onExportSuccess")
                             }
                         }
                     }
-                }.singleOrNull()
+                }.let {
+                    it.forEach {
+                        YLog.info("Field ${it.className} ${it.name}")
+                    }
+                    it.singleOrNull()
+                }
             }
 
             val durationCropMatchResult = resolveDexKitClassValue(
@@ -623,7 +596,7 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                     usingStrings("onPlayViewCreated")
                 }
             }.singleOrNull()
-        } ?: DexKitMethodInjectionPoint(FALLBACK_VIDEO_EDIT_ACTIVITY_CLASS, "nsb")
+        } ?: error("Failed to find video edit play created method")
     }
 
     private fun resolveVideoEditFpsLimitMethod(
@@ -645,7 +618,7 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                     usingStrings("ExportConfig %s", "export videopath is ")
                 }
             }.singleOrNull()
-        } ?: DexKitMethodInjectionPoint(FALLBACK_VIDEO_EDIT_FPS_RUNNABLE_CLASS, "run")
+        } ?: error("Failed to find edit fps limit method")
     }
 
     private fun resolveVideoEditorConfigBuildMethod(
@@ -665,7 +638,7 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                     returnType = "com.android.thememanager.videoedit.VideoEditorConfig"
                 }
             }.singleOrNull()
-        } ?: DexKitMethodInjectionPoint(FALLBACK_VIDEO_EDITOR_CONFIG_BUILDER_CLASS, "k")
+        } ?: error("Failed to find video editor config build method")
     }
 
     private fun resolveVideoDepthCheckMethod(
@@ -684,12 +657,13 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                     name = "invokeSuspend"
                     paramCount(1)
                     usingStrings(
+                        "VideoWallpaperInterceptor",
                         "checkVideo: gallery return data is null",
                         "checkVideo: is horizontal video",
                     )
                 }
             }.singleOrNull()
-        } ?: DexKitMethodInjectionPoint(FALLBACK_VIDEO_DEPTH_CHECK_CLASS, "invokeSuspend")
+        } ?: error("Failed to find depth check method")
     }
 
     private fun computeExportOutputSize(
@@ -709,8 +683,6 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
     private inline fun resolveCachedMethodPoint(
         bridge: DexKitCacheBridge.RecyclableBridge,
         cacheKey: String,
-        fallbackClass: String,
-        fallbackMethod: String,
         crossinline finder: DexKitBridge.() -> org.luckypray.dexkit.result.MethodData?,
     ): DexKitMethodInjectionPoint {
         return resolveDexKitMethodInjectionPoint(
@@ -718,7 +690,7 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
             cacheKey = cacheKey,
         ) {
             finder()
-        } ?: DexKitMethodInjectionPoint(fallbackClass, fallbackMethod)
+        } ?: error("Failed to find method for $cacheKey")
     }
 
     private fun resolveVideoTimelineGetInstanceMethod(
@@ -727,8 +699,6 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
         return resolveCachedMethodPoint(
             bridge = bridge,
             cacheKey = VIDEO_TIMELINE_GET_INSTANCE_METHOD_CACHE_KEY,
-            fallbackClass = FALLBACK_VIDEO_TIMELINE_CLASS,
-            fallbackMethod = "q",
         ) {
             // DexKit source anchor:
             // .tmp-ref/thememanager-jadx/sources/com/android/thememanager/videoedit/widget/s.java:39
@@ -736,10 +706,8 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
             findMethod {
                 searchPackages("com.android.thememanager.videoedit.widget")
                 matcher {
-                    declaredClass = FALLBACK_VIDEO_TIMELINE_CLASS
                     modifiers = Modifier.PUBLIC or Modifier.STATIC or Modifier.SYNCHRONIZED
                     paramCount(0)
-                    returnType = FALLBACK_VIDEO_TIMELINE_CLASS
                 }
             }.singleOrNull()
         }
@@ -751,8 +719,6 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
         return resolveCachedMethodPoint(
             bridge = bridge,
             cacheKey = VIDEO_TIMELINE_ATTACH_TEXTURE_METHOD_CACHE_KEY,
-            fallbackClass = FALLBACK_VIDEO_TIMELINE_CLASS,
-            fallbackMethod = "k",
         ) {
             // DexKit source anchor:
             // .tmp-ref/thememanager-jadx/sources/com/android/thememanager/videoedit/widget/s.java:72
@@ -760,7 +726,6 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
             findMethod {
                 searchPackages("com.android.thememanager.videoedit.widget")
                 matcher {
-                    declaredClass = FALLBACK_VIDEO_TIMELINE_CLASS
                     paramTypes(
                         "com.xiaomi.milab.videosdk.XmsTextureView",
                         "com.android.thememanager.videoedit.VideoEditorConfig",
@@ -773,13 +738,12 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
     }
 
     private fun resolveVideoTimelineGetDurationMethod(
+        clz: String,
         bridge: DexKitCacheBridge.RecyclableBridge,
     ): DexKitMethodInjectionPoint {
         return resolveCachedMethodPoint(
             bridge = bridge,
             cacheKey = VIDEO_TIMELINE_GET_DURATION_METHOD_CACHE_KEY,
-            fallbackClass = FALLBACK_VIDEO_TIMELINE_CLASS,
-            fallbackMethod = "zy",
         ) {
             // DexKit source anchor:
             // .tmp-ref/thememanager-jadx/sources/com/android/thememanager/videoedit/widget/s.java:167
@@ -787,7 +751,7 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
             findMethod {
                 searchPackages("com.android.thememanager.videoedit.widget")
                 matcher {
-                    declaredClass = FALLBACK_VIDEO_TIMELINE_CLASS
+                    declaredClass = clz
                     paramCount(0)
                     returnType = "long"
                 }
@@ -801,8 +765,6 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
         return resolveCachedMethodPoint(
             bridge = bridge,
             cacheKey = VIDEO_TIMELINE_PREPARE_METHOD_CACHE_KEY,
-            fallbackClass = FALLBACK_VIDEO_TIMELINE_CLASS,
-            fallbackMethod = "s",
         ) {
             // DexKit source anchor:
             // .tmp-ref/thememanager-jadx/sources/com/android/thememanager/videoedit/widget/s.java:148
@@ -810,7 +772,6 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
             findMethod {
                 searchPackages("com.android.thememanager.videoedit.widget")
                 matcher {
-                    declaredClass = FALLBACK_VIDEO_TIMELINE_CLASS
                     paramTypes("int")
                     returnType = "void"
                     usingStrings("prepareTimeline")
@@ -825,8 +786,6 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
         return resolveCachedMethodPoint(
             bridge = bridge,
             cacheKey = VIDEO_TIMELINE_EXPORT_METHOD_CACHE_KEY,
-            fallbackClass = FALLBACK_VIDEO_TIMELINE_CLASS,
-            fallbackMethod = "toq",
         ) {
             // DexKit source anchor:
             // .tmp-ref/thememanager-jadx/sources/com/android/thememanager/videoedit/widget/s.java:153
@@ -834,11 +793,10 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
             findMethod {
                 searchPackages("com.android.thememanager.videoedit.widget")
                 matcher {
-                    declaredClass = FALLBACK_VIDEO_TIMELINE_CLASS
                     paramTypes(
                         "long",
                         "long",
-                        "com.android.thememanager.videoedit.entity.toq",
+                        null
                     )
                     returnType = "void"
                 }
@@ -852,8 +810,6 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
         return resolveCachedMethodPoint(
             bridge = bridge,
             cacheKey = VIDEO_TOAST_TEXT_METHOD_CACHE_KEY,
-            fallbackClass = FALLBACK_VIDEO_TOAST_UTILS_CLASS,
-            fallbackMethod = "q",
         ) {
             // DexKit source anchor:
             // .tmp-ref/thememanager-jadx/sources/com/android/thememanager/basemodule/utils/nmn5.java:33
@@ -861,12 +817,24 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
             findMethod {
                 searchPackages("com.android.thememanager.basemodule.utils")
                 matcher {
-                    declaredClass = FALLBACK_VIDEO_TOAST_UTILS_CLASS
                     modifiers = Modifier.PUBLIC or Modifier.STATIC
                     paramTypes(String::class.java)
                     returnType = "void"
+                    invokeMethods {
+                        add {
+                            declaredClass = "android.widget.Toast"
+                        }
+                        add {
+                            declaredClass = "android.text.TextUtils"
+                        }
+                    }
                 }
-            }.singleOrNull()
+            }.let {
+                it.forEach {
+                    YLog.info("method ${it.className} ${it.name}")
+                }
+                it.singleOrNull()
+            }
         }
     }
 
@@ -876,8 +844,6 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
         return resolveCachedMethodPoint(
             bridge = bridge,
             cacheKey = VIDEO_OPERATION_CURRENT_TIME_METHOD_CACHE_KEY,
-            fallbackClass = FALLBACK_VIDEO_OPERATION_VIEW_CLASS,
-            fallbackMethod = "d2ok",
         ) {
             // DexKit source anchor:
             // .tmp-ref/thememanager-jadx/sources/com/android/thememanager/videoedit/widget/SingleEditOperationView.java:55
@@ -885,11 +851,12 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
             findMethod {
                 searchPackages("com.android.thememanager.videoedit.widget")
                 matcher {
-                    declaredClass = FALLBACK_VIDEO_OPERATION_VIEW_CLASS
+                    declaredClass =
+                        "com.android.thememanager.videoedit.widget.SingleEditOperationView"
                     paramTypes("long")
                     returnType = "void"
                 }
-            }.singleOrNull()
+            }.singleOrNull { it.name != "setTotalTime" }
         }
     }
 
@@ -899,8 +866,6 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
         return resolveCachedMethodPoint(
             bridge = bridge,
             cacheKey = VIDEO_CLIP_FRAME_LOAD_METHOD_CACHE_KEY,
-            fallbackClass = FALLBACK_VIDEO_CLIP_FRAME_VIEW_CLASS,
-            fallbackMethod = "x2",
         ) {
             // DexKit source anchor:
             // .tmp-ref/thememanager-jadx/sources/com/android/thememanager/videoedit/widget/ClipFrameView.java:138
@@ -908,7 +873,7 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
             findMethod {
                 searchPackages("com.android.thememanager.videoedit.widget")
                 matcher {
-                    declaredClass = FALLBACK_VIDEO_CLIP_FRAME_VIEW_CLASS
+                    declaredClass = "com.android.thememanager.videoedit.widget.ClipFrameView"
                     paramTypes("java.lang.String", "long", "long")
                     returnType = "void"
                 }
@@ -922,8 +887,6 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
         return resolveCachedMethodPoint(
             bridge = bridge,
             cacheKey = VIDEO_HASH_STRING_METHOD_CACHE_KEY,
-            fallbackClass = FALLBACK_VIDEO_CODER_UTILS_CLASS,
-            fallbackMethod = "zy",
         ) {
             // DexKit source anchor:
             // .tmp-ref/thememanager-jadx/sources/com/android/thememanager/basemodule/utils/CoderUtls.java:73
@@ -931,7 +894,7 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
             findMethod {
                 searchPackages("com.android.thememanager.basemodule.utils")
                 matcher {
-                    declaredClass = FALLBACK_VIDEO_CODER_UTILS_CLASS
+                    declaredClass = "com.android.thememanager.basemodule.utils.CoderUtls"
                     modifiers = Modifier.PUBLIC or Modifier.STATIC or Modifier.FINAL
                     paramTypes(String::class.java)
                     returnType = "java.lang.String"
@@ -946,8 +909,6 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
         return resolveCachedMethodPoint(
             bridge = bridge,
             cacheKey = VIDEO_EXPORT_CONFIG_SET_FPS_METHOD_CACHE_KEY,
-            fallbackClass = FALLBACK_VIDEO_EXPORT_CONFIG_CLASS,
-            fallbackMethod = "kja0",
         ) {
             // DexKit source anchor:
             // .tmp-ref/thememanager-jadx/sources/com/android/thememanager/videoedit/entity/toq.java:76
@@ -955,9 +916,21 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
             findMethod {
                 searchPackages("com.android.thememanager.videoedit.entity")
                 matcher {
-                    declaredClass = FALLBACK_VIDEO_EXPORT_CONFIG_CLASS
                     paramTypes("int")
                     returnType = "void"
+                    usingFields {
+                        add {
+                            annotations {
+                                add {
+                                    type = "com.google.gson.annotations.SerializedName"
+                                    addElement {
+                                        name = "value"
+                                        stringValue("fps")
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }.singleOrNull()
         }
@@ -969,8 +942,6 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
         return resolveCachedMethodPoint(
             bridge = bridge,
             cacheKey = VIDEO_GSON_SERIALIZE_METHOD_CACHE_KEY,
-            fallbackClass = FALLBACK_VIDEO_GSON_UTILS_CLASS,
-            fallbackMethod = "g",
         ) {
             // DexKit source anchor:
             // .tmp-ref/thememanager-jadx/sources/com/android/thememanager/library/util/app/GsonUtils.java:142
@@ -978,7 +949,7 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
             findMethod {
                 searchPackages("com.android.thememanager.library.util.app")
                 matcher {
-                    declaredClass = FALLBACK_VIDEO_GSON_UTILS_CLASS
+                    declaredClass = "com.android.thememanager.library.util.app.GsonUtils"
                     modifiers = Modifier.PUBLIC or Modifier.STATIC
                     paramTypes(Any::class.java)
                     returnType = "java.lang.String"

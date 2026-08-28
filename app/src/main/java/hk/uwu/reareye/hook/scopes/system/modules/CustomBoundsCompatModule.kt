@@ -8,9 +8,9 @@ import android.graphics.Point
 import android.graphics.Rect
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
-import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.highcapable.yukihookapi.hook.log.YLog
 import hk.uwu.reareye.BuildConfig
+import hk.uwu.reareye.hook.core.YLog
+import hk.uwu.reareye.hook.core.YukiBaseHooker
 import hk.uwu.reareye.repository.bounds.CustomBoundsCompatAppConfig
 import hk.uwu.reareye.repository.bounds.CustomBoundsCompatConfigCodec
 import hk.uwu.reareye.repository.bounds.CustomBoundsFillMode
@@ -284,7 +284,9 @@ class CustomBoundsCompatModule : YukiBaseHooker() {
     ): ColorCandidate? = runCatching {
         themeColorUtilsClass ?: return@runCatching null
         val attrsClass = $$"com.android.server.wm.ThemeColorUtils$SplashScreenWindowAttrs".toClass(
-            themeColorUtilsClass.classLoader
+            requireNotNull(themeColorUtilsClass.classLoader) {
+                "ThemeColorUtils class loader is unavailable"
+            }
         )
         val attrs = attrsClass.getDeclaredConstructor()
             .apply { isAccessible = true }

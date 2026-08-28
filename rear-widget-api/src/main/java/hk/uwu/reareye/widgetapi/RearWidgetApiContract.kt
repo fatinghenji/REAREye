@@ -19,6 +19,7 @@ object RearWidgetApiContract {
         const val REGISTER_SCENE_ROUTE = "register_scene_route"
         const val UNREGISTER_SCENE_ROUTE = "unregister_scene_route"
         const val DISABLE_DISPLAY = "disable_display"
+        const val DISABLE_CARD_DISPLAY = "disable_card_display"
         const val POST = "post"
         const val UPDATE = "update"
         const val REMOVE = "remove"

@@ -1,7 +1,7 @@
 package hk.uwu.reareye.hook.scopes.subscreencenter
 
-import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.hook.core.HookModule
+import hk.uwu.reareye.hook.core.YLog
 import hk.uwu.reareye.hook.scopes.Scope
 import hk.uwu.reareye.hook.scopes.subscreencenter.modules.MusicControlWhitelistModule
 import hk.uwu.reareye.hook.scopes.subscreencenter.modules.RearWallpaperHook
@@ -15,7 +15,7 @@ import hk.uwu.reareye.hook.scopes.subscreencenter.modules.rearwidget.RearWidgetH
 import hk.uwu.reareye.hook.scopes.subscreencenter.modules.rearwidget.SystemUiNotificationBridgeHook
 
 class SubscreenCenterScope : Scope {
-    override val hooks: List<YukiBaseHooker> = buildList {
+    override val hooks: List<HookModule> = buildList {
         if (isRearDevice) {
             addAll(
                 listOf(

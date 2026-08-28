@@ -2,8 +2,8 @@ package hk.uwu.reareye.hook.scopes.subscreencenter.modules.rearwidget
 
 import android.os.Bundle
 import com.highcapable.kavaref.KavaRef.Companion.resolve
-import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.highcapable.yukihookapi.hook.log.YLog
+import hk.uwu.reareye.hook.core.YLog
+import hk.uwu.reareye.hook.core.YukiBaseHooker
 import hk.uwu.reareye.hook.utils.createDexKitCacheBridge
 import hk.uwu.reareye.hook.utils.resolveDexKitMethodValue
 import hk.uwu.reareye.hook.utils.resolveHookPackageVersionCode
@@ -26,11 +26,13 @@ class ExtraTimeTipHook : YukiBaseHooker() {
                 appInfo.packageName,
                 appInfo.sourceDir,
             )
-            val bridge = createDexKitCacheBridge(
+            val bridge = trackResource(
+                createDexKitCacheBridge(
                 packageName = appInfo.packageName,
                 packageVersionCode = versionCode,
                 sourceDir = appInfo.sourceDir,
                 dataDir = appInfo.dataDir,
+                )
             )
             val clz = resolveWidgetSpecClass(bridge).toClass().resolve()
             clz.constructor().build().hookAll().before {

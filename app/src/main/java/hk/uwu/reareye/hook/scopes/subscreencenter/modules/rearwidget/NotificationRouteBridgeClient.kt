@@ -38,6 +38,12 @@ internal class NotificationRouteBridgeClient :
         drainPendingDispatches()
     }
 
+    override fun onUnbound() {
+        synchronized(queueLock) {
+            pendingDispatches.clear()
+        }
+    }
+
     fun bind(
         context: Context,
         onConnected: (() -> Unit)? = null,

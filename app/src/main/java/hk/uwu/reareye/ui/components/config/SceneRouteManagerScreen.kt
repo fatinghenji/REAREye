@@ -1,6 +1,7 @@
 package hk.uwu.reareye.ui.components.config
 
 import android.annotation.SuppressLint
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,7 +47,9 @@ import hk.uwu.reareye.ui.components.card.ModuleStyleIconAction
 import hk.uwu.reareye.ui.components.card.ModuleStyleManagerCard
 import hk.uwu.reareye.ui.components.card.SuperCard
 import hk.uwu.reareye.ui.components.motion.ArtRevealItem
+import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.PrefsManager
+import hk.uwu.reareye.ui.config.rememberRemotePrefsStatusRevision
 import hk.uwu.reareye.ui.theme.rearAcrylicEffect
 import hk.uwu.reareye.ui.theme.rearAcrylicSource
 import hk.uwu.reareye.ui.theme.rememberAcrylicHazeState
@@ -71,6 +74,8 @@ import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
+private const val REAR_WIDGET_DEBUG_TAG = "RearWidgetDebug"
+
 @SuppressLint("LocalContextGetResourceValueCall")
 @Composable
 fun SceneRouteManagerScreen(
@@ -86,11 +91,18 @@ fun SceneRouteManagerScreen(
     val routes = remember { mutableStateListOf<RearWidgetSceneRouteConfig>() }
     var loaded by remember { mutableStateOf(false) }
     var dataCardsVisible by remember { mutableStateOf(false) }
+    val remotePrefsStatusRevision = rememberRemotePrefsStatusRevision()
     var showDialog by remember { mutableStateOf(false) }
     var editingId by remember { mutableStateOf<String?>(null) }
     var draftPackageName by remember { mutableStateOf("") }
     var draftScene by remember { mutableStateOf("") }
     var draftBusiness by remember { mutableStateOf("") }
+
+    fun debugLog(message: String) {
+        if (prefsManager.getBoolean(ConfigKeys.MORE_DEBUG, false)) {
+            Log.d(REAR_WIDGET_DEBUG_TAG, message)
+        }
+    }
 
     fun replaceRoutes(nextRoutes: List<RearWidgetSceneRouteConfig>) {
         routes.clear()
@@ -105,13 +117,21 @@ fun SceneRouteManagerScreen(
         )
     }
 
-    LaunchedEffect(Unit) {
-        delay(220)
-        replaceRoutes(
-            withContext(Dispatchers.IO) {
-                RearWidgetManagerRepository.loadSceneRoutes(prefsManager)
+    LaunchedEffect(prefsManager, remotePrefsStatusRevision) {
+        val remoteReady = withContext(Dispatchers.IO) { prefsManager.isRemoteReady() }
+        if (!remoteReady) {
+            if (routes.isEmpty()) {
+                loaded = false
+                dataCardsVisible = false
             }
-        )
+            return@LaunchedEffect
+        }
+
+        delay(220)
+        val loadedRoutes = withContext(Dispatchers.IO) {
+            RearWidgetManagerRepository.loadSceneRoutes(prefsManager)
+        }
+        replaceRoutes(loadedRoutes)
         loaded = true
         delay(90)
         dataCardsVisible = true
@@ -247,7 +267,8 @@ fun SceneRouteManagerScreen(
                                         )
                                     }
                                     Button(
-                                        onClick = { openCreateDialog() },
+                                        onClick = { if (loaded) openCreateDialog() },
+                                        enabled = loaded,
                                         colors = ButtonDefaults.buttonColorsPrimary(),
                                         modifier = Modifier.fillMaxWidth(),
                                     ) {
