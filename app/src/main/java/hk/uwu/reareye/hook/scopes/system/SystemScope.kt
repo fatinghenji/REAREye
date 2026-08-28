@@ -10,8 +10,8 @@ import hk.uwu.reareye.hook.scopes.system.modules.DisableRearScreenCoverHook
 import hk.uwu.reareye.hook.scopes.system.modules.DisableSubScreenDoubleTapSleepHook
 import hk.uwu.reareye.hook.scopes.system.modules.DisableSubScreenDoubleTapWakeHook
 import hk.uwu.reareye.hook.scopes.system.modules.DisableSubScreenHighLoadModeHook
+import hk.uwu.reareye.hook.scopes.system.modules.NativeEnvWriterHook
 import hk.uwu.reareye.hook.scopes.system.modules.RearScreenActivityWhitelistModule
-import hk.uwu.reareye.hook.scopes.system.modules.RustWrapperLaunchHook
 import hk.uwu.reareye.hook.scopes.system.modules.misc.GMSUnlockModule
 
 class SystemScope : Scope {
@@ -21,7 +21,7 @@ class SystemScope : Scope {
         if (AppProperties.IS_PUBLIC_BETA) {
             YLog.debug("Public beta build, skip native cpp hooks")
         } else {
-            add(RustWrapperLaunchHook())
+            add(NativeEnvWriterHook())
         }
         if (isRearDevice) {
             addAll(

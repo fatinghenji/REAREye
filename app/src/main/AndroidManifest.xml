@@ -21,6 +21,8 @@
         android:name=".application.DefaultApplication"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:extractNativeLibs="false"
+        android:multiArch="true"
         android:supportsRtl="true"
         android:theme="@style/Theme.AppDefault">
 

@@ -1,10 +1,7 @@
 package hk.uwu.reareye.hook.scopes.system.modules
 
 import android.annotation.SuppressLint
-import android.content.pm.ApplicationInfo
-import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
-import hk.uwu.reareye.BuildConfig
 import hk.uwu.reareye.hook.core.HookPrefs
 import hk.uwu.reareye.hook.core.YLog
 import hk.uwu.reareye.hook.core.YukiBaseHooker
@@ -12,11 +9,21 @@ import hk.uwu.reareye.ui.config.ConfigKeys
 import java.io.File
 import java.util.zip.ZipFile
 
-class RustWrapperLaunchHook : YukiBaseHooker() {
+/**
+ * HyperOS Runtime 应用（天气/相册）的 native hook 配置写入器。
+ *
+ * 注入本身由 LSPosed Native Hook 完成（assets/native_init + native_init，进程无 ART，
+ * 不经过 Java）；本 hook 只在 system_server 启动目标进程前把 UI 开关写入
+ * reareye_<module>.env，供 native 端读取。不再改写启动二进制、不再提取模块 wrapper so。
+ */
+class NativeEnvWriterHook : YukiBaseHooker() {
+    override val reloadable: Boolean
+        get() = false
+
     override fun onHook() {
         loadSystem {
             runCatching {
-                YLog.debug("Rust wrapper launch hook installing")
+                YLog.debug("Native env writer hook installing")
                 val rustProcessClass = "android.os.RustProcessImpl".toClass().resolve()
                 rustProcessClass.firstMethod {
                     name = "startRustProcess"
@@ -46,131 +53,98 @@ class RustWrapperLaunchHook : YukiBaseHooker() {
                         Long::class.javaPrimitiveType!! // seq
                     )
                 }.hook().before {
-                    YLog.debug("Rust wrapper startRustProcess called args=${args.size}")
-                    if (args.size <= ENVS_INDEX) {
-                        YLog.debug("Rust wrapper skip reason=args_size size=${args.size}")
+                    YLog.debug("Native env writer startRustProcess called args=${args.size}")
+                    if (args.size <= BINARY_INDEX) {
+                        YLog.debug("Native env writer skip reason=args_size size=${args.size}")
                         return@before
                     }
                     val packageName = args[PACKAGE_INDEX] as? String ?: run {
-                        YLog.debug("Rust wrapper skip reason=package_null")
+                        YLog.debug("Native env writer skip reason=package_null")
                         return@before
                     }
                     val originalBinary = args[BINARY_INDEX] as? String ?: run {
-                        YLog.debug("Rust wrapper skip package=$packageName reason=binary_null")
+                        YLog.debug("Native env writer skip package=$packageName reason=binary_null")
                         return@before
                     }
                     val abi = args[ABI_INDEX] as? String ?: ABI_ARM64
                     val originalEnv = args[ENVS_INDEX] as? String
                     YLog.debug(
-                        "Rust wrapper candidate package=$packageName abi=$abi binary=$originalBinary " +
+                        "Native env writer candidate package=$packageName abi=$abi binary=$originalBinary " +
                                 "env=${originalEnv.orEmpty()}"
                     )
                     val spec = WrapperRegistry.find(packageName, originalBinary) ?: run {
-                        YLog.debug("Rust wrapper skip package=$packageName reason=no_spec")
+                        YLog.debug("Native env writer skip package=$packageName reason=no_spec")
                         return@before
                     }
-                    val prepared = prepareWrapper(spec, originalBinary, abi) ?: run {
-                        YLog.debug("Rust wrapper skip package=$packageName reason=prepare_failed")
+                    val envDir = resolveEnvTargetDir(originalBinary, abi, spec) ?: run {
+                        YLog.debug(
+                            "Native env writer skip package=$packageName reason=env_dir_unresolved"
+                        )
                         return@before
                     }
                     val envValues =
-                        spec.envProvider(prefs, originalBinary, prepared.originalBinaryForWrapper)
-                    writeModuleEnv(
-                        File(prepared.wrapperBinary).parentFile,
-                        spec.moduleId,
-                        envValues
-                    )
+                        spec.envProvider(prefs, originalBinary, originalBinary)
+                    writeModuleEnv(envDir, spec.moduleId, envValues)
 
-                    args[BINARY_INDEX] = prepared.wrapperBinary
                     YLog.debug(
-                        "Rust wrapper injected package=$packageName wrapper=${prepared.wrapperBinary} " +
-                                "original=${prepared.originalBinaryForWrapper} moduleEnv=true envUnchanged=${originalEnv.orEmpty()}"
+                        "Native env writer wrote package=$packageName dir=${envDir.absolutePath} " +
+                                "moduleEnv=true envUnchanged=${originalEnv.orEmpty()}"
                     )
                 }
-                YLog.debug("Rust wrapper launch hook installed")
+                YLog.debug("Native env writer hook installed")
             }.onFailure {
                 YLog.warn(it)
             }
         }
     }
 
-    private fun prepareWrapper(
-        spec: WrapperSpec,
+    /**
+     * 解析 env 文件落盘目录。
+     *
+     * - zip 型 binary（xxx.apk!/lib/<abi>/libxxx.so）：提取一份原始 so 到真实文件路径，
+     *   保证目标进程 /proc/self/maps 中出现可解析的真实库路径（native 端据此锚定 env 目录）。
+     * - 普通文件型 binary：直接使用其父目录（现行为）。
+     */
+    private fun resolveEnvTargetDir(
         originalBinary: String,
-        abi: String
-    ): PreparedWrapper? {
-        YLog.debug("Rust wrapper prepare start package=${spec.packageName} binary=$originalBinary abi=$abi")
+        abi: String,
+        spec: EnvSpec,
+    ): File? {
         val originalArchiveOrFile = originalBinary.substringBefore('!').let(::File)
         val isZipBinary = originalBinary.contains("!/")
-        val targetDir = if (isZipBinary) {
-            File(
+        return if (isZipBinary) {
+            val targetDir = File(
                 File(originalArchiveOrFile.parentFile ?: return null, "lib"),
                 abi.toInstalledLibDirName()
             )
-        } else {
-            originalArchiveOrFile.parentFile ?: return null
-        }
-        YLog.debug("Rust wrapper targetDir=${targetDir.absolutePath} zipBinary=$isZipBinary sameDir=true")
-        if (!targetDir.exists() && !targetDir.mkdirs()) {
-            YLog.debug("Rust wrapper mkdir failed dir=${targetDir.absolutePath}")
-            return null
-        }
-
-        val originalBinaryForWrapper = if (isZipBinary) {
+            YLog.debug(
+                "Native env writer targetDir=${targetDir.absolutePath} zipBinary=true"
+            )
+            if (!targetDir.exists() && !targetDir.mkdirs()) {
+                YLog.debug("Native env writer mkdir failed dir=${targetDir.absolutePath}")
+                return null
+            }
             val extractedOriginal = File(targetDir, spec.originalLibName)
             if (!extractEntry(
                     originalArchiveOrFile,
                     "lib/$abi/${spec.originalLibName}",
                     extractedOriginal,
-                    executable = false
                 )
             ) {
                 return null
             }
-            extractedOriginal.absolutePath
+            targetDir
         } else {
-            originalArchiveOrFile.absolutePath
-        }
-
-        val moduleInfo = resolveModuleApplicationInfo() ?: run {
-            YLog.debug("Rust wrapper prepare failed reason=module_info_null")
-            return null
-        }
-        val moduleApk = File(moduleInfo.sourceDir ?: return null)
-        val wrapperFile = File(targetDir, spec.wrapperLibName)
-        YLog.debug("Rust wrapper moduleApk=${moduleApk.absolutePath} wrapper=${wrapperFile.absolutePath}")
-        if (!extractEntry(
-                moduleApk,
-                "lib/$abi/${spec.wrapperLibName}",
-                wrapperFile,
-                executable = true
+            val targetDir = originalArchiveOrFile.parentFile ?: return null
+            YLog.debug(
+                "Native env writer targetDir=${targetDir.absolutePath} zipBinary=false"
             )
-        ) {
-            return null
-        }
-
-        spec.dependencyLibNames.forEach { dependency ->
-            val dependencyFile = File(targetDir, dependency)
-            if (!extractEntry(
-                    moduleApk,
-                    "lib/$abi/$dependency",
-                    dependencyFile,
-                    executable = true
-                )
-            ) {
+            if (!targetDir.exists() && !targetDir.mkdirs()) {
+                YLog.debug("Native env writer mkdir failed dir=${targetDir.absolutePath}")
                 return null
             }
+            targetDir
         }
-
-        if (!wrapperFile.canExecute()) wrapperFile.setExecutable(true, false)
-        YLog.debug(
-            "Rust wrapper prepare success wrapper=${wrapperFile.absolutePath} " +
-                    "originalForWrapper=$originalBinaryForWrapper executable=${wrapperFile.canExecute()}"
-        )
-        return PreparedWrapper(
-            wrapperBinary = wrapperFile.absolutePath,
-            originalBinaryForWrapper = originalBinaryForWrapper,
-        )
     }
 
     @SuppressLint("SetWorldReadable")
@@ -178,18 +152,17 @@ class RustWrapperLaunchHook : YukiBaseHooker() {
         apk: File,
         entryName: String,
         outFile: File,
-        executable: Boolean
     ): Boolean {
         return runCatching {
             ZipFile(apk).use { zip ->
                 val entry = zip.getEntry(entryName) ?: run {
-                    YLog.debug("Rust wrapper entry not found apk=${apk.absolutePath} entry=$entryName")
+                    YLog.debug("Native env writer entry not found apk=${apk.absolutePath} entry=$entryName")
                     return false
                 }
                 val shouldWrite = !outFile.exists() || outFile.length() != entry.size ||
                         outFile.lastModified() < apk.lastModified()
                 YLog.debug(
-                    "Rust wrapper extract entry=$entryName out=${outFile.absolutePath} " +
+                    "Native env writer extract entry=$entryName out=${outFile.absolutePath} " +
                             "shouldWrite=$shouldWrite size=${entry.size} exists=${outFile.exists()}"
                 )
                 if (shouldWrite) {
@@ -199,28 +172,12 @@ class RustWrapperLaunchHook : YukiBaseHooker() {
                     }
                     outFile.setReadable(true, false)
                     outFile.setWritable(true, true)
-                    if (executable) outFile.setExecutable(true, false)
                 }
                 true
             }
         }.onFailure {
             YLog.warn(it)
         }.getOrDefault(false)
-    }
-
-    private fun resolveModuleApplicationInfo(): ApplicationInfo? {
-        return runCatching {
-            val activityThreadClass = "android.app.ActivityThread".toClass().resolve()
-            val currentActivityThread = activityThreadClass.firstMethod {
-                name = "currentActivityThread"
-            }.invoke<Any>()
-            val systemContext = currentActivityThread?.asResolver()?.firstMethod {
-                name = "getSystemContext"
-            }?.invoke<android.content.Context>() ?: return null
-            systemContext.packageManager.getApplicationInfo(BuildConfig.APPLICATION_ID, 0)
-        }.onFailure {
-            YLog.warn(it)
-        }.getOrNull()
     }
 
     @SuppressLint("SetWorldReadable")
@@ -236,16 +193,11 @@ class RustWrapperLaunchHook : YukiBaseHooker() {
                 configFile.setReadable(true, false)
                 configFile.setWritable(true, true)
             }
-            YLog.debug("Rust wrapper module env path=${configFile.absolutePath} content=$content")
+            YLog.debug("Native env writer module env path=${configFile.absolutePath} content=$content")
         }.onFailure {
             YLog.warn(it)
         }
     }
-
-    private data class PreparedWrapper(
-        val wrapperBinary: String,
-        val originalBinaryForWrapper: String,
-    )
 
     private fun String.toInstalledLibDirName(): String {
         return when (this) {
@@ -255,12 +207,10 @@ class RustWrapperLaunchHook : YukiBaseHooker() {
         }
     }
 
-    private data class WrapperSpec(
+    private data class EnvSpec(
         val moduleId: String,
         val packageName: String,
         val originalLibName: String,
-        val wrapperLibName: String,
-        val dependencyLibNames: List<String> = emptyList(),
         val envProvider: (HookPrefs, String, String) -> Map<String, String>,
     ) {
         fun matches(packageName: String, originalBinary: String): Boolean {
@@ -271,15 +221,12 @@ class RustWrapperLaunchHook : YukiBaseHooker() {
 
     private object WrapperRegistry {
         private val specs = listOf(
-            WrapperSpec(
+            EnvSpec(
                 moduleId = MODULE_ID_WEATHER,
                 packageName = "com.miui.weather2",
                 originalLibName = "libweather_app.so",
-                wrapperLibName = "libreareye_weather_hook.so",
-                dependencyLibNames = emptyList(),
-            ) { prefs, _, originalForWrapper ->
+            ) { prefs, _, _ ->
                 mapOf(
-                    ENV_ORIGINAL_BINARY to originalForWrapper,
                     ENV_DEVICE_LEVEL to prefs.getInt(ConfigKeys.WEATHER_DEVICE_LEVEL, 0).toString(),
                     ENV_UNLOCK_SUPER_BLUR to if (prefs.getBoolean(
                             ConfigKeys.WEATHER_UNLOCK_SUPER_BLUR,
@@ -288,15 +235,12 @@ class RustWrapperLaunchHook : YukiBaseHooker() {
                     ) "1" else "0"
                 )
             },
-            WrapperSpec(
+            EnvSpec(
                 moduleId = MODULE_ID_GALLERY,
                 packageName = "com.miui.gallery",
                 originalLibName = "libapp_gallery.so",
-                wrapperLibName = "libreareye_gallery_hook.so",
-                dependencyLibNames = emptyList(),
-            ) { prefs, _, originalForWrapper ->
+            ) { prefs, _, _ ->
                 mapOf(
-                    ENV_GALLERY_ORIGINAL_BINARY to originalForWrapper,
                     ENV_GALLERY_BACKUP_SERVER to prefs.getInt(ConfigKeys.GALLERY_BACKUP_SERVER, 0)
                         .toString(),
                     ENV_GALLERY_ENABLE_HDR_ENHANCED to booleanFlag(
@@ -346,7 +290,7 @@ class RustWrapperLaunchHook : YukiBaseHooker() {
             }
         )
 
-        fun find(packageName: String, originalBinary: String): WrapperSpec? {
+        fun find(packageName: String, originalBinary: String): EnvSpec? {
             return specs.firstOrNull { it.matches(packageName, originalBinary) }
         }
     }
@@ -363,10 +307,8 @@ class RustWrapperLaunchHook : YukiBaseHooker() {
         private const val MODULE_ID_WEATHER = "weather"
         private const val MODULE_ID_GALLERY = "gallery"
 
-        private const val ENV_ORIGINAL_BINARY = "REAREYE_WEATHER_ORIGINAL_BINARY"
         private const val ENV_DEVICE_LEVEL = "REAREYE_WEATHER_DEVICE_LEVEL"
         private const val ENV_UNLOCK_SUPER_BLUR = "REAREYE_WEATHER_UNLOCK_SUPER_BLUR"
-        private const val ENV_GALLERY_ORIGINAL_BINARY = "REAREYE_GALLERY_ORIGINAL_BINARY"
         private const val ENV_GALLERY_BACKUP_SERVER = "REAREYE_GALLERY_BACKUP_SERVER"
         private const val ENV_GALLERY_ENABLE_HDR_ENHANCED = "REAREYE_GALLERY_ENABLE_HDR_ENHANCED"
         private const val ENV_GALLERY_ENABLE_PDF = "REAREYE_GALLERY_ENABLE_PDF"
@@ -382,7 +324,6 @@ class RustWrapperLaunchHook : YukiBaseHooker() {
         private const val ENV_GALLERY_ENABLE_PRINT = "REAREYE_GALLERY_ENABLE_PRINT"
         private const val ENV_GALLERY_ENABLE_PRIVACY_WATERMARK =
             "REAREYE_GALLERY_ENABLE_PRIVACY_WATERMARK"
-
 
         private fun booleanFlag(
             prefs: HookPrefs,
