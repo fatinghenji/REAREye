@@ -11,11 +11,36 @@ class RearScreenActivityWhitelistModule : YukiBaseHooker() {
         loadSystem {
             val asiRef = "com.android.server.wm.ActivityStarterImpl".toClass().resolve()
             val activityInfoClz = "android.content.pm.ActivityInfo".toClass()
-            asiRef.firstMethod {
+            val activityRecordClz = "com.android.server.wm.ActivityRecord".toClass()
+            asiRef.firstMethodOrNull {
                 name = "isShouldShowOnRearDisplay"
                 parameters(activityInfoClz)
                 returnType = Boolean::class.java
-            }.hook {
+            }?.hook {
+                before {
+                    if (!prefs.getBoolean(ConfigKeys.HOOK_ACTIVITIES_WHITELIST, true)) return@before
+                    val whitelist = prefs.getStringSet(ConfigKeys.ACTIVITIES_WHITELIST_APPS)
+                    val field = asiRef.firstField {
+                        name = "REAR_SCREEN_METADATA_WHITE_LIST"
+                        type = Set::class.java
+                    }
+                    val set = field.get<HashSet<String>>() ?: return@before
+                    set.clear()
+                    set.add("com.retroarch")
+                    set.addAll(whitelist)
+                    YLog.debug("Injected Activities Whitelist")
+                }
+
+                after {
+                    if (prefs.getBoolean(ConfigKeys.ALLOW_ALL_ACTIVITIES, false)) {
+                        resultTrue()
+                    }
+                }
+            } ?: asiRef.firstMethodOrNull {
+                name = "isShouldShowOnRearDisplay"
+                parameters(activityRecordClz)
+                returnType = Boolean::class.java
+            }?.hook {
                 before {
                     if (!prefs.getBoolean(ConfigKeys.HOOK_ACTIVITIES_WHITELIST, true)) return@before
                     val whitelist = prefs.getStringSet(ConfigKeys.ACTIVITIES_WHITELIST_APPS)
@@ -36,6 +61,7 @@ class RearScreenActivityWhitelistModule : YukiBaseHooker() {
                     }
                 }
             }
+
 
             asiRef.firstMethod {
                 name = "isAllowedToStartOnRearDisplay"
