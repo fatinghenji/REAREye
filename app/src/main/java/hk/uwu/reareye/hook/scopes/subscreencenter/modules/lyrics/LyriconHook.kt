@@ -27,6 +27,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
@@ -37,6 +38,7 @@ import java.lang.reflect.Proxy
 import java.util.Collections
 import java.util.WeakHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 @OptIn(DexKitExperimentalApi::class)
@@ -152,8 +154,8 @@ class LyriconHook : YukiBaseHooker() {
         if (distinctJobs.isEmpty()) return true
         return runCatching {
             runBlocking {
-                withTimeoutOrNull(CANCELLATION_BARRIER_TIMEOUT_MS) {
-                    distinctJobs.forEach { it.join() }
+                withTimeoutOrNull(CANCELLATION_BARRIER_TIMEOUT_MS.milliseconds) {
+                    distinctJobs.joinAll()
                     true
                 } ?: false
             }
@@ -771,7 +773,8 @@ class LyriconHook : YukiBaseHooker() {
             }.invoke()
         }
 
-        val interval = (element.readField<Int>("mUpdateProgressInterval") ?: 0).toLong()
+        val interval = (element.readFieldOrNull<Int>("mUpdateProgressInterval")
+            ?: element.readFieldOrNull<Int>("mProgressInterval") ?: 0).toLong()
             .coerceAtLeast(MIN_PROGRESS_INTERVAL_MS)
         val lyric = element.readFieldValue("mLyric")
         val cache = lyric?.let { getOrBuildLyricCache(element, it) }
@@ -785,7 +788,7 @@ class LyriconHook : YukiBaseHooker() {
         val safeDelay = delayMs.coerceAtLeast(0L)
         val job = mainScope.launch {
             if (safeDelay > 0L) {
-                delay(safeDelay)
+                delay(safeDelay.milliseconds)
             }
             runManagedProgressTick(element)
         }
@@ -836,7 +839,8 @@ class LyriconHook : YukiBaseHooker() {
         setIndexedVariable(element.readFieldValue("mLyricPrevVar"), snapshot.lastText)
         setIndexedVariable(element.readFieldValue("mLyricNextVar"), snapshot.nextText)
         setIndexedVariable(
-            element.readFieldValue("mLyricCurrentLineProgressVar"),
+            element.readFieldOrNull("mLyricCurrentLineProgressVar")
+                ?: element.readFieldOrNull("mLyricProgressVar"),
             snapshot.lineProgress
         )
         state.lastLineIndex = snapshot.lineIndex
@@ -980,6 +984,10 @@ class LyriconHook : YukiBaseHooker() {
 
     private inline fun <reified T> Any.readField(name: String): T? {
         return asResolver().firstField { this.name = name }.get<T>()
+    }
+
+    private inline fun <reified T> Any.readFieldOrNull(name: String): T? {
+        return asResolver().optional(silent = true).firstFieldOrNull { this.name = name }?.get<T>()
     }
 
     private fun Any.readSuperFieldValue(name: String): Any? {

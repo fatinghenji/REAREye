@@ -12,7 +12,7 @@ class RearScreenActivityWhitelistModule : YukiBaseHooker() {
             val asiRef = "com.android.server.wm.ActivityStarterImpl".toClass().resolve()
             val activityInfoClz = "android.content.pm.ActivityInfo".toClass()
             val activityRecordClz = "com.android.server.wm.ActivityRecord".toClass()
-            asiRef.firstMethodOrNull {
+            asiRef.optional().firstMethodOrNull {
                 name = "isShouldShowOnRearDisplay"
                 parameters(activityInfoClz)
                 returnType = Boolean::class.java
@@ -36,7 +36,7 @@ class RearScreenActivityWhitelistModule : YukiBaseHooker() {
                         resultTrue()
                     }
                 }
-            } ?: asiRef.firstMethodOrNull {
+            } ?: asiRef.optional().firstMethodOrNull {
                 name = "isShouldShowOnRearDisplay"
                 parameters(activityRecordClz)
                 returnType = Boolean::class.java
