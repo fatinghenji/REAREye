@@ -14,8 +14,6 @@ import org.luckypray.dexkit.annotations.DexKitExperimentalApi
 class UnlockTemplateMaximumLimitHook : YukiBaseHooker() {
     companion object {
         private const val REAR_DETAIL_VIEW_MODEL_CLASS_CACHE_KEY = "TM_REAR_DETAIL_VIEW_MODEL_CLASS"
-        private const val FALLBACK_REAR_DETAIL_VIEW_MODEL_CLASS =
-            "com.rearScreen.viewModel.RearScreenDetailViewModel"
     }
 
     override fun onHook() {
@@ -62,6 +60,6 @@ class UnlockTemplateMaximumLimitHook : YukiBaseHooker() {
                     )
                 }
             }.singleOrNull()
-        } ?: FALLBACK_REAR_DETAIL_VIEW_MODEL_CLASS
+        } ?: error("DexKit failed to resolve rear detail view model class")
     }
 }

@@ -24,8 +24,6 @@ class RearWallpaperThemeManagerSyncHook : YukiBaseHooker() {
         private const val REAR_LIST_MANAGER_CLASS_CACHE_KEY = "REAR_LIST_MANAGER_CLASS"
         private const val REAR_LIST_FILTER_METHOD_CACHE_KEY = "REAR_LIST_FILTER_METHOD"
         private const val REAR_LIST_ITEM_BEAN_CLASS_CACHE_KEY = "REAR_LIST_ITEM_BEAN_CLASS"
-        private const val FALLBACK_MANAGER_CLASS = "com.rearScreen.manager.RearListDataManager"
-        private const val FALLBACK_ITEM_BEAN_CLASS = "com.rearScreen.bean.RearScreenListItemBean"
     }
 
     private data class RuntimeRecord(
@@ -89,7 +87,7 @@ class RearWallpaperThemeManagerSyncHook : YukiBaseHooker() {
                     usingStrings("rear:RearListDataManager")
                 }
             }.singleOrNull()
-        } ?: FALLBACK_MANAGER_CLASS
+        } ?: error("DexKit failed to resolve rear list manager class")
     }
 
     private fun resolveRearListFilterMethod(
@@ -130,7 +128,7 @@ class RearWallpaperThemeManagerSyncHook : YukiBaseHooker() {
                     }
                 }
             }.singleOrNull()
-        } ?: FALLBACK_ITEM_BEAN_CLASS
+        } ?: error("DexKit failed to resolve rear list item bean class")
     }
 
     private fun mergeImportedWallpapers(

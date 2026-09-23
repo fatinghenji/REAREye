@@ -29,9 +29,9 @@ class UnmuteVideoWallpaperHook : YukiBaseHooker() {
                 )
             )
             val durationCropMatchResult = resolveDemuxerClassName(bridge)
-            val ref =
-                (durationCropMatchResult ?: "com.android.thememanager.util.wx16").toClass()
-                    .resolve()
+            val ref = requireNotNull(durationCropMatchResult) {
+                "DexKit failed to resolve the video audio demuxer class"
+            }.toClass().resolve()
 
             ref.firstMethod {
                 parameters(File::class.java, File::class.java, File::class.java)

@@ -103,7 +103,7 @@ class RearWallpaperHook : YukiBaseHooker() {
         private const val SUBSCREEN_WIDGET_ID_FIELD_CACHE_KEY = "SSC_WIDGET_ID_FIELD"
         private const val SUBSCREEN_WIDGET_SPEC_FIELD_CACHE_KEY = "SSC_WIDGET_SPEC_FIELD"
         private const val SUBSCREEN_WIDGET_EXTRAS_FIELD_CACHE_KEY = "SSC_WIDGET_EXTRAS_FIELD"
-        private const val SUBSCREEN_WIDGET_HOST_FIELD_CACHE_KEY = "SSC_WIDGET_HOST_FIELD"
+        private const val SUBSCREEN_WIDGET_HOST_FIELD_CACHE_KEY = "SSC_WIDGET_HOST_FIELD_V3"
         private const val SUBSCREEN_WIDGET_PREVIEW_MODE_FIELD_CACHE_KEY =
             "SSC_WIDGET_PREVIEW_MODE_FIELD"
         private const val SUBSCREEN_WIDGET_CLEANUP_METHOD_CACHE_KEY =
@@ -118,7 +118,7 @@ class RearWallpaperHook : YukiBaseHooker() {
             "SSC_WIDGET_RESUME_METHOD"
         private const val WALLPAPER_SPEC_ID_FIELD_CACHE_KEY = "SSC_WALLPAPER_SPEC_ID_FIELD"
         private const val WALLPAPER_SPEC_EXTRAS_FIELD_CACHE_KEY = "SSC_WALLPAPER_SPEC_EXTRAS_FIELD"
-        private const val PREF_STORE_CLASS_CACHE_KEY = "SSC_PREF_STORE_CLASS"
+        private const val PREF_STORE_CLASS_CACHE_KEY = "SSC_PREF_STORE_CLASS_V3"
         private const val PREF_STORE_INSTANCE_FIELD_CACHE_KEY = "SSC_PREF_STORE_INSTANCE_FIELD"
         private const val PREF_STORE_LOAD_SPECS_METHOD_CACHE_KEY =
             "SSC_PREF_STORE_LOAD_SPECS_METHOD"
@@ -133,7 +133,6 @@ class RearWallpaperHook : YukiBaseHooker() {
             "SSC_DEVICE_CONFIG_RENDER_SIZE_FIELD"
         private const val DEVICE_CONFIG_LOCALE_SUFFIX_FIELD_CACHE_KEY =
             "SSC_DEVICE_CONFIG_LOCALE_SUFFIX_FIELD"
-        private const val FALLBACK_MAIN_PANEL_CLASS = "com.xiaomi.subscreencenter.MainPanel"
     }
 
     private data class WallpaperEntry(
@@ -525,8 +524,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                     usingStrings("Save user select, new index = ", "user_select")
                 }
             }.singleOrNull()
-        } ?: DexKitMethodInjectionPoint(FALLBACK_MAIN_PANEL_CLASS, "")
-            .also { require(it.methodName.isNotBlank()) { "DexKit failed to resolve save selection method" } }
+        } ?: error("DexKit failed to resolve save selection method")
     }
 
     private val hookBootstrapReceiver = object : BroadcastReceiver() {
@@ -1168,7 +1166,7 @@ class RearWallpaperHook : YukiBaseHooker() {
             }.singleOrNull {
                 !it.descriptor.contains("Bundle")
             }
-        } ?: DexKitMethodInjectionPoint("", "")
+        } ?: error("DexKit failed to resolve injection point")
         require(point.className.isNotBlank() && point.methodName.isNotBlank()) {
             "DexKit failed to resolve widget factory method"
         }
@@ -1235,9 +1233,7 @@ class RearWallpaperHook : YukiBaseHooker() {
         }
     }
 
-    private fun resolveMainPanelClassName(): String {
-        return resolveMainPanelSelectMethod().className.ifBlank { FALLBACK_MAIN_PANEL_CLASS }
-    }
+    private fun resolveMainPanelClassName(): String = resolveMainPanelSelectMethod().className
 
     private fun resolveLauncherMainPanelFieldName(): String {
         return resolveCachedFieldName(
@@ -1433,7 +1429,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                 searchPackages(resolveWidgetClassName().substringBeforeLast('.'))
                 matcher {
                     declaredClass = resolveWidgetClassName()
-                    type = "android.widget.FrameLayout"
+                    type = "android.view.ViewGroup"
                 }
             }.singleOrNull()
         }
@@ -1544,7 +1540,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                     }
                 }
             }.singleOrNull()
-        } ?: DexKitMethodInjectionPoint("", "")
+        } ?: error("DexKit failed to resolve injection point")
         require(point.className.isNotBlank() && point.methodName.isNotBlank()) {
             "DexKit failed to resolve widget edit mode method"
         }
@@ -1574,7 +1570,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                     returnType = "android.view.View"
                 }
             }.singleOrNull()
-        } ?: DexKitMethodInjectionPoint("", "")
+        } ?: error("DexKit failed to resolve injection point")
         require(point.className.isNotBlank() && point.methodName.isNotBlank()) {
             "DexKit failed to resolve widget create view method"
         }
@@ -1602,7 +1598,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                     )
                 }
             }.singleOrNull()
-        } ?: DexKitMethodInjectionPoint("", "")
+        } ?: error("DexKit failed to resolve injection point")
         require(point.className.isNotBlank() && point.methodName.isNotBlank()) {
             "DexKit failed to resolve widget AOD method"
         }
@@ -1643,7 +1639,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                     }
                 }
             }.singleOrNull()
-        } ?: DexKitMethodInjectionPoint("", "")
+        } ?: error("DexKit failed to resolve injection point")
         require(point.className.isNotBlank() && point.methodName.isNotBlank()) {
             "DexKit failed to resolve widget resume method"
         }
@@ -1685,7 +1681,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                     }
                 }
             }.singleOrNull()
-        } ?: DexKitMethodInjectionPoint("", "")
+        } ?: error("DexKit failed to resolve injection point")
         require(point.className.isNotBlank() && point.methodName.isNotBlank()) {
             "DexKit failed to resolve widget cleanup method"
         }
@@ -1758,8 +1754,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                     )
                 }
             }.singleOrNull()
-        } ?: DexKitMethodInjectionPoint(FALLBACK_MAIN_PANEL_CLASS, "")
-        require(point.methodName.isNotBlank()) { "DexKit failed to resolve main panel select method" }
+        } ?: error("DexKit failed to resolve main panel select method")
         return point
     }
 
@@ -1772,8 +1767,8 @@ class RearWallpaperHook : YukiBaseHooker() {
     }
 
     private fun resolvePrefStoreLoadSpecsMethod(): DexKitMethodInjectionPoint {
-        val prefStoreClass = resolvePrefStoreClass()
-        val bridge = dexKitBridge ?: return DexKitMethodInjectionPoint(prefStoreClass, "e")
+        val prefStoreClass = resolvePrefStoreInstanceClassName()
+        val bridge = dexKitBridge ?: error("DexKit bridge is not ready for pref store load method")
         return resolveDexKitMethodInjectionPoint(
             bridge = bridge,
             cacheKey = PREF_STORE_LOAD_SPECS_METHOD_CACHE_KEY,
@@ -1788,12 +1783,12 @@ class RearWallpaperHook : YukiBaseHooker() {
                     returnType = "java.util.List"
                 }
             }.singleOrNull()
-        } ?: DexKitMethodInjectionPoint(prefStoreClass, "e")
+        } ?: error("DexKit failed to resolve pref store load method")
     }
 
     private fun resolvePrefStoreReadValueMethod(): DexKitMethodInjectionPoint {
-        val prefStoreClass = resolvePrefStoreClass()
-        val bridge = dexKitBridge ?: return DexKitMethodInjectionPoint(prefStoreClass, "c")
+        val prefStoreClass = resolvePrefStoreInstanceClassName()
+        val bridge = dexKitBridge ?: error("DexKit bridge is not ready for pref store read method")
         return resolveDexKitMethodInjectionPoint(
             bridge = bridge,
             cacheKey = PREF_STORE_READ_VALUE_METHOD_CACHE_KEY,
@@ -1812,12 +1807,12 @@ class RearWallpaperHook : YukiBaseHooker() {
                     returnType = "java.lang.Object"
                 }
             }.singleOrNull()
-        } ?: DexKitMethodInjectionPoint(prefStoreClass, "c")
+        } ?: error("DexKit failed to resolve pref store read method")
     }
 
     private fun resolvePrefStoreWriteValueMethod(): DexKitMethodInjectionPoint {
-        val prefStoreClass = resolvePrefStoreClass()
-        val bridge = dexKitBridge ?: return DexKitMethodInjectionPoint(prefStoreClass, "j")
+        val prefStoreClass = resolvePrefStoreInstanceClassName()
+        val bridge = dexKitBridge ?: error("DexKit bridge is not ready for pref store write method")
         return resolveDexKitMethodInjectionPoint(
             bridge = bridge,
             cacheKey = PREF_STORE_WRITE_VALUE_METHOD_CACHE_KEY,
@@ -1840,7 +1835,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                     }
                 }
             }.singleOrNull()
-        } ?: DexKitMethodInjectionPoint(prefStoreClass, "j")
+        } ?: error("DexKit failed to resolve pref store write method")
     }
 
     private fun readPrefStoreWallpaperSpecs(store: Any): List<Any> {
@@ -1890,11 +1885,25 @@ class RearWallpaperHook : YukiBaseHooker() {
                 }
             }.singleOrNull()
                 ?.usingFields
-                ?.firstOrNull { field -> field.field.typeName.endsWith(".d") || field.field.name == "a" }
-                ?.field
+                ?.map { it.field }
+                ?.filter { field -> Modifier.isStatic(field.modifiers) }
+                ?.singleOrNull { field ->
+                    findMethod {
+                        matcher {
+                            declaredClass = field.typeName
+                            paramTypes(Any::class.java, String::class.java)
+                            returnType = "void"
+                        }
+                    }.size == 1
+                }
         } ?: ""
         require(className.isNotBlank()) { "DexKit failed to resolve pref store class" }
         return className
+    }
+
+    private fun resolvePrefStoreInstanceClassName(): String {
+        return resolvePrefStoreClass().toClass()
+            .getDeclaredField(resolvePrefStoreInstanceFieldName()).type.name
     }
 
     private fun resolveWallpaperRuntimeListMethod(): DexKitMethodInjectionPoint {
@@ -1917,7 +1926,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                     )
                 }
             }.singleOrNull()
-        } ?: DexKitMethodInjectionPoint("", "")
+        } ?: error("DexKit failed to resolve injection point")
         require(point.className.isNotBlank() && point.methodName.isNotBlank()) {
             "DexKit failed to resolve wallpaper runtime list method"
         }

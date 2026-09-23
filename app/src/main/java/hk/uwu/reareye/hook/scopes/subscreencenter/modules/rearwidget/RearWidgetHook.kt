@@ -27,6 +27,7 @@ import hk.uwu.reareye.hook.core.YLog
 import hk.uwu.reareye.hook.core.YukiBaseHooker
 import hk.uwu.reareye.hook.hostbridge.HookHostBridgeBootstrapRegistry
 import hk.uwu.reareye.hook.utils.DexKitMethodInjectionPoint
+import hk.uwu.reareye.hook.utils.SmartAssistantRegistry
 import hk.uwu.reareye.hook.utils.createDexKitCacheBridge
 import hk.uwu.reareye.hook.utils.resolveDexKitClassValue
 import hk.uwu.reareye.hook.utils.resolveDexKitFieldValue
@@ -125,7 +126,7 @@ class RearWidgetHook : YukiBaseHooker() {
         private const val SMART_ASSISTANT_WIDGET_RECORD_PRIORITY_FIELD_CACHE_KEY =
             "SSC_SMART_ASSISTANT_WIDGET_RECORD_PRIORITY_FIELD"
         private const val SMART_ASSISTANT_MANAGER_INIT_METHOD_CACHE_KEY =
-            "SSC_SMART_ASSISTANT_MANAGER_INIT_METHOD"
+            "SSC_SMART_ASSISTANT_MANAGER_INIT_METHOD_V3"
         private const val SMART_ASSISTANT_MANAGER_REFRESH_METHOD_CACHE_KEY =
             "SSC_SMART_ASSISTANT_MANAGER_REFRESH_METHOD"
         private const val SMART_ASSISTANT_MANAGER_INSERT_WIDGET_METHOD_CACHE_KEY =
@@ -136,6 +137,8 @@ class RearWidgetHook : YukiBaseHooker() {
             "SSC_SMART_ASSISTANT_MANAGER_REMOVE_BUSINESS_METHOD"
         private const val SMART_ASSISTANT_MANAGER_REMOVE_COMPOSITE_METHOD_CACHE_KEY =
             "SSC_SMART_ASSISTANT_MANAGER_REMOVE_COMPOSITE_METHOD"
+        private const val SMART_ASSISTANT_PRESET_RELEASE_RUN_METHOD_CACHE_KEY =
+            "SSC_SMART_ASSISTANT_PRESET_RELEASE_RUN_METHOD"
         private const val SMART_ASSISTANT_PARSE_WIDGET_METHOD_CACHE_KEY =
             "SSC_SMART_ASSISTANT_PARSE_WIDGET_METHOD"
         private const val SMART_ASSISTANT_RESOLVE_PATH_METHOD_CACHE_KEY =
@@ -148,20 +151,12 @@ class RearWidgetHook : YukiBaseHooker() {
             "SSC_SMART_ASSISTANT_PARSE_PARAMS_METHOD"
         private const val SMART_ASSISTANT_BUILTIN_SUPPORT_METHOD_CACHE_KEY =
             "SSC_SMART_ASSISTANT_BUILTIN_SUPPORT_METHOD"
-        private const val SMART_ASSISTANT_LEGACY_BUSINESS_MAP_FIELD_CACHE_KEY =
-            "SSC_SMART_ASSISTANT_LEGACY_BUSINESS_MAP_FIELD_V2"
-        private const val SMART_ASSISTANT_CONFIG_PRIMARY_MAP_FIELD_CACHE_KEY =
-            "SSC_SMART_ASSISTANT_CONFIG_PRIMARY_MAP_FIELD_V2"
         private const val SMART_ASSISTANT_CONFIG_BUILTIN_MAP_FIELD_CACHE_KEY =
-            "SSC_SMART_ASSISTANT_CONFIG_BUILTIN_MAP_FIELD_V2"
+            "SSC_SMART_ASSISTANT_CONFIG_BUILTIN_MAP_FIELD_V3"
         private const val SMART_ASSISTANT_CONFIG_BUSINESS_MAP_FIELD_CACHE_KEY =
-            "SSC_SMART_ASSISTANT_CONFIG_BUSINESS_MAP_FIELD_V2"
+            "SSC_SMART_ASSISTANT_CONFIG_BUSINESS_MAP_FIELD_V3"
         private const val SMART_ASSISTANT_CONFIG_PATH_MAP_FIELD_CACHE_KEY =
-            "SSC_SMART_ASSISTANT_CONFIG_PATH_MAP_FIELD_V2"
-        private const val SMART_ASSISTANT_LEGACY_CONFIG_PATH_MAP_FIELD_CACHE_KEY =
-            "SSC_SMART_ASSISTANT_LEGACY_CONFIG_PATH_MAP_FIELD_V2"
-        private const val SMART_ASSISTANT_LEGACY_BUSINESS_LIST_FIELD_CACHE_KEY =
-            "SSC_SMART_ASSISTANT_LEGACY_BUSINESS_LIST_FIELD_V2"
+            "SSC_SMART_ASSISTANT_CONFIG_PATH_MAP_FIELD_V3"
         private const val NOTIFICATION_WIDGET_APPLY_METHOD_CACHE_KEY =
             "SSC_NOTIFICATION_WIDGET_APPLY_METHOD"
         private const val NOTIFICATION_WIDGET_TEMPLATE_PATH_FIELD_CACHE_KEY =
@@ -186,11 +181,6 @@ class RearWidgetHook : YukiBaseHooker() {
             "java.util.NavigableMap",
             "java.util.TreeMap",
             "android.util.ArrayMap",
-        )
-        private val LIST_FIELD_TYPE_NAMES = listOf(
-            "java.util.List",
-            "java.util.ArrayList",
-            "java.util.LinkedList",
         )
         private const val TEMPLATE_BASE =
             "/data/system/theme_magic/users/%s/subscreencenter/smart_assistant"
@@ -233,6 +223,7 @@ class RearWidgetHook : YukiBaseHooker() {
     private val bootstrapRetryCount = AtomicInteger(0)
     private val managerEpoch = AtomicInteger(0)
     private val liveNotificationWidgets = ConcurrentHashMap<String, WeakReference<Any>>()
+    private val pendingBusinessTemplateSources = ConcurrentHashMap<String, String>()
     private val smartAssistantPanels = ConcurrentHashMap<Int, WeakReference<Any>>()
 
     @Volatile
@@ -242,6 +233,10 @@ class RearWidgetHook : YukiBaseHooker() {
     private var mainHandler: Handler? = null
     private var hostContext: Context? = null
     private var dexKitBridge: DexKitCacheBridge.RecyclableBridge? = null
+    private var smartAssistantRegistry: SmartAssistantRegistry? = null
+
+    @Volatile
+    private var presetDataReleased = false
     private val postRunnableSnapshots = WeakHashMap<Any, PostRunnableSnapshot>()
     private val mutableWrapperDebuggedTypes = ConcurrentHashMap.newKeySet<String>()
     private val ordinaryChannelNoticeIndex = ConcurrentHashMap<String, String>()
@@ -281,6 +276,18 @@ class RearWidgetHook : YukiBaseHooker() {
                 dataDir = appInfo.dataDir,
                 )
             )
+            smartAssistantRegistry = SmartAssistantRegistry(
+                bridge = requireNotNull(dexKitBridge),
+                classResolver = { className -> className.toClass() },
+            )
+            val registrySnapshotPoint = requireNotNull(smartAssistantRegistry).snapshotMethod
+            registrySnapshotPoint.className.toClass().resolve().firstMethod {
+                name = registrySnapshotPoint.methodName
+                parameterCount = 0
+            }.hook().after {
+                val snapshot = result ?: error("Smart assistant app registry snapshot is null")
+                patchRegistryPrimaryMap(snapshot)
+            }
 
             onAppLifecycle {
                 attachBaseContext {
@@ -304,6 +311,7 @@ class RearWidgetHook : YukiBaseHooker() {
             val allowAppPoint = resolveSmartAssistantAllowAppMethod()
             val decorateExtrasPoint = resolveSmartAssistantDecorateExtrasMethod()
             val widgetApplyPoint = resolveNotificationWidgetApplyMethod()
+            val presetReleaseRunPoint = resolveSmartAssistantPresetReleaseRunMethod()
             resolveSmartAssistantManagerHandlerFieldName()
             resolveSmartAssistantManagerWidgetListFieldName()
             resolveSmartAssistantManagerCurrentIndexFieldName()
@@ -316,7 +324,8 @@ class RearWidgetHook : YukiBaseHooker() {
             resolveNotificationWidgetTemplatePathFieldName()
             resolveNotificationWidgetExtrasFieldName()
             val managerRef = managerInitPoint.className.toClass().resolve()
-            val persistenceRef = resolvePersistenceManagerClassName().toClass().resolve()
+            val persistenceClass = resolvePersistenceManagerClassName().toClass()
+            val persistenceRef = persistenceClass.resolve()
             val postRunnableRef =
                 resolveSmartAssistantPostRunnableClassName().toClass().resolve()
             val postRunnableConstructor = resolveSmartAssistantPostRunnableConstructor()
@@ -355,8 +364,14 @@ class RearWidgetHook : YukiBaseHooker() {
             persistenceRef.firstConstructor {
                 parameterCount = 0
             }.hook().after {
-                schedulePostPresetBootstrap()
-                debugLog("PersistenceManager created, scheduled custom widget restore after preset release")
+                debugLog("PersistenceManager created, waiting for host smart_assistant release")
+            }
+
+            presetReleaseRunPoint.className.toClass().resolve().firstMethod {
+                name = presetReleaseRunPoint.methodName
+                parameterCount = 0
+            }.hook().after {
+                handlePresetReleaseRunnable(instance, persistenceClass)
             }
 
             managerRef.firstMethod {
@@ -386,8 +401,12 @@ class RearWidgetHook : YukiBaseHooker() {
                     return@after
                 }
 
-                val bootOk = bootstrapFromPrefsOnInit(force = false)
-                if (!bootOk) scheduleBootstrapRetry()
+                val bootOk = if (presetDataReleased) {
+                    bootstrapFromPrefsOnInit(force = false)
+                } else {
+                    false
+                }
+                if (presetDataReleased && !bootOk) scheduleBootstrapRetry()
                 applyRuntimeMaps(force = true)
                 patchManagerAppGates(manager)
                 scheduleInjectAllActiveNotices()
@@ -418,17 +437,14 @@ class RearWidgetHook : YukiBaseHooker() {
                 name = parseWidgetPoint.methodName
                 parameterCount = 2
             }.hook().after {
-                val pkg = args[0] as? String ?: return@after
-                if (result != null) return@after
-                val biz = RearWidgetRuntimeStore.fallbackBusiness(pkg) ?: return@after
-                result = createU0b(biz, 0, 600)
-                debugLog("smart assistant parse fallback pkg=$pkg -> business=$biz")
+                applyRuntimeMaps(force = false)
             }
 
             resolvePathPoint.className.toClass().resolve().firstMethod {
                 name = resolvePathPoint.methodName
                 parameterCount = 2
             }.hook().after {
+                if (!presetDataReleased) return@after
                 val pkg = args[0] as? String ?: return@after
                 val biz = args[1] as? String ?: return@after
                 // business 文件映射是全局覆盖 只要注册了该 business 文件 就覆盖系统内置路径
@@ -596,10 +612,7 @@ class RearWidgetHook : YukiBaseHooker() {
             cacheKey = cacheKey,
         ) {
             finder()
-        } ?: DexKitMethodInjectionPoint("", "")
-        require(point.className.isNotBlank() && point.methodName.isNotBlank()) {
-            "DexKit failed to resolve method cache=$cacheKey"
-        }
+        } ?: error("DexKit failed to resolve method cache=$cacheKey")
         return point
     }
 
@@ -994,7 +1007,7 @@ class RearWidgetHook : YukiBaseHooker() {
                     returnType = "void"
                     usingStrings(
                         "SmartAssistantManager initialized",
-                        "SmartAssistant not supported, skip manager initialization",
+                        "Device has no security lock, treating as unlocked",
                     )
                 }
             }.singleOrNull()
@@ -1526,8 +1539,8 @@ class RearWidgetHook : YukiBaseHooker() {
             dispatchOperation(
                 op = RearWidgetApiContract.Operation.UNREGISTER_FILE,
                 action = {
+                    pendingBusinessTemplateSources.remove(normalizedBusiness)
                     RearWidgetRuntimeStore.unregisterBusinessFile(normalizedBusiness)
-                    removeDeployedBusinessTemplate(normalizedBusiness)
                     OperationOutcome()
                 }
             )
@@ -2048,6 +2061,10 @@ class RearWidgetHook : YukiBaseHooker() {
     }
 
     private fun bootstrapFromPrefsOnInit(force: Boolean = false): Boolean {
+        if (!presetDataReleased) {
+            debugLog("bootstrap deferred until host smart_assistant release completes")
+            return false
+        }
         if (!force && startupBootstrapped.get()) return true
 
         val businessRaw = prefs.getString(
@@ -2195,22 +2212,39 @@ class RearWidgetHook : YukiBaseHooker() {
         }, 2800L)
     }
 
-    private fun schedulePostPresetBootstrap() {
-        val handler = mainHandler ?: Handler(Looper.getMainLooper())
+    private fun handlePresetReleaseRunnable(task: Any?, persistenceClass: Class<*>) {
+        val runnable = task ?: return
+        val owner = runCatching {
+            runnable.asResolver().firstField { type = "java.lang.Object" }.get<Any?>()
+        }.getOrNull()
+        if (owner == null || !persistenceClass.isInstance(owner)) return
 
+        // B0.D.run() has just completed the host's delete-and-copy operation.
+        // Only now enqueue our bootstrap on the main thread, so every template
+        // write happens after the host has finished touching smart_assistant.
+        presetDataReleased = true
+        val handler = mainHandler ?: Handler(Looper.getMainLooper())
         handler.post {
             runCatching {
+                pendingBusinessTemplateSources.toMap().forEach { (business, source) ->
+                    deployBusinessTemplate(business, source)
+                }
                 bootstrapFromPrefsOnInit(force = true)
                 applyRuntimeMaps(force = true)
                 patchManagerAppGates(manager)
-                debugLog("restored custom widget templates after preset release")
+                injectAllActiveNotices()
+                debugLog("restored custom widget templates after host smart_assistant release")
             }.onFailure {
-                debugLog("post-preset bootstrap failed err=${it.message}")
+                debugLog("post-release bootstrap failed err=${it.message}")
             }
         }
     }
 
     private fun applyNoticeDisplayByCompositeKey(compositeKey: String) {
+        if (!presetDataReleased) {
+            debugLog("deferred notice injection until host smart_assistant release key=$compositeKey")
+            return
+        }
         val notice = RearWidgetRuntimeStore.getNotice(compositeKey) ?: return
         // SubScreenCenter 会在进程启动时自行恢复持久化 widget，其 compositeKey 可能与当前
         // RuntimeStore 的 ticket 不一致（cardId→id 映射只存在于 Hook 进程内存）。若直接注入，
@@ -2416,21 +2450,20 @@ class RearWidgetHook : YukiBaseHooker() {
         ) return
 
         val pkgBiz = RearWidgetRuntimeStore.allPkgBusinesses()
-        val pkgPrimary = RearWidgetRuntimeStore.primaryBusinessByPkg()
-        val bizPath = RearWidgetRuntimeStore.allBusinessPath()
+        val bizPath = if (presetDataReleased) {
+            RearWidgetRuntimeStore.allBusinessPath()
+        } else {
+            emptyMap()
+        }
+        val registry = smartAssistantRegistry
+            ?: error("Smart assistant app registry resolver is not ready")
+        patchRegistryPrimaryMap(registry.snapshot())
         val configClassName = resolveSmartAssistantConfigClassName()
-        val parsePoint = resolveSmartAssistantParseWidgetMethod()
         val builtinPoint = resolveSmartAssistantBuiltinSupportMethod()
         val allowPoint = resolveSmartAssistantAllowAppMethod()
         val resolvePathPoint = resolveSmartAssistantResolvePathMethod()
         val diagnostics = linkedMapOf<String, String>()
 
-        val primaryMapFieldName = resolveRuntimeMapFieldName(
-            SMART_ASSISTANT_CONFIG_PRIMARY_MAP_FIELD_CACHE_KEY,
-            diagnostics,
-        ) {
-            findRuntimeFields(configClassName, MAP_FIELD_TYPE_NAMES, parsePoint)
-        }
         val builtinMapFieldName = resolveRuntimeMapFieldName(
             SMART_ASSISTANT_CONFIG_BUILTIN_MAP_FIELD_CACHE_KEY,
             diagnostics,
@@ -2443,98 +2476,25 @@ class RearWidgetHook : YukiBaseHooker() {
         ) {
             findRuntimeFields(configClassName, MAP_FIELD_TYPE_NAMES, allowPoint)
         }
-
-        val classifiedConfigFieldNames = listOfNotNull(
-            primaryMapFieldName,
-            builtinMapFieldName,
-            multiBusinessMapFieldName,
-        )
-        val newPathMapFieldName = if (
-            classifiedConfigFieldNames.size == 3 &&
-            classifiedConfigFieldNames.distinct().size == 3
+        val pathMapFieldName = resolveRuntimeMapFieldName(
+            SMART_ASSISTANT_CONFIG_PATH_MAP_FIELD_CACHE_KEY,
+            diagnostics,
         ) {
-            resolveRuntimeMapFieldName(
-                SMART_ASSISTANT_CONFIG_PATH_MAP_FIELD_CACHE_KEY,
-                diagnostics,
-            ) {
-                val candidates = findRuntimeFields(configClassName, MAP_FIELD_TYPE_NAMES)
-                    .distinctBy { it.descriptor }
-                    .filter { Modifier.isStatic(it.modifiers) }
-                diagnostics["CONFIG_STATIC_MAP_CANDIDATES_V2"] = candidates.joinToString(
-                    prefix = "[",
-                    postfix = "]",
-                ) { it.descriptor }
-                val candidateNames = candidates.mapTo(hashSetOf()) { it.fieldName }
-                if (!candidateNames.containsAll(classifiedConfigFieldNames)) {
-                    emptyList()
-                } else {
-                    candidates.filterNot { it.fieldName in classifiedConfigFieldNames }
-                }
-            }
-        } else {
-            null
-        }
-        val useConfigOnlyLayout = newPathMapFieldName != null &&
-                listOf(
-                    primaryMapFieldName,
-                    builtinMapFieldName,
-                    multiBusinessMapFieldName,
-                    newPathMapFieldName,
-                ).distinct().size == 4
-
-        var pathMapFieldName = newPathMapFieldName
-        var utilityClassName: String? = null
-        var utilityBusinessMapFieldName: String? = null
-        var utilityBusinessListFieldName: String? = null
-        if (!useConfigOnlyLayout) {
-            pathMapFieldName = resolveRuntimeMapFieldName(
-                SMART_ASSISTANT_LEGACY_CONFIG_PATH_MAP_FIELD_CACHE_KEY,
-                diagnostics,
-            ) {
-                findRuntimeFields(configClassName, MAP_FIELD_TYPE_NAMES, resolvePathPoint)
-            }
-            val resolvedUtilityClassName = resolveSmartAssistantUtilsClassName()
-            utilityClassName = resolvedUtilityClassName
-            utilityBusinessMapFieldName = resolveRuntimeMapFieldName(
-                SMART_ASSISTANT_LEGACY_BUSINESS_MAP_FIELD_CACHE_KEY,
-                diagnostics,
-            ) {
-                findRuntimeFields(resolvedUtilityClassName, MAP_FIELD_TYPE_NAMES, allowPoint)
-            }
-            utilityBusinessListFieldName = resolveRuntimeMapFieldName(
-                SMART_ASSISTANT_LEGACY_BUSINESS_LIST_FIELD_CACHE_KEY,
-                diagnostics,
-            ) {
-                findRuntimeFields(resolvedUtilityClassName, LIST_FIELD_TYPE_NAMES, resolvePathPoint)
-            }
+            findRuntimeFields(configClassName, MAP_FIELD_TYPE_NAMES, resolvePathPoint)
+                .filterNot { it.fieldName == builtinMapFieldName }
         }
 
-        val requiredFieldNames = listOf(
-            primaryMapFieldName,
-            multiBusinessMapFieldName,
-            pathMapFieldName,
-        ) + if (useConfigOnlyLayout) {
-            emptyList()
-        } else {
-            listOf(utilityBusinessMapFieldName, utilityBusinessListFieldName)
-        }
-        val configFieldNames = listOf(
-            primaryMapFieldName,
-            multiBusinessMapFieldName,
-            pathMapFieldName,
-        )
-        if (requiredFieldNames.any { it.isNullOrBlank() } ||
+        val configFieldNames =
+            listOf(builtinMapFieldName, multiBusinessMapFieldName, pathMapFieldName)
+        if (configFieldNames.any { it.isNullOrBlank() } ||
             configFieldNames.filterNotNull().distinct().size != configFieldNames.size
         ) {
             val message = "DexKit runtime map classification failed " +
-                    "configOnly=$useConfigOnlyLayout diagnostics=$diagnostics"
+                    "diagnostics=$diagnostics"
             YLog.error("[$TAG] $message")
             error(message)
         }
 
-        replaceStaticMap(configClassName, checkNotNull(primaryMapFieldName)) { map ->
-            pkgPrimary.forEach { (pkg, biz) -> if (biz.isNotBlank()) map[pkg] = biz }
-        }
         replaceStaticMap(configClassName, checkNotNull(multiBusinessMapFieldName)) { map ->
             pkgBiz.forEach { (pkg, set) -> map[pkg] = HashSet(set) }
         }
@@ -2542,25 +2502,38 @@ class RearWidgetHook : YukiBaseHooker() {
             bizPath.forEach { (biz, path) -> map[biz] = path }
         }
 
-        if (!useConfigOnlyLayout) {
-            replaceStaticMap(
-                checkNotNull(utilityClassName),
-                checkNotNull(utilityBusinessMapFieldName),
-            ) { map ->
-                pkgBiz.forEach { (pkg, businesses) ->
-                    val businessSet = businesses.toMutableSet()
-                    if (businessSet.isNotEmpty()) map[pkg] = businessSet
-                }
-            }
-            replaceStaticList(
-                checkNotNull(utilityClassName),
-                checkNotNull(utilityBusinessListFieldName),
-            ) { list ->
-                bizPath.keys.forEach { biz -> if (!list.contains(biz)) list.add(biz) }
-            }
-        }
-
         RearWidgetRuntimeStore.mapsDirty.set(false)
+    }
+
+    private fun patchRegistryPrimaryMap(snapshot: Any) {
+        val registry = smartAssistantRegistry
+            ?: error("Smart assistant app registry resolver is not ready")
+        val rawMap = registry.primaryMap(snapshot)
+        if (rawMap === java.util.Collections.EMPTY_MAP) return
+        val map = unwrapMutableMap(rawMap)
+        RearWidgetRuntimeStore.primaryBusinessByPkg().forEach { (pkg, business) ->
+            if (business.isNotBlank()) map[pkg] = business
+        }
+    }
+
+    private fun resolveSmartAssistantPresetReleaseRunMethod(): DexKitMethodInjectionPoint {
+        return resolveCachedMethodPoint(
+            cacheKey = SMART_ASSISTANT_PRESET_RELEASE_RUN_METHOD_CACHE_KEY,
+        ) {
+            // Original method in jadx: B0.D.run(), case 8 clears and restores
+            // the host's smart_assistant directory.
+            findMethod {
+                matcher {
+                    paramCount(0)
+                    returnType = "void"
+                    usingStrings(
+                        "releaseSmartAssistantData: deleteAll start, path=",
+                        "releaseSmartAssistantData: deleteAll done, cost=",
+                        "releasePresetData: done",
+                    )
+                }
+            }.singleOrNull()
+        }
     }
 
     private fun patchManagerAppGates(target: Any?) {
@@ -3332,6 +3305,13 @@ class RearWidgetHook : YukiBaseHooker() {
         val target = resolveTemplatePath(business)
         val targetFile = File(target)
 
+        if (!presetDataReleased) {
+            pendingBusinessTemplateSources[business] = source
+            debugLog("staged template business=$business until host smart_assistant release")
+            return target
+        }
+        pendingBusinessTemplateSources.remove(business)
+
         val blobMeta = prefs.getString(RearWidgetConfigCodec.businessBlobMetaKey(business), "")
         if (blobMeta.isNotBlank() && deployedBlobMetaCache[business] == blobMeta && targetFile.exists()) {
             return target
@@ -3350,7 +3330,6 @@ class RearWidgetHook : YukiBaseHooker() {
                     check(RearWidgetConfigCodec.verifyBusinessBlobMeta(tmp, blobMeta)) {
                         "RemoteFile metadata verification failed"
                     }
-                    if (targetFile.exists()) targetFile.delete()
                     val moved = tmp.renameTo(targetFile)
                     if (!moved) {
                         tmp.copyTo(targetFile, overwrite = true)
@@ -3387,7 +3366,6 @@ class RearWidgetHook : YukiBaseHooker() {
                         check(RearWidgetConfigCodec.verifyBusinessBlobMeta(tmp, blobMeta)) {
                             "Legacy blob metadata verification failed"
                         }
-                        if (targetFile.exists()) targetFile.delete()
                         val moved = tmp.renameTo(targetFile)
                         if (!moved) {
                             tmp.copyTo(targetFile, overwrite = true)
@@ -3414,15 +3392,24 @@ class RearWidgetHook : YukiBaseHooker() {
 
         val sourceFile = File(source)
         if (sourceFile.exists() && sourceFile.isFile) {
+            val tmp = File(targetFile.parentFile, "${targetFile.name}.tmp.${Process.myPid()}")
             val ok = runCatching {
                 targetFile.parentFile?.mkdirs()
                 sourceFile.inputStream().use { input ->
-                    targetFile.outputStream().use { output ->
+                    tmp.outputStream().use { output ->
                         input.copyTo(output)
                     }
                 }
+                val moved = tmp.renameTo(targetFile)
+                if (!moved) {
+                    tmp.copyTo(targetFile, overwrite = true)
+                    check(tmp.delete()) { "Unable to remove file deployment temporary file" }
+                }
                 ensureReadable(targetFile)
                 true
+            }.onFailure {
+                runCatching { if (tmp.exists()) tmp.delete() }
+                    .onFailure { cleanupFailure -> debugLog("file deployment temp cleanup failed business=$business err=${cleanupFailure.message}") }
             }.getOrDefault(false)
             if (ok) {
                 debugLog("deployed business template from file business=$business source=$source -> $target")
@@ -3472,19 +3459,6 @@ class RearWidgetHook : YukiBaseHooker() {
         }
     }
 
-    private fun removeDeployedBusinessTemplate(business: String) {
-        runCatching {
-            deployedBlobMetaCache.remove(business)
-            val target = resolveTemplatePath(business)
-            val file = File(target)
-            if (file.exists() && file.delete()) {
-                debugLog("removed stale deployed template business=$business path=$target")
-            }
-        }.onFailure {
-            debugLog("remove stale deployed template failed business=$business err=${it.message}")
-        }
-    }
-
     private fun deployCardOneConfig(cardKey: String, json: String): String? {
         val normalizedJson = json.trim()
         if (normalizedJson.isBlank()) return null
@@ -3500,7 +3474,6 @@ class RearWidgetHook : YukiBaseHooker() {
             targetFile.parentFile?.mkdirs()
             val tmp = File(targetFile.parentFile, "${targetFile.name}.tmp.${Process.myPid()}")
             tmp.writeText(normalizedJson)
-            if (targetFile.exists()) targetFile.delete()
             val moved = tmp.renameTo(targetFile)
             if (!moved) {
                 tmp.copyTo(targetFile, overwrite = true)

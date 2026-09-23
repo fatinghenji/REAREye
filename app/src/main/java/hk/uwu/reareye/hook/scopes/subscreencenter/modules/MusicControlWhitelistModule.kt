@@ -6,22 +6,16 @@ import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.kavaref.condition.type.Modifiers
 import hk.uwu.reareye.hook.core.YLog
 import hk.uwu.reareye.hook.core.YukiBaseHooker
+import hk.uwu.reareye.hook.utils.SmartAssistantRegistry
 import hk.uwu.reareye.hook.utils.createDexKitCacheBridge
-import hk.uwu.reareye.hook.utils.resolveDexKitClassValue
-import hk.uwu.reareye.hook.utils.resolveDexKitFieldValue
 import hk.uwu.reareye.hook.utils.resolveHookPackageVersionCode
 import hk.uwu.reareye.ui.config.ConfigKeys
-import org.luckypray.dexkit.DexKitCacheBridge
 import org.luckypray.dexkit.annotations.DexKitExperimentalApi
 
 @OptIn(DexKitExperimentalApi::class)
 class MusicControlWhitelistModule : YukiBaseHooker() {
     companion object {
         private const val TAG = "MusicControlWhitelist"
-        private const val SMART_ASSISTANT_CONFIG_CLASS_CACHE_KEY =
-            "SSC_MUSIC_WHITELIST_CONFIG_CLASS"
-        private const val SMART_ASSISTANT_CONFIG_PRIMARY_MAP_FIELD_CACHE_KEY =
-            "SSC_MUSIC_WHITELIST_CONFIG_PRIMARY_MAP_FIELD"
     }
 
     override fun onHook() {
@@ -39,23 +33,27 @@ class MusicControlWhitelistModule : YukiBaseHooker() {
                 dataDir = appInfo.dataDir,
                 )
             )
-            val configClassName = resolveSmartAssistantConfigClassName(bridge)
-            val primaryMapFieldName = resolveSmartAssistantConfigPrimaryMapFieldName(
-                bridge,
-                configClassName,
-            )
-            val clz = configClassName.toClass().resolve()
-            val field = clz.firstField {
-                name = primaryMapFieldName
-                type = Map::class.java
-            }
-            if (prefs.getBoolean(ConfigKeys.HOOK_MUSIC_CONTROLS_WHITELIST, true)) {
-                replaceStaticMap(configClassName, primaryMapFieldName) {
-                    prefs.getStringSet(ConfigKeys.MUSIC_CONTROLS_WHITELIST_APPS).forEach { app ->
-                        it[app] = "music"
-                    }
+            val registry = SmartAssistantRegistry(bridge) { className -> className.toClass() }
+            val snapshotPoint = registry.snapshotMethod
+            snapshotPoint.className.toClass().resolve().firstMethod {
+                name = snapshotPoint.methodName
+                parameterCount = 0
+            }.hook().after {
+                if (!prefs.getBoolean(ConfigKeys.HOOK_MUSIC_CONTROLS_WHITELIST, true)) {
+                    return@after
                 }
-                YLog.debug("Hooked SubscreenCenter whitelist ${field.get()}")
+                val snapshot = result ?: return@after
+                val rawMap = registry.primaryMap(snapshot)
+                // Before Application is ready the host returns its empty registry sentinel.
+                if (rawMap === java.util.Collections.EMPTY_MAP) return@after
+                val map = unwrapMutableMap(rawMap)
+                runCatching {
+                    prefs.getStringSet(ConfigKeys.MUSIC_CONTROLS_WHITELIST_APPS).forEach { app ->
+                        map[app] = "music"
+                    }
+                }.onFailure { YLog.error("[$TAG] Cannot update app registry", it) }
+                    .getOrThrow()
+                YLog.debug("Hooked SubscreenCenter whitelist $map")
             }
 
             val musicControlListenerClz =
@@ -86,27 +84,6 @@ class MusicControlWhitelistModule : YukiBaseHooker() {
             }
         }
     }
-
-    private fun replaceStaticMap(
-        className: String,
-        fieldName: String,
-        mutate: (MutableMap<Any, Any?>) -> Unit,
-    ) {
-        val field = className.toClass().resolve().firstField { name = fieldName }
-        val raw = field.get<Any>() ?: error("$className.$fieldName is null")
-        val current = unwrapMutableMap(raw)
-        try {
-            mutate(current)
-        } catch (error: UnsupportedOperationException) {
-            YLog.error(
-                "[$TAG] Cannot mutate static map in place: $className.$fieldName " +
-                        "(${raw.javaClass.name})",
-                error,
-            )
-            throw error
-        }
-    }
-
 
     @Suppress("UNCHECKED_CAST")
     private fun unwrapMutableMap(any: Any): MutableMap<Any, Any?> {
@@ -143,55 +120,4 @@ class MusicControlWhitelistModule : YukiBaseHooker() {
         error(message)
     }
 
-    private fun resolveSmartAssistantConfigClassName(
-        bridge: DexKitCacheBridge.RecyclableBridge,
-    ): String {
-        return resolveDexKitClassValue(
-            bridge = bridge,
-            cacheKey = SMART_ASSISTANT_CONFIG_CLASS_CACHE_KEY,
-        ) {
-            // DexKit source anchor:
-            // .tmp-ref/decompiled-jadx/sources/P2/a.java
-            // Original class in jadx: p2.a
-            findClass {
-                matcher {
-                    usingStrings(
-                        "com.android.incallui",
-                        "com.xiaomi.music",
-                        "com.xiaomi.smarthome",
-                        "mihomeCamera",
-                        "unified.music",
-                    )
-                }
-            }.singleOrNull()
-        } ?: error("DexKit failed to resolve smart assistant config class")
-    }
-
-    private fun resolveSmartAssistantConfigPrimaryMapFieldName(
-        bridge: DexKitCacheBridge.RecyclableBridge,
-        configClassName: String,
-    ): String {
-        return resolveDexKitFieldValue(
-            bridge = bridge,
-            cacheKey = SMART_ASSISTANT_CONFIG_PRIMARY_MAP_FIELD_CACHE_KEY,
-        ) {
-            // DexKit source anchor:
-            // .tmp-ref/decompiled-jadx/sources/P2/a.java:99
-            // p2.a.c(String) reads the primary package->business map and checks "unified.music".
-            findField {
-                matcher {
-                    declaredClass = configClassName
-                    type = "java.util.Map"
-                    readMethods {
-                        add {
-                            declaredClass = configClassName
-                            paramTypes(String::class.java)
-                            returnType = "boolean"
-                            usingStrings("unified.music", "music")
-                        }
-                    }
-                }
-            }.singleOrNull()
-        } ?: error("DexKit failed to resolve smart assistant primary map field")
-    }
 }

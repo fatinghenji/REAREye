@@ -3,6 +3,7 @@ package hk.uwu.reareye.hook.scopes.subscreencenter
 import hk.uwu.reareye.hook.core.HookModule
 import hk.uwu.reareye.hook.core.YLog
 import hk.uwu.reareye.hook.scopes.Scope
+import hk.uwu.reareye.hook.scopes.subscreencenter.modules.ForceAppWidgetEnabledHook
 import hk.uwu.reareye.hook.scopes.subscreencenter.modules.MusicControlWhitelistModule
 import hk.uwu.reareye.hook.scopes.subscreencenter.modules.RearWallpaperHook
 import hk.uwu.reareye.hook.scopes.subscreencenter.modules.SubScreenBackHomeWhitelistModule
@@ -19,6 +20,7 @@ class SubscreenCenterScope : Scope {
         if (isRearDevice) {
             addAll(
                 listOf(
+                    ForceAppWidgetEnabledHook(),
                     MusicControlWhitelistModule(),
                     SubScreenBackHomeWhitelistModule(),
                     VideoLoopModule(),

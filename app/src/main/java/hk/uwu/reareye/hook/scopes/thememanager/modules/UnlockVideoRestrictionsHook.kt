@@ -46,7 +46,12 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
             "TM_VIDEO_OPERATION_CURRENT_TIME_METHOD"
         private const val VIDEO_CLIP_FRAME_LOAD_METHOD_CACHE_KEY =
             "TM_VIDEO_CLIP_FRAME_LOAD_METHOD"
-        private const val VIDEO_HASH_STRING_METHOD_CACHE_KEY = "TM_VIDEO_HASH_STRING_METHOD"
+
+        // The old cache entry was created from a method-only query and can keep a
+        // stale miss after ThemeManager changes its dex layout.  Keep this query
+        // separate so the semantic DexKit matcher below is evaluated once.
+        private const val VIDEO_HASH_STRING_METHOD_CACHE_KEY =
+            "TM_VIDEO_HASH_STRING_METHOD_V2"
         private const val VIDEO_EXPORT_CONFIG_SET_FPS_METHOD_CACHE_KEY =
             "TM_VIDEO_EXPORT_CONFIG_SET_FPS_METHOD"
         private const val VIDEO_GSON_SERIALIZE_METHOD_CACHE_KEY =
@@ -364,8 +369,9 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                     }
                 }.singleOrNull()
             }
-            val durationCropClz = (durationCropMatchResult
-                ?: $$"com.android.thememanager.util.uc$k$toq").toClass()
+            val durationCropClz = requireNotNull(durationCropMatchResult) {
+                "DexKit failed to resolve the video duration crop class"
+            }.toClass()
 
             val historyHelperResult = resolveDexKitClassValue(
                 bridge = bridge,
@@ -384,8 +390,9 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
                     }
                 }.singleOrNull()
             }
-            val historyHelperClz =
-                (historyHelperResult ?: "com.android.thememanager.settings.a9").toClass()
+            val historyHelperClz = requireNotNull(historyHelperResult) {
+                "DexKit failed to resolve the video history helper class"
+            }.toClass()
 
             checkDepthClz.firstMethod {
                 name = checkDepthPoint.methodName
@@ -890,14 +897,24 @@ class UnlockVideoRestrictionsHook : YukiBaseHooker() {
         ) {
             // DexKit source anchor:
             // .tmp-ref/thememanager-jadx/sources/com/android/thememanager/basemodule/utils/CoderUtls.java:73
-            // Original method in jadx: CoderUtls.zy(String)
+            // Original method in jadx: CoderUtls.zy(String).  Both q(String) and
+            // zy(String) have the same signature.  The dex inlines the MD5
+            // algorithm constant, so match its actual string and digest call.
             findMethod {
                 searchPackages("com.android.thememanager.basemodule.utils")
                 matcher {
                     declaredClass = "com.android.thememanager.basemodule.utils.CoderUtls"
-                    modifiers = Modifier.PUBLIC or Modifier.STATIC or Modifier.FINAL
                     paramTypes(String::class.java)
                     returnType = "java.lang.String"
+                    usingStrings("MD5")
+                    invokeMethods {
+                        add {
+                            declaredClass = "java.security.MessageDigest"
+                            name = "getInstance"
+                            paramTypes(String::class.java)
+                            returnType = "java.security.MessageDigest"
+                        }
+                    }
                 }
             }.singleOrNull()
         }

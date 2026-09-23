@@ -396,14 +396,6 @@ object RearWidgetRuntimeStore {
         return out
     }
 
-    fun fallbackBusiness(packageName: String): String? {
-        val latest = notices.values.asSequence()
-            .filter { it.ticket.packageName == packageName }
-            .maxByOrNull { it.createdAt }
-        if (latest != null) return latest.ticket.business
-        return collectMatchedBusinesses(packageName).singleOrNull()
-    }
-
     private fun collectConfiguredBusinesses(packageName: String): LinkedHashSet<String> {
         return LinkedHashSet<String>().apply {
             routes[packageName]?.keys?.forEach(::add)
