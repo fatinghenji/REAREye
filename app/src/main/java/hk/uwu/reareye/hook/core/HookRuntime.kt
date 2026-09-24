@@ -45,6 +45,7 @@ private object HookTargetAllowlist {
         "com.android.systemui",
         "com.miui.weather2",
         "com.miui.gallery",
+        "com.miui.personalassistant"
     )
 
     fun accepts(packageName: String): Boolean = packageName in packages
@@ -144,10 +145,10 @@ class HookRuntimeImpl(
 
     override fun onPackageReady(param: XposedModuleInterface.PackageReadyParam) {
         val packageName = param.packageName
-        if (!HookTargetAllowlist.accepts(packageName)) {
+        /*if (!HookTargetAllowlist.accepts(packageName)) {
             logger.debug("Skip package outside allowlist: package=$packageName")
             return
-        }
+        }*/
         runCatching {
             val classLoader = param.classLoader
             val applicationInfo = param.applicationInfo

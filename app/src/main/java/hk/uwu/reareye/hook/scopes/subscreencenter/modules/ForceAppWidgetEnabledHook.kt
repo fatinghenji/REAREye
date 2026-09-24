@@ -14,7 +14,11 @@ class ForceAppWidgetEnabledHook : YukiBaseHooker() {
     }
 
     override fun onHook() {
-        loadApp("com.xiaomi.subscreencenter", "com.android.thememanager") {
+        loadApp(
+            "com.xiaomi.subscreencenter",
+            "com.android.thememanager",
+            "com.miui.personalassistant"
+        ) {
             "android.os.SystemProperties".toClass().resolve().firstMethod {
                 name = "getBoolean"
                 parameters(String::class.java, Boolean::class.javaPrimitiveType!!)

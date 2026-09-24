@@ -5,6 +5,7 @@ import hk.uwu.reareye.hook.core.YLog
 import hk.uwu.reareye.hook.scopes.Scope
 import hk.uwu.reareye.hook.scopes.subscreencenter.modules.ForceAppWidgetEnabledHook
 import hk.uwu.reareye.hook.scopes.subscreencenter.modules.MusicControlWhitelistModule
+import hk.uwu.reareye.hook.scopes.subscreencenter.modules.PersonalAssistantBackScreenDeviceHook
 import hk.uwu.reareye.hook.scopes.subscreencenter.modules.RearWallpaperHook
 import hk.uwu.reareye.hook.scopes.subscreencenter.modules.SubScreenBackHomeWhitelistModule
 import hk.uwu.reareye.hook.scopes.subscreencenter.modules.VideoLoopModule
@@ -30,7 +31,8 @@ class SubscreenCenterScope : Scope {
                     SystemUiNotificationBridgeHook(),
                     LyriconHook(),
                     VideoVolumeHook(),
-                    ExtraTimeTipHook()
+                    ExtraTimeTipHook(),
+                    PersonalAssistantBackScreenDeviceHook(),
                 )
             )
         } else {
