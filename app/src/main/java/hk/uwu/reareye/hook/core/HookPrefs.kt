@@ -3,6 +3,7 @@ package hk.uwu.reareye.hook.core
 import android.content.SharedPreferences
 import android.os.ParcelFileDescriptor
 import java.io.File
+import java.io.InputStream
 
 /** UI 与 Hook 通过 libxposed RemotePreferences 共享的唯一逻辑组名。 */
 internal const val REMOTE_PREFS_GROUP = "hk.uwu.reareye_preferences"
@@ -79,6 +80,14 @@ interface HookPrefs {
     /** UI/service 写入 RemoteFile；非远程实现必须显式失败。 */
     fun writeRemoteFile(name: String, bytes: ByteArray): Boolean =
         error("RemoteFile write is unavailable for this HookPrefs implementation: $name")
+
+    /** UI/service 以流方式写入 RemoteFile，避免把大型资源包整体读入内存。 */
+    fun writeRemoteFile(name: String, source: InputStream, expectedSize: Long = -1L): Boolean =
+        error("RemoteFile streaming write is unavailable for this HookPrefs implementation: $name")
+
+    /** UI/service 从本地文件流式写入 RemoteFile。 */
+    fun writeRemoteFile(name: String, source: File): Boolean =
+        source.inputStream().use { input -> writeRemoteFile(name, input, source.length()) }
 
     /** UI/service 删除 RemoteFile；非远程实现必须显式失败。 */
     fun deleteRemoteFile(name: String): Boolean =
@@ -259,6 +268,9 @@ class ReadOnlyHookPrefs(
     }
 
     override fun writeRemoteFile(name: String, bytes: ByteArray): Boolean =
+        rejectRemoteFileWrite("writeRemoteFile($name)")
+
+    override fun writeRemoteFile(name: String, source: InputStream, expectedSize: Long): Boolean =
         rejectRemoteFileWrite("writeRemoteFile($name)")
 
     override fun deleteRemoteFile(name: String): Boolean =
@@ -476,6 +488,9 @@ class XposedRemoteHookPrefs private constructor(
 
     override fun writeRemoteFile(name: String, bytes: ByteArray): Boolean =
         XposedModuleStatus.writeRemoteFile(name, bytes)
+
+    override fun writeRemoteFile(name: String, source: InputStream, expectedSize: Long): Boolean =
+        XposedModuleStatus.writeRemoteFile(name, source, expectedSize)
 
     override fun deleteRemoteFile(name: String): Boolean =
         XposedModuleStatus.deleteRemoteFile(name)

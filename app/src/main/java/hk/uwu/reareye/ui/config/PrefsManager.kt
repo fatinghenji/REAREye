@@ -4,6 +4,7 @@ import android.content.Context
 import hk.uwu.reareye.hook.core.HookPrefs
 import hk.uwu.reareye.hook.core.REMOTE_PREFS_GROUP
 import hk.uwu.reareye.hook.core.XposedRemoteHookPrefs
+import java.io.File
 
 /**
  * 模块 UI 偏好门面。
@@ -63,6 +64,10 @@ class PrefsManager(
     /** 写入 RemoteFile；失败由 service 适配记录并返回 false。 */
     fun writeRemoteFile(name: String, bytes: ByteArray): Boolean =
         prefs.writeRemoteFile(name, bytes)
+
+    /** 大文件使用流式 RemoteFile 写入，避免一次性创建完整 ByteArray。 */
+    fun writeRemoteFile(name: String, source: File): Boolean =
+        prefs.writeRemoteFile(name, source)
 
     /** 删除 RemoteFile；不存在按幂等成功处理。 */
     fun deleteRemoteFile(name: String): Boolean =

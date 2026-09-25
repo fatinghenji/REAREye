@@ -6,6 +6,8 @@ import android.os.ParcelFileDescriptor
 import io.github.libxposed.service.HookedTarget
 import io.github.libxposed.service.XposedService
 import io.github.libxposed.service.XposedServiceHelper
+import java.io.ByteArrayInputStream
+import java.io.InputStream
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.atomic.AtomicLong
 
@@ -227,6 +229,17 @@ object XposedModuleStatus {
      * 文件大小和阶段诊断，但绝不记录 blob 内容。
      */
     fun writeRemoteFile(name: String, bytes: ByteArray): Boolean {
+        return ByteArrayInputStream(bytes).use { input ->
+            writeRemoteFile(name, input, bytes.size.toLong())
+        }
+    }
+
+    /**
+     * 通过 API 102 service 流式覆盖 RemoteFile。
+     *
+     * RPP 可能达到几十 MB，UI 侧应使用此入口，避免再创建一个完整的 ByteArray。
+     */
+    fun writeRemoteFile(name: String, source: InputStream, expectedSize: Long = -1L): Boolean {
         val safeName = runCatching { RemoteFileName.requireValid(name) }
             .onFailure { YLog.error("Rejected invalid remote file write name: $name", it) }
             .getOrNull() ?: return false
@@ -235,7 +248,7 @@ object XposedModuleStatus {
             service?.let { it to remotePreferencesGeneration.get() }
         }
         if (captured == null) {
-            YLog.error("Unable to write remote file because service is unavailable: name=$safeName size=${bytes.size}")
+            YLog.error("Unable to write remote file because service is unavailable: name=$safeName size=$expectedSize")
             return false
         }
         val boundService = captured.first
@@ -243,12 +256,12 @@ object XposedModuleStatus {
         if (boundService.apiVersion < XposedService.API_102) {
             YLog.error(
                 "Unable to write remote file because API 102 is required: " +
-                        "name=$safeName size=${bytes.size} api=${boundService.apiVersion}",
+                        "name=$safeName size=$expectedSize api=${boundService.apiVersion}",
             )
             return false
         }
         if (boundService.frameworkProperties and XposedService.PROP_CAP_REMOTE == 0L) {
-            YLog.error("Unable to write remote file because capability is unavailable: name=$safeName size=${bytes.size}")
+            YLog.error("Unable to write remote file because capability is unavailable: name=$safeName size=$expectedSize")
             return false
         }
         return runCatching {
@@ -256,7 +269,10 @@ object XposedModuleStatus {
                 .use { output ->
                     output.channel.truncate(0L)
                     output.channel.position(0L)
-                    output.write(bytes)
+                    val copied = source.copyTo(output, DEFAULT_REMOTE_COPY_BUFFER_SIZE)
+                    check(expectedSize < 0L || copied == expectedSize) {
+                        "Remote file size mismatch: expected=$expectedSize actual=$copied"
+                    }
                     output.flush()
                     output.fd.sync()
                 }
@@ -269,11 +285,13 @@ object XposedModuleStatus {
             true
         }.onFailure {
             YLog.error(
-                "Unable to write remote file: name=$safeName size=${bytes.size} generation=$generation",
+                "Unable to write remote file: name=$safeName size=$expectedSize generation=$generation",
                 it,
             )
         }.getOrDefault(false)
     }
+
+    private const val DEFAULT_REMOTE_COPY_BUFFER_SIZE = 1024 * 1024
 
     /** 删除 RemoteFile；API 返回“文件不存在”时按幂等删除成功处理。 */
     fun deleteRemoteFile(name: String): Boolean {

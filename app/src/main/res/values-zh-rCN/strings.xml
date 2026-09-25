@@ -8,6 +8,15 @@
     <string name="store_navigation">仓库</string>
     <string name="configuration_navigation">配置</string>
     <string name="about_navigation">关于</string>
+    <string name="preset_pack_title">预设资源包</string>
+    <string name="preset_pack_summary">管理预设资源包</string>
+    <string name="preset_pack_missing_title">未安装预设资源包</string>
+    <string name="preset_pack_missing_summary">缺少预设资源，点击下载或手动导入</string>
+    <string name="preset_pack_update_title">预设资源包有更新</string>
+    <string name="preset_pack_update_summary">发现版本 %1$s，点击下载并覆盖</string>
+    <string name="preset_pack_invalid_title">预设资源包需要修复</string>
+    <string name="preset_pack_invalid_summary">资源包校验失败，暂不注入</string>
+    <string name="preset_pack_dialog_summary">下载、导入、校验和覆盖预设资源</string>
     <string name="navigation_quick_component_manager">组件管理</string>
     <string name="navigation_quick_card_manager">卡片管理</string>
     <string name="navigation_quick_lyrics_manager">歌词管理</string>
@@ -430,6 +439,8 @@
     <string name="version_codename_label">版本代号</string>
     <string name="quick_stop_subscreencenter">快捷终止背屏中心</string>
     <string name="quick_stop_thememanager">快捷终止主题管理</string>
+    <string name="quick_stop_personalassistant">快捷终止智能助理</string>
+    <string name="category_personalassistant">智能助理</string>
     <string name="quick_stop_success">已终止 %1$s</string>
     <string name="quick_stop_failed">终止 %1$s 失败</string>
     <string name="enable_misc_unlock_gms">移除国行GMS服务的限制</string>

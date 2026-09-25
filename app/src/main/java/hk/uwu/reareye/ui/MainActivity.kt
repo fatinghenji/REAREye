@@ -36,6 +36,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import hk.uwu.reareye.ui.components.PresetPackDialog
 import hk.uwu.reareye.ui.components.motion.ArtVisibilityMotion
 import hk.uwu.reareye.ui.components.navigation.NavigationQuickTarget
 import hk.uwu.reareye.ui.components.navigation.RearNavigationBar
@@ -146,6 +147,8 @@ class MainActivity : ComponentActivity() {
                 mutableIntStateOf(settings.navigationBarModeValue)
             }
             var currentScreen by remember { mutableStateOf("home") }
+            var showPresetPackDialog by remember { mutableStateOf(false) }
+            var presetPackRefreshToken by remember { mutableIntStateOf(0) }
             var navBarVisible by remember { mutableStateOf(false) }
             var configInAppListMode by remember { mutableStateOf(false) }
             var pendingConfigQuickManagerTarget by remember {
@@ -241,7 +244,11 @@ class MainActivity : ComponentActivity() {
                                 label = "ScreenTransition"
                             ) { screen ->
                                 when (screen) {
-                                    "home" -> HomeScreen(bottomInnerPadding = stableBottomInset)
+                                    "home" -> HomeScreen(
+                                        bottomInnerPadding = stableBottomInset,
+                                        onOpenPresetPackDialog = { showPresetPackDialog = true },
+                                        presetPackRefreshToken = presetPackRefreshToken,
+                                    )
 
                                     "store" -> RearStoreScreen(bottomInnerPadding = stableBottomInset)
 
@@ -260,7 +267,10 @@ class MainActivity : ComponentActivity() {
                                         },
                                     )
 
-                                    "about" -> AboutScreen(bottomInnerPadding = stableBottomInset)
+                                    "about" -> AboutScreen(
+                                        bottomInnerPadding = stableBottomInset,
+                                        onOpenPresetPackDialog = { showPresetPackDialog = true },
+                                    )
                                 }
                             }
                         }
@@ -329,6 +339,12 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         }
+
+                        PresetPackDialog(
+                            show = showPresetPackDialog,
+                            onDismissRequest = { showPresetPackDialog = false },
+                            onApplied = { presetPackRefreshToken++ },
+                        )
                     }
                 }
             }

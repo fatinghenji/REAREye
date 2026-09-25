@@ -126,6 +126,7 @@ import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.blur.textureBlur
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Create
+import top.yukonga.miuix.kmp.icon.extended.Download
 import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.shapes.SmoothRoundedCornerShape
@@ -260,7 +261,10 @@ private fun rememberSkeletonPulseAlpha(label: String): Float {
 }
 
 @Composable
-fun AboutScreen(bottomInnerPadding: Dp = 0.dp) {
+fun AboutScreen(
+    bottomInnerPadding: Dp = 0.dp,
+    onOpenPresetPackDialog: () -> Unit = {},
+) {
     val versionText = rememberVersionText()
     val contributorState by ContributorRepository.state.collectAsState()
     val lazyListState = rememberLazyListState()
@@ -381,6 +385,7 @@ fun AboutScreen(bottomInnerPadding: Dp = 0.dp) {
                     animateRootContent = false
                     route = AboutRoute.Licenses
                 },
+                onOpenPresetPackDialog = onOpenPresetPackDialog,
             )
 
             AboutRoute.Contributors -> AboutSecondaryPage(
@@ -420,6 +425,7 @@ private fun AboutRootPage(
     animateEnter: Boolean,
     onOpenContributors: () -> Unit,
     onOpenLibraries: () -> Unit,
+    onOpenPresetPackDialog: () -> Unit,
 ) {
     val scrollBehavior = MiuixScrollBehavior()
     val hazeState = rememberAcrylicHazeState()
@@ -462,6 +468,7 @@ private fun AboutRootPage(
             scrollProgress = scrollProgress,
             lazyListState = lazyListState,
             onOpenLibraries = onOpenLibraries,
+            onOpenPresetPackDialog = onOpenPresetPackDialog,
             animateEnter = animateEnter,
         )
     }
@@ -520,6 +527,7 @@ private fun AboutRootContent(
     scrollProgress: Float,
     lazyListState: LazyListState,
     onOpenLibraries: () -> Unit,
+    onOpenPresetPackDialog: () -> Unit,
     animateEnter: Boolean,
 ) {
     val context = LocalContext.current
@@ -752,6 +760,39 @@ private fun AboutRootContent(
                         visualTokens = visualTokens,
                         animateEnter = animateEnter,
                     )
+
+                    Card(
+                        modifier = Modifier.textureBlur(
+                            backdrop = backdrop,
+                            shape = SmoothRoundedCornerShape(16.dp),
+                            blurRadius = 60f,
+                            noiseCoefficient = 0.001f,
+                            colors = BlurColors(
+                                blendColors = visualTokens.cardBlendColors,
+                                brightness = 0f,
+                                contrast = 1f,
+                                saturation = 1f,
+                            ),
+                            enabled = true,
+                        ),
+                        colors = CardDefaults.defaultColors(
+                            Color.Transparent,
+                            Color.Transparent,
+                        ),
+                    ) {
+                        SuperCard(
+                            title = stringResource(R.string.preset_pack_title),
+                            summary = stringResource(R.string.preset_pack_summary),
+                            onClick = onOpenPresetPackDialog,
+                            endActions = {
+                                Icon(
+                                    imageVector = MiuixIcons.Download,
+                                    tint = colorScheme.onSurface,
+                                    contentDescription = null,
+                                )
+                            },
+                        )
+                    }
 
                     Column(
                         verticalArrangement = Arrangement.spacedBy(AboutCardSpacing),

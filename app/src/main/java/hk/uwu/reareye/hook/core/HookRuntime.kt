@@ -145,10 +145,10 @@ class HookRuntimeImpl(
 
     override fun onPackageReady(param: XposedModuleInterface.PackageReadyParam) {
         val packageName = param.packageName
-        /*if (!HookTargetAllowlist.accepts(packageName)) {
+        if (!HookTargetAllowlist.accepts(packageName)) {
             logger.debug("Skip package outside allowlist: package=$packageName")
             return
-        }*/
+        }
         runCatching {
             val classLoader = param.classLoader
             val applicationInfo = param.applicationInfo

@@ -8,6 +8,15 @@
     <string name="store_navigation">Store</string>
     <string name="configuration_navigation">Config</string>
     <string name="about_navigation">About</string>
+    <string name="preset_pack_title">Preset Pack</string>
+    <string name="preset_pack_summary">Download and manage preset resources</string>
+    <string name="preset_pack_missing_title">Preset resources not installed</string>
+    <string name="preset_pack_missing_summary">Download or import preset resources</string>
+    <string name="preset_pack_update_title">Preset resources update available</string>
+    <string name="preset_pack_update_summary">Version %1$s is available</string>
+    <string name="preset_pack_invalid_title">Preset resources need repair</string>
+    <string name="preset_pack_invalid_summary">Preset resources failed validation</string>
+    <string name="preset_pack_dialog_summary">Download, import, validate and replace preset resources</string>
     <string name="navigation_quick_component_manager">Widget Management</string>
     <string name="navigation_quick_card_manager">Card Management</string>
     <string name="navigation_quick_lyrics_manager">Lyrics Management</string>
@@ -430,6 +439,8 @@ Widget: %2$s · Priority: %3$d</string>
     <string name="version_codename_label">Version Codename</string>
     <string name="quick_stop_subscreencenter">Force stop Subscreen Center</string>
     <string name="quick_stop_thememanager">Force stop Theme Manager</string>
+    <string name="quick_stop_personalassistant">Force stop Smart Assistant</string>
+    <string name="category_personalassistant">Smart Assistant</string>
     <string name="quick_stop_success">Stopped %1$s</string>
     <string name="quick_stop_failed">Failed to stop %1$s</string>
     <string name="enable_misc_unlock_gms">Remove CN Google Play Services restrictions</string>

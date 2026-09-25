@@ -2,6 +2,7 @@ package hk.uwu.reareye.hook.scopes.thememanager
 
 import hk.uwu.reareye.hook.core.HookModule
 import hk.uwu.reareye.hook.core.YLog
+import hk.uwu.reareye.hook.preset.PresetPackFilesHook
 import hk.uwu.reareye.hook.scopes.Scope
 import hk.uwu.reareye.hook.scopes.thememanager.modules.AiGeneratedAppDeviceHook
 import hk.uwu.reareye.hook.scopes.thememanager.modules.RearWallpaperThemeManagerSyncHook
@@ -18,7 +19,8 @@ class ThemeManagerScope : Scope {
                     UnlockTemplateMaximumLimitHook(),
                     UnmuteVideoWallpaperHook(),
                     RearWallpaperThemeManagerSyncHook(),
-                    AiGeneratedAppDeviceHook()
+                    AiGeneratedAppDeviceHook(),
+                    PresetPackFilesHook(),
                 )
             )
         } else {

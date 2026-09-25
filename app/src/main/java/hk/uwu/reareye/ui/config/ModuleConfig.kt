@@ -109,6 +109,11 @@ object ConfigKeys {
     const val MORE_DEBUG = "enable_more_debug_logging"
     const val MODULE_FAVORITE_CONFIG_NODES = "module_favorite_config_nodes"
     const val MODULE_NAVIGATION_QUICK_ACTIONS = "module_navigation_quick_actions"
+
+    /** RPP 当前已写入 RemoteFile 的双槽位指针和校验元数据。 */
+    const val PRESET_REMOTE_SLOT = "preset_pack_remote_slot"
+    const val PRESET_REMOTE_VERSION = "preset_pack_remote_version"
+    const val PRESET_REMOTE_HASH = "preset_pack_remote_hash"
 }
 
 enum class ModuleNavigationBarMode(

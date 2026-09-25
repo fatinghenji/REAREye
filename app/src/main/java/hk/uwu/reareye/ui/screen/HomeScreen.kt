@@ -60,7 +60,11 @@ import hk.uwu.reareye.R
 import hk.uwu.reareye.generated.AppProperties
 import hk.uwu.reareye.hook.core.ModuleActivationState
 import hk.uwu.reareye.hook.core.XposedModuleStatus
+import hk.uwu.reareye.ui.components.PresetPackLocalStatus
+import hk.uwu.reareye.ui.components.PresetPackStatusCard
+import hk.uwu.reareye.ui.components.isNewerThan
 import hk.uwu.reareye.ui.components.motion.ArtVisibilityMotion
+import hk.uwu.reareye.ui.components.rememberPresetPackHomeSnapshot
 import hk.uwu.reareye.ui.config.ConfigKeys
 import hk.uwu.reareye.ui.config.PrefsManager.Companion.getPrefsManager
 import hk.uwu.reareye.ui.easteregg.EasterEggManager
@@ -261,7 +265,11 @@ private suspend fun fetchLatestCommitHashFromNetwork(): String? {
 
 @SuppressLint("LocalContextGetResourceValueCall")
 @Composable
-fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
+fun HomeScreen(
+    bottomInnerPadding: Dp = 0.dp,
+    onOpenPresetPackDialog: () -> Unit = {},
+    presetPackRefreshToken: Any? = Unit,
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var activationState by remember { mutableStateOf(XposedModuleStatus.current()) }
@@ -273,6 +281,11 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
     val hazeStyle = rememberAcrylicHazeStyle()
     val coroutineScope = rememberCoroutineScope()
     val easterEggToastHolder = remember { ToastHolder() }
+    val presetPackHomeSnapshot = rememberPresetPackHomeSnapshot(presetPackRefreshToken)
+    val presetPackSnapshot = presetPackHomeSnapshot.local
+    val presetPackUpdateAvailable = presetPackHomeSnapshot.latest?.isNewerThan(
+        presetPackSnapshot.installed?.manifest?.packVersion,
+    ) == true
 
     var latestCommitHash by remember { mutableStateOf<String?>(null) }
     var isCheckingUpdate by remember { mutableStateOf(false) }
@@ -428,7 +441,7 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
                                             R.string.quick_stop_subscreencenter,
                                         ),
                                     ),
-                                    entryCount = 3,
+                                    entryCount = 4,
                                     isSelected = false,
                                     index = 0,
                                     spinnerColors = SpinnerDefaults.spinnerColors(),
@@ -451,7 +464,7 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
                                             R.string.quick_stop_thememanager,
                                         ),
                                     ),
-                                    entryCount = 3,
+                                    entryCount = 4,
                                     isSelected = false,
                                     index = 1,
                                     spinnerColors = SpinnerDefaults.spinnerColors(),
@@ -470,12 +483,34 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
                                 SpinnerItemImpl(
                                     entry = SpinnerEntry(
                                         title = androidx.compose.ui.res.stringResource(
+                                            R.string.quick_stop_personalassistant,
+                                        ),
+                                    ),
+                                    entryCount = 4,
+                                    isSelected = false,
+                                    index = 2,
+                                    spinnerColors = SpinnerDefaults.spinnerColors(),
+                                    onSelectedIndexChange = {
+                                        showTopMenu.value = false
+                                        coroutineScope.launch {
+                                            forceStopPackageByRoot(
+                                                context = context,
+                                                packageName = "com.miui.personalassistant",
+                                                appName = context.getString(R.string.category_personalassistant),
+                                            )
+                                        }
+                                    },
+                                )
+
+                                SpinnerItemImpl(
+                                    entry = SpinnerEntry(
+                                        title = androidx.compose.ui.res.stringResource(
                                             R.string.quick_stop_systemui,
                                         ),
                                     ),
-                                    entryCount = 3,
+                                    entryCount = 4,
                                     isSelected = false,
-                                    index = 2,
+                                    index = 3,
                                     spinnerColors = SpinnerDefaults.spinnerColors(),
                                     onSelectedIndexChange = {
                                         showTopMenu.value = false
@@ -569,6 +604,19 @@ fun HomeScreen(bottomInnerPadding: Dp = 0.dp) {
                                     currentHash = AppProperties.GIT_HASH.take(7),
                                     latestHash = latestCommitHash?.take(7).orEmpty(),
                                     useMonetColors = useMonetStatusColors,
+                                )
+                            }
+
+                            if (presetPackSnapshot.status == PresetPackLocalStatus.NOT_INSTALLED ||
+                                presetPackSnapshot.status == PresetPackLocalStatus.INVALID ||
+                                presetPackUpdateAvailable
+                            ) {
+                                PresetPackStatusCard(
+                                    snapshot = presetPackSnapshot,
+                                    updateAvailable = presetPackUpdateAvailable,
+                                    latestVersion = presetPackHomeSnapshot.latest?.version,
+                                    useMonetColors = useMonetStatusColors,
+                                    onClick = onOpenPresetPackDialog,
                                 )
                             }
                         }
