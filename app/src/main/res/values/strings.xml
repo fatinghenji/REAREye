@@ -93,6 +93,8 @@
     <string name="custom_activities_whitelist_apps_desc">Choose which apps can open on the rear screen</string>
 
     <string name="category_subscreencenter">Subscreen Center</string>
+    <string name="enable_unlimited_subscreen_app_list">Remove Subscreen app list limit</string>
+    <string name="enable_unlimited_subscreen_app_list_desc">Allow Subscreen Center to keep inserting apps beyond the built-in 15-app limit</string>
     <string name="cfg_music_control_whitelist">Music Controls Whitelist</string>
     <string name="cfg_music_control_whitelist_desc">Allows you to customize the music controls that can be displayed on the rear screen</string>
     <string name="enable_music_control_whitelist">Enable Custom Music Controls Whitelist</string>

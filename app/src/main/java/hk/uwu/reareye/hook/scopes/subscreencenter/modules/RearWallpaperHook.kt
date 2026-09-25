@@ -937,7 +937,7 @@ class RearWallpaperHook : YukiBaseHooker() {
                 panel.asResolver().firstMethod {
                     name = selectPoint.methodName
                     parameterCount = 2
-                }.invoke(widgets, index)
+                }.invoke(index, widgets)
                 debugLog("dispatchSelection success panel=${panel.javaClass.name} index=$index widgets=${widgets.size}")
             }.onFailure(YLog::error)
             Unit
